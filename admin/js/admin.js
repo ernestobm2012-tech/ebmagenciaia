@@ -212,6 +212,7 @@ async function clientPage(id) {
       { id: 'knowledge', label: 'Conocimiento', render: () => knowledgeTab(id) },
       { id: 'connections', label: 'Conexiones (ERP/API)', render: () => connectionsTab(id) },
       { id: 'contacts', label: 'A quién avisar', render: () => contactsTab(id) },
+      { id: 'install', label: 'Instalar en su web', render: () => installTab(client) },
       { id: 'expenses', label: 'Gastos', render: () => expensesTab(id) },
       { id: 'activity', label: 'Actividad', render: async () => activityTabs({ clientId: id, isAdmin: true }) },
     ]));
@@ -370,6 +371,56 @@ async function contactsTab(clientId) {
   }
   await load();
   return wrap;
+}
+
+// ---------------------------------------------------------------- instalar
+// Código que el cliente (o su programador) pega en su web para tener el chat.
+async function installTab(client) {
+  const agent = await q(db.from('agents').select('name, welcome_message').eq('client_id', client.id)
+    .eq('active', true).order('created_at').limit(1).maybeSingle());
+  if (!agent) return h('p', { class: 'empty' }, 'Este cliente aún no tiene un agente activo. Créalo en la pestaña Agentes.');
+
+  const attr = (text) => String(text).replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+  const src = new URL('../js/chat.js', location.href).href;
+  const demo = `${new URL('../demo.html', location.href).href}?cliente=${client.slug}&nombre=${encodeURIComponent(client.name)}`;
+  const color = h('input', { type: 'color', value: '#1483DC', oninput: render });
+  const side = h('select', { onchange: render },
+    h('option', { value: 'right' }, 'Abajo a la derecha'), h('option', { value: 'left' }, 'Abajo a la izquierda'));
+  const code = h('textarea', { class: 'mono', rows: 8, readonly: true, onclick: () => code.select() });
+
+  function render() {
+    code.value = [
+      `<script src="${src}"`,
+      `  data-client="${attr(client.slug)}"`,
+      `  data-title="${attr(client.name)}"`,
+      `  data-welcome="${attr(agent.welcome_message)}"`,
+      `  data-color="${color.value}"`,
+      ...(side.value === 'left' ? ['  data-position="left"'] : []),
+      '  defer></' + 'script>',
+    ].join('\n');
+  }
+  render();
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code.value);
+      toast('Código copiado.');
+    } catch {
+      code.select();
+      toast('No he podido copiarlo. Está seleccionado: pulsa Ctrl+C.', 'error');
+    }
+  };
+
+  return h('div', { class: 'form' },
+    h('p', { class: 'muted' }, 'Este es el código que hay que pegar en la web del cliente. Se coloca una sola vez, justo antes de la etiqueta de cierre </body>, en todas las páginas donde deba aparecer el chat.'),
+    h('div', { class: 'grid2' },
+      field('Color del botón', color, 'Usa el color principal de la web del cliente.'),
+      field('Posición', side, 'Cámbiala si su web ya tiene un botón de WhatsApp en esa esquina.')),
+    field('Código para pegar', code),
+    h('div', { class: 'actions' },
+      h('button', { class: 'btn primary', type: 'button', onclick: copy }, 'Copiar código'),
+      h('a', { class: 'btn', href: demo, target: '_blank', rel: 'noopener' }, 'Abrir demo')),
+    h('p', { class: 'muted small' }, 'El código no contiene ninguna clave. Si pausas al cliente o apagas su agente, el chat deja de responder sin tocar su web. Si cambias el mensaje de bienvenida, hay que volver a pasarle el código.'));
 }
 
 // ---------------------------------------------------------------- actividad

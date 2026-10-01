@@ -11,6 +11,8 @@
   const TITLE = script.dataset.title || 'Asistente';
   const WELCOME = script.dataset.welcome || '¡Hola! ¿En qué puedo ayudarte?';
   const COLOR = /^#[0-9a-f]{3,8}$/i.test(script.dataset.color || '') ? script.dataset.color : '#1483DC';
+  // La cabecera usa el color de la marca si se indica; si no, el azul noche de EBM.
+  const HEAD = COLOR === '#1483DC' ? '#12294A' : COLOR;
   const SIDE = script.dataset.position === 'left' ? 'left' : 'right';
   const AVATAR = /^https:\/\//.test(script.dataset.avatar || '') ? script.dataset.avatar : null;
   const KEY = `ebm-chat-${CLIENT}`;
@@ -41,12 +43,12 @@
       height: 520px; max-height: calc(100dvh - 112px); display: none; flex-direction: column; overflow: hidden;
       background: #fff; color: #242F3D; border: 1px solid #E1E7EE; border-radius: 16px; box-shadow: 0 24px 60px -20px rgba(18,41,74,.5); }
     .ebm-chat.open { display: flex; }
-    .ebm-chat-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; background: #12294A; color: #fff; }
+    .ebm-chat-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; background: ${HEAD}; color: #fff; }
     .ebm-chat-btn img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; border: 2px solid #fff; }
     .ebm-chat-who { display: flex; align-items: center; gap: 10px; }
     .ebm-chat-who img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; flex: none; }
     .ebm-chat-head strong { font-size: 15px; font-weight: 900; }
-    .ebm-chat-head small { display: block; font-size: 12px; color: #93A9BE; font-weight: 400; }
+    .ebm-chat-head small { display: block; font-size: 12px; color: rgba(255,255,255,.78); font-weight: 400; }
     .ebm-chat-head button { border: 0; background: none; color: #fff; font-size: 24px; line-height: 1; cursor: pointer; padding: 2px 8px; }
     .ebm-chat-log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; background: #F3F6FA; }
     .ebm-chat-msg { max-width: 86%; padding: 10px 14px; border-radius: 14px; font-size: 15px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }

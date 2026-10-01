@@ -8,6 +8,6 @@ export const SUPABASE_KEY = 'sb_publishable_MlzXIojQfbcUDiHUGJ_4wg_lcWCmJ27';
 export const USD_TO_EUR = 0.92;
 
 export const MODELS = [
-  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5 · rápido y barato (FAQ, horarios, captar datos)' },
+  { id: 'claude-haiku-4-5', label: 'Haiku 4.5 · rápido y barato (FAQ, horarios, captar datos)' },
   { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5 · más razonamiento (más caro)' },
 ];

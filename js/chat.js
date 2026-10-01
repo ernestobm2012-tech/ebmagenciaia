@@ -1,8 +1,9 @@
 // Widget de chat del agente. Autocontenido (trae sus estilos) para poder
 // pegarlo en la web de cualquier cliente:
 //   <script src=".../js/chat.js" data-client="identificador" data-welcome="..." defer></script>
-// Opcionales: data-title, data-color (#hex) y data-position="left" si la web ya
-// tiene otro botón flotante a la derecha.
+// Opcionales: data-title, data-color (#hex), data-avatar (dirección https de una
+// foto, se muestra redonda) y data-position="left" si la web ya tiene otro botón
+// flotante a la derecha.
 (() => {
   const script = document.currentScript;
   const ENDPOINT = 'https://rhjbpkaesobsbnkvioyh.supabase.co/functions/v1/chat';
@@ -11,6 +12,7 @@
   const WELCOME = script.dataset.welcome || '¡Hola! ¿En qué puedo ayudarte?';
   const COLOR = /^#[0-9a-f]{3,8}$/i.test(script.dataset.color || '') ? script.dataset.color : '#1483DC';
   const SIDE = script.dataset.position === 'left' ? 'left' : 'right';
+  const AVATAR = /^https:\/\//.test(script.dataset.avatar || '') ? script.dataset.avatar : null;
   const KEY = `ebm-chat-${CLIENT}`;
 
   // El almacenamiento puede fallar (modo privado, cookies bloqueadas): el chat funciona igual.
@@ -31,7 +33,7 @@
     .ebm-chat-btn, .ebm-chat { font-family: "Lato", -apple-system, "Segoe UI", Arial, sans-serif; box-sizing: border-box; }
     .ebm-chat, .ebm-chat * { box-sizing: border-box; margin: 0; letter-spacing: normal; text-transform: none; text-align: left; }
     .ebm-chat { padding: 0; line-height: 1.45; }
-    .ebm-chat-btn { position: fixed; ${SIDE}: 20px; bottom: 20px; z-index: 9998; width: 60px; height: 60px; border-radius: 50%;
+    .ebm-chat-btn { padding: 0; overflow: hidden; position: fixed; ${SIDE}: 20px; bottom: 20px; z-index: 9998; width: 60px; height: 60px; border-radius: 50%;
       border: 0; background: ${COLOR}; color: #fff; cursor: pointer; box-shadow: 0 12px 30px -10px rgba(18,41,74,.6);
       display: grid; place-items: center; }
     .ebm-chat-btn:focus-visible, .ebm-chat button:focus-visible, .ebm-chat textarea:focus-visible { outline: 2px solid #12294A; outline-offset: 2px; }
@@ -40,6 +42,9 @@
       background: #fff; color: #242F3D; border: 1px solid #E1E7EE; border-radius: 16px; box-shadow: 0 24px 60px -20px rgba(18,41,74,.5); }
     .ebm-chat.open { display: flex; }
     .ebm-chat-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; background: #12294A; color: #fff; }
+    .ebm-chat-btn img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; border: 2px solid #fff; }
+    .ebm-chat-who { display: flex; align-items: center; gap: 10px; }
+    .ebm-chat-who img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; flex: none; }
     .ebm-chat-head strong { font-size: 15px; font-weight: 900; }
     .ebm-chat-head small { display: block; font-size: 12px; color: #93A9BE; font-weight: 400; }
     .ebm-chat-head button { border: 0; background: none; color: #fff; font-size: 24px; line-height: 1; cursor: pointer; padding: 2px 8px; }
@@ -72,14 +77,19 @@
   const close = el('button', { type: 'button', textContent: '×' });
   close.setAttribute('aria-label', 'Cerrar chat');
   const panel = el('div', { className: 'ebm-chat' },
-    el('div', { className: 'ebm-chat-head' }, el('div', {}, el('strong', { textContent: TITLE }), el('small', { textContent: 'Asistente de IA' })), close),
+    el('div', { className: 'ebm-chat-head' },
+      el('div', { className: 'ebm-chat-who' },
+        ...(AVATAR ? [el('img', { src: AVATAR, alt: '' })] : []),
+        el('div', {}, el('strong', { textContent: TITLE }), el('small', { textContent: 'Asistente de IA' }))),
+      close),
     log, form,
     el('div', { className: 'ebm-chat-note', textContent: 'Guardamos la conversación para poder atenderte.' }));
   panel.setAttribute('aria-label', TITLE);
 
   const button = el('button', { className: 'ebm-chat-btn', type: 'button' });
   button.setAttribute('aria-label', 'Abrir chat');
-  button.innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>';
+  if (AVATAR) button.append(el('img', { src: AVATAR, alt: '' }));
+  else button.innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>';
 
   function bubble(role, text) {
     const node = el('div', { className: `ebm-chat-msg ${role}`, textContent: text });

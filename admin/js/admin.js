@@ -386,7 +386,8 @@ async function installTab(client) {
   const color = h('input', { type: 'color', value: '#1483DC', oninput: render });
   const side = h('select', { onchange: render },
     h('option', { value: 'right' }, 'Abajo a la derecha'), h('option', { value: 'left' }, 'Abajo a la izquierda'));
-  const code = h('textarea', { class: 'mono', rows: 8, readonly: true, onclick: () => code.select() });
+  const avatar = h('input', { type: 'url', placeholder: 'https://…/foto.jpg', oninput: render });
+  const code = h('textarea', { class: 'mono', rows: 9, readonly: true, onclick: () => code.select() });
 
   function render() {
     code.value = [
@@ -395,6 +396,7 @@ async function installTab(client) {
       `  data-title="${attr(client.name)}"`,
       `  data-welcome="${attr(agent.welcome_message)}"`,
       `  data-color="${color.value}"`,
+      ...(/^https:\/\/\S+$/.test(avatar.value.trim()) ? [`  data-avatar="${attr(avatar.value.trim())}"`] : []),
       ...(side.value === 'left' ? ['  data-position="left"'] : []),
       '  defer></' + 'script>',
     ].join('\n');
@@ -416,6 +418,7 @@ async function installTab(client) {
     h('div', { class: 'grid2' },
       field('Color del botón', color, 'Usa el color principal de la web del cliente.'),
       field('Posición', side, 'Cámbiala si su web ya tiene un botón de WhatsApp en esa esquina.')),
+    field('Foto del avatar (opcional)', avatar, 'Dirección https de una foto cuadrada. Se muestra redonda en el botón y en la cabecera del chat. Sin foto, sale el icono.'),
     field('Código para pegar', code),
     h('div', { class: 'actions' },
       h('button', { class: 'btn primary', type: 'button', onclick: copy }, 'Copiar código'),

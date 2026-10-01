@@ -76,6 +76,18 @@ function costUsd(model: string, u: Anthropic.Usage) {
   );
 }
 
+// Fecha de hoy y calendario de las próximas semanas. Los modelos se equivocan
+// al calcular qué día de la semana cae una fecha; así solo tienen que leerlo.
+function todayBlock() {
+  const weekday = new Intl.DateTimeFormat("es-ES", { weekday: "long", timeZone: "Europe/Madrid" });
+  const iso = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid" });
+  const days = Array.from({ length: 35 }, (_, i) => {
+    const d = new Date(Date.now() + i * 86_400_000);
+    return `${weekday.format(d)} ${iso.format(d)}`;
+  });
+  return `Hoy es ${days[0]}. Para saber qué fecha es "el sábado que viene" o qué día de la semana cae una fecha, no lo calcules: léelo en este calendario de los próximos días: ${days.join(", ")}.`;
+}
+
 // Cada conexión a un sistema del cliente se ofrece al agente como una herramienta.
 function connectionTool(c: Connection): Anthropic.Tool {
   return {
@@ -238,6 +250,10 @@ Deno.serve(async (req) => {
       type: "text",
       text: `${agent.system_prompt}\n\n<datos_del_negocio>\n${knowledge.slice(0, MAX_KNOWLEDGE_CHARS)}\n</datos_del_negocio>`,
       cache_control: { type: "ephemeral" },
+    }, {
+      // Fuera del bloque en caché: cambia cada día.
+      type: "text",
+      text: todayBlock(),
     }];
 
     let text = "";

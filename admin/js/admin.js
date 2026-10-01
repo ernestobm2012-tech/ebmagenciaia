@@ -2,6 +2,7 @@
 import { db, session, refresh } from './app.js';
 import { MODELS, USD_TO_EUR } from './config.js';
 import { activityTabs } from './activity.js';
+import { knowledgeTab, connectionsTab } from './knowledge.js';
 import {
   h, q, table, tabs, badge, kpi, field, modal, toast, formData, errorText, slugify,
   fmtDate, fmtNum, fmtEur, fmtUsd, monthStart,
@@ -205,6 +206,8 @@ async function clientPage(id) {
     tabs([
       { id: 'data', label: 'Datos', render: async () => clientForm(client, refresh) },
       { id: 'agents', label: 'Agentes', render: () => agentsTab(id) },
+      { id: 'knowledge', label: 'Conocimiento', render: () => knowledgeTab(id) },
+      { id: 'connections', label: 'Conexiones (ERP/API)', render: () => connectionsTab(id) },
       { id: 'contacts', label: 'A quién avisar', render: () => contactsTab(id) },
       { id: 'activity', label: 'Actividad', render: async () => activityTabs({ clientId: id, isAdmin: true }) },
     ]));

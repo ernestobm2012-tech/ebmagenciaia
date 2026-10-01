@@ -23,6 +23,8 @@ const PRICES: Record<string, [number, number]> = {
 
 const MAX_MESSAGE_CHARS = 2000;
 const MAX_TOOL_ROUNDS = 3;
+const MAX_KNOWLEDGE_CHARS = 300_000;
+const MAX_API_RESULT_CHARS = 4000;
 
 const TOOLS: Anthropic.Tool[] = [
   {
@@ -53,6 +55,12 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ];
 
+type Connection = {
+  id: string; tool_name: string; description: string; url_template: string;
+  params: { name: string; description?: string }[];
+  auth_header: string | null; auth_prefix: string; secret_name: string | null;
+};
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
@@ -68,7 +76,52 @@ function costUsd(model: string, u: Anthropic.Usage) {
   );
 }
 
-async function runTool(name: string, input: Record<string, string>, clientId: string, conversationId: string) {
+// Cada conexión a un sistema del cliente se ofrece al agente como una herramienta.
+function connectionTool(c: Connection): Anthropic.Tool {
+  return {
+    name: c.tool_name,
+    description: c.description,
+    input_schema: {
+      type: "object",
+      properties: Object.fromEntries(c.params.map((p) => [p.name, { type: "string", description: p.description ?? "" }])),
+      required: c.params.map((p) => p.name),
+      additionalProperties: false,
+    },
+  };
+}
+
+// Consulta de solo lectura (GET) al sistema del cliente. La credencial sale de
+// un secreto ERP_*, nunca de la base de datos.
+async function callConnection(c: Connection, input: Record<string, string>, clientId: string, conversationId: string) {
+  let url = c.url_template;
+  const extra = new URLSearchParams();
+  for (const p of c.params) {
+    const value = String(input[p.name] ?? "");
+    if (url.includes(`{${p.name}}`)) url = url.replaceAll(`{${p.name}}`, encodeURIComponent(value));
+    else extra.set(p.name, value);
+  }
+  const target = new URL(url);
+  extra.forEach((v, k) => target.searchParams.set(k, v));
+  if (target.protocol !== "https:") throw new Error("La conexión debe usar https");
+
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (c.auth_header && c.secret_name?.startsWith("ERP_")) {
+    const secret = Deno.env.get(c.secret_name);
+    if (!secret) throw new Error(`Falta el secreto ${c.secret_name}`);
+    headers[c.auth_header] = `${c.auth_prefix}${secret}`;
+  }
+  const res = await fetch(target, { headers, signal: AbortSignal.timeout(10_000) });
+  const text = (await res.text()).slice(0, MAX_API_RESULT_CHARS);
+  await db.from("api_calls").insert({
+    client_id: clientId, connection_id: c.id, conversation_id: conversationId, params: input, status: res.status,
+  });
+  if (!res.ok) throw new Error(`El sistema respondió ${res.status}`);
+  return text || "Sin datos.";
+}
+
+async function runTool(
+  name: string, input: Record<string, string>, clientId: string, conversationId: string, connections: Connection[],
+) {
   if (name === "guardar_contacto") {
     const { error } = await db.from("leads").insert({
       client_id: clientId, conversation_id: conversationId,
@@ -85,6 +138,8 @@ async function runTool(name: string, input: Record<string, string>, clientId: st
     await db.from("conversations").update({ handed_off: true }).eq("id", conversationId);
     return "Aviso registrado. Una persona revisará la conversación.";
   }
+  const connection = connections.find((c) => c.tool_name === name);
+  if (connection) return await callConnection(connection, input, clientId, conversationId);
   return "Herramienta desconocida.";
 }
 
@@ -159,23 +214,36 @@ Deno.serve(async (req) => {
       .eq("client_id", client.id).eq("month", monthIso).maybeSingle();
     if (Number(usage?.cost_usd ?? 0) >= Number(client.ai_budget_usd)) throw new Error("Tope mensual de IA superado");
 
-    const { data: history } = await db.from("messages").select("role, content")
-      .eq("conversation_id", conversationId).in("role", ["user", "assistant"])
-      .order("created_at", { ascending: false }).limit(agent.max_history_messages);
+    const [{ data: history }, { data: sources }, { data: conns }] = await Promise.all([
+      db.from("messages").select("role, content")
+        .eq("conversation_id", conversationId).in("role", ["user", "assistant"])
+        .order("created_at", { ascending: false }).limit(agent.max_history_messages),
+      // Orden fijo para que el texto del sistema sea idéntico entre llamadas y la caché funcione.
+      db.from("knowledge_sources").select("kind, title, content")
+        .eq("client_id", client.id).eq("active", true).order("created_at"),
+      db.from("api_connections").select("*").eq("client_id", client.id).eq("active", true).order("created_at"),
+    ]);
+    const connections = (conns ?? []) as Connection[];
+    const tools = [...TOOLS, ...connections.map(connectionTool)];
+
     const messages: Anthropic.MessageParam[] = (history ?? []).reverse()
       .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
     while (messages.length && messages[0].role !== "user") messages.shift();
 
+    let knowledge = agent.knowledge;
+    for (const s of sources ?? []) {
+      knowledge += `\n\n<fuente tipo="${s.kind}" titulo="${s.title.replaceAll('"', "'")}">\n${s.content}\n</fuente>`;
+    }
     const system: Anthropic.TextBlockParam[] = [{
       type: "text",
-      text: `${agent.system_prompt}\n\n<datos_del_negocio>\n${agent.knowledge}\n</datos_del_negocio>`,
+      text: `${agent.system_prompt}\n\n<datos_del_negocio>\n${knowledge.slice(0, MAX_KNOWLEDGE_CHARS)}\n</datos_del_negocio>`,
       cache_control: { type: "ephemeral" },
     }];
 
     let text = "";
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       const response = await anthropic.messages.create({
-        model: agent.model, max_tokens: agent.max_output_tokens, system, tools: TOOLS, messages,
+        model: agent.model, max_tokens: agent.max_output_tokens, system, tools, messages,
       });
       await db.from("usage_events").insert({
         client_id: client.id, conversation_id: conversationId, model: agent.model,
@@ -195,7 +263,7 @@ Deno.serve(async (req) => {
       const results: Anthropic.ToolResultBlockParam[] = [];
       for (const use of toolUses) {
         try {
-          const content = await runTool(use.name, use.input as Record<string, string>, client.id, conversationId);
+          const content = await runTool(use.name, use.input as Record<string, string>, client.id, conversationId, connections);
           results.push({ type: "tool_result", tool_use_id: use.id, content });
         } catch (err) {
           results.push({ type: "tool_result", tool_use_id: use.id, content: `Error: ${err}`, is_error: true });

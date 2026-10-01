@@ -3,6 +3,7 @@ import { db, session, refresh } from './app.js';
 import { MODELS, USD_TO_EUR } from './config.js';
 import { activityTabs } from './activity.js';
 import { knowledgeTab, connectionsTab } from './knowledge.js';
+import { expensesPage, expensesTab, fetchExpenses, monthlyEur } from './expenses.js';
 import {
   h, q, table, tabs, badge, kpi, field, modal, toast, formData, errorText, slugify,
   fmtDate, fmtNum, fmtEur, fmtUsd, monthStart,
@@ -14,6 +15,7 @@ export const adminNav = [
   { href: '#/clientes', label: 'Clientes' },
   { href: '#/actividad', label: 'Actividad' },
   { href: '#/costes', label: 'Costes y margen' },
+  { href: '#/gastos', label: 'Gastos' },
   { href: '#/usuarios', label: 'Usuarios' },
 ];
 
@@ -24,6 +26,7 @@ export const adminRoutes = [
   [/^\/clientes\/([0-9a-f-]{36})$/, clientPage],
   [/^\/actividad$/, activityPage],
   [/^\/costes$/, costsPage],
+  [/^\/gastos$/, expensesPage],
   [/^\/usuarios$/, usersPage],
 ];
 
@@ -209,6 +212,7 @@ async function clientPage(id) {
       { id: 'knowledge', label: 'Conocimiento', render: () => knowledgeTab(id) },
       { id: 'connections', label: 'Conexiones (ERP/API)', render: () => connectionsTab(id) },
       { id: 'contacts', label: 'A quién avisar', render: () => contactsTab(id) },
+      { id: 'expenses', label: 'Gastos', render: () => expensesTab(id) },
       { id: 'activity', label: 'Actividad', render: async () => activityTabs({ clientId: id, isAdmin: true }) },
     ]));
 }
@@ -395,15 +399,19 @@ async function costsPage() {
   async function load(month) {
     body.replaceChildren(h('p', { class: 'empty' }, 'Cargando…'));
     try {
-      const rows = await clientsWithMonth(month);
+      const [rows, expenses] = await Promise.all([clientsWithMonth(month), fetchExpenses()]);
+      const fixedOf = (id) => expenses.filter((e) => e.client_id === id).reduce((a, e) => a + monthlyEur(e), 0);
+      rows.forEach((r) => { r.fixed_eur = fixedOf(r.id); });
+      const general = fixedOf(null);
       const eur = (r) => r.cost_usd * USD_TO_EUR;
-      const margin = (r) => Number(r.monthly_fee_eur) - eur(r);
+      const margin = (r) => Number(r.monthly_fee_eur) - eur(r) - r.fixed_eur;
       const total = (fn) => rows.reduce((a, r) => a + fn(r), 0);
       body.replaceChildren(
         h('div', { class: 'kpis' },
           kpi('Cobrado', fmtEur(total((r) => (r.status === 'active' ? Number(r.monthly_fee_eur) : 0))), 'cuotas de clientes activos'),
           kpi('Coste de IA', fmtUsd(total((r) => r.cost_usd)), `≈ ${fmtEur(total(eur))}`),
-          kpi('Llamadas a la IA', fmtNum(total((r) => r.calls)))),
+          kpi('Gastos fijos', fmtEur(total((r) => r.fixed_eur) + general), `${fmtEur(general)} generales de la agencia`),
+          kpi('Resultado', fmtEur(total((r) => (r.status === 'active' ? Number(r.monthly_fee_eur) : 0)) - total(eur) - total((r) => r.fixed_eur) - general), 'cobrado − IA − gastos fijos')),
         table([
           { label: 'Cliente', cell: (r) => r.name },
           { label: 'Estado', cell: (r) => badge(r.status) },
@@ -412,10 +420,11 @@ async function costsPage() {
           { label: 'Tokens salida', num: true, cell: (r) => fmtNum(r.output_tokens) },
           { label: 'Coste IA', num: true, cell: (r) => fmtUsd(r.cost_usd) },
           { label: 'Tope usado', num: true, cell: budgetCell },
+          { label: 'Gastos fijos', num: true, cell: (r) => fmtEur(r.fixed_eur) },
           { label: 'Cuota', num: true, cell: (r) => fmtEur(r.monthly_fee_eur) },
           { label: 'Margen', num: true, cell: (r) => h('span', { class: margin(r) < 0 ? 'warn' : null }, fmtEur(margin(r))) },
         ], rows, { empty: 'Aún no hay clientes.' }),
-        h('p', { class: 'muted small' }, `Margen = cuota − coste de IA, con un cambio orientativo de 1 $ = ${USD_TO_EUR} €. No incluye Supabase, n8n ni tu tiempo.`));
+        h('p', { class: 'muted small' }, `Margen = cuota − coste de IA − gastos fijos del cliente, sin IVA, con un cambio orientativo de 1 $ = ${USD_TO_EUR} €. Los gastos fijos son los vigentes hoy (se apuntan en Gastos).`));
     } catch (err) {
       body.replaceChildren(h('p', { class: 'error' }, errorText(err)));
     }

@@ -124,7 +124,7 @@
       if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
       state.conversationId = data.conversation_id || state.conversationId;
-      reply = data.reply;
+      reply = data.reply.replace(/\*\*/g, '');
     } catch {
       reply = 'Ahora mismo no puedo responder. Prueba en un momento o usa el formulario de contacto.';
     }

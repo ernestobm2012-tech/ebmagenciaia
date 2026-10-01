@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>EBM · Demo de agente</title>
+  <link rel="icon" href="assets/logo-ebm.png">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap">
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px;
+      background: #F3F6FA; color: #242F3D; font: 400 17px/1.6 "Lato", -apple-system, "Segoe UI", Arial, sans-serif; }
+    main { max-width: 520px; text-align: center; }
+    img { height: 72px; width: auto; }
+    h1 { font-size: 26px; font-weight: 900; margin: 20px 0 8px; text-wrap: balance; }
+    p { margin: 0 0 12px; color: #5E6C7A; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="assets/logo-ebm.png" alt="EBM">
+    <h1 id="title">Demo de agente</h1>
+    <p id="text">Falta indicar el agente: añade <code>?cliente=identificador</code> a la dirección.</p>
+  </main>
+  <script>
+    // Página para enseñar el agente de cualquier cliente: demo.html?cliente=identificador&nombre=Nombre
+    const params = new URLSearchParams(location.search);
+    const client = (params.get('cliente') || '').replace(/[^a-z0-9-]/g, '');
+    const name = (params.get('nombre') || '').slice(0, 60);
+    if (client) {
+      document.getElementById('title').textContent = name ? `Asistente de ${name}` : 'Demo de agente';
+      document.getElementById('text').textContent = 'Pulsa el botón azul de abajo a la derecha y pregúntale lo que quieras.';
+      const script = document.createElement('script');
+      script.src = 'js/chat.js';
+      script.dataset.client = client;
+      script.dataset.title = name || 'Asistente';
+      document.body.append(script);
+    }
+  </script>
+</body>
+</html>

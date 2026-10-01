@@ -29,7 +29,8 @@
   const style = document.createElement('style');
   style.textContent = `
     .ebm-chat-btn, .ebm-chat { font-family: "Lato", -apple-system, "Segoe UI", Arial, sans-serif; box-sizing: border-box; }
-    .ebm-chat *, .ebm-chat *::before { box-sizing: border-box; }
+    .ebm-chat, .ebm-chat * { box-sizing: border-box; margin: 0; letter-spacing: normal; text-transform: none; text-align: left; }
+    .ebm-chat { padding: 0; line-height: 1.45; }
     .ebm-chat-btn { position: fixed; ${SIDE}: 20px; bottom: 20px; z-index: 9998; width: 60px; height: 60px; border-radius: 50%;
       border: 0; background: ${COLOR}; color: #fff; cursor: pointer; box-shadow: 0 12px 30px -10px rgba(18,41,74,.6);
       display: grid; place-items: center; }
@@ -38,20 +39,20 @@
       height: 520px; max-height: calc(100dvh - 112px); display: none; flex-direction: column; overflow: hidden;
       background: #fff; color: #242F3D; border: 1px solid #E1E7EE; border-radius: 16px; box-shadow: 0 24px 60px -20px rgba(18,41,74,.5); }
     .ebm-chat.open { display: flex; }
-    .ebm-chat header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; background: #12294A; color: #fff; }
-    .ebm-chat header strong { font-size: 15px; font-weight: 900; }
-    .ebm-chat header small { display: block; font-size: 12px; color: #93A9BE; font-weight: 400; }
-    .ebm-chat header button { border: 0; background: none; color: #fff; font-size: 24px; line-height: 1; cursor: pointer; padding: 2px 8px; }
+    .ebm-chat-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; background: #12294A; color: #fff; }
+    .ebm-chat-head strong { font-size: 15px; font-weight: 900; }
+    .ebm-chat-head small { display: block; font-size: 12px; color: #93A9BE; font-weight: 400; }
+    .ebm-chat-head button { border: 0; background: none; color: #fff; font-size: 24px; line-height: 1; cursor: pointer; padding: 2px 8px; }
     .ebm-chat-log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; background: #F3F6FA; }
     .ebm-chat-msg { max-width: 86%; padding: 10px 14px; border-radius: 14px; font-size: 15px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
     .ebm-chat-msg.assistant { background: #fff; border: 1px solid #E1E7EE; align-self: flex-start; }
     .ebm-chat-msg.user { background: ${COLOR}; color: #fff; align-self: flex-end; }
     .ebm-chat-msg.typing { color: #5E6C7A; font-style: italic; }
-    .ebm-chat form { display: flex; gap: 8px; padding: 12px; border-top: 1px solid #E1E7EE; background: #fff; }
+    .ebm-chat form { display: flex; gap: 8px; padding: 12px; width: auto; max-width: none; border-radius: 0; box-shadow: none; border-top: 1px solid #E1E7EE; background: #fff; }
     .ebm-chat textarea { flex: 1; resize: none; font: inherit; font-size: 16px; color: inherit; padding: 10px 12px; border: 1px solid #E1E7EE; border-radius: 10px; height: 44px; max-height: 120px; }
     .ebm-chat form button { border: 0; border-radius: 10px; background: ${COLOR}; color: #fff; font: inherit; font-weight: 700; padding: 0 16px; cursor: pointer; }
     .ebm-chat form button:disabled { opacity: .5; cursor: default; }
-    .ebm-chat-note { margin: 0; padding: 0 12px 10px; font-size: 11.5px; color: #5E6C7A; background: #fff; }
+    .ebm-chat-note { padding: 0 12px 10px; font-size: 11.5px; color: #5E6C7A; background: #fff; }
     @media (max-width: 480px) { .ebm-chat { ${SIDE}: 12px; bottom: 88px; height: calc(100dvh - 104px); } }
   `;
   document.head.append(style);
@@ -70,10 +71,10 @@
   const form = el('form', {}, input, send);
   const close = el('button', { type: 'button', textContent: '×' });
   close.setAttribute('aria-label', 'Cerrar chat');
-  const panel = el('section', { className: 'ebm-chat' },
-    el('header', {}, el('div', {}, el('strong', { textContent: TITLE }), el('small', { textContent: 'Asistente de IA' })), close),
+  const panel = el('div', { className: 'ebm-chat' },
+    el('div', { className: 'ebm-chat-head' }, el('div', {}, el('strong', { textContent: TITLE }), el('small', { textContent: 'Asistente de IA' })), close),
     log, form,
-    el('p', { className: 'ebm-chat-note', textContent: 'Guardamos la conversación para poder atenderte.' }));
+    el('div', { className: 'ebm-chat-note', textContent: 'Guardamos la conversación para poder atenderte.' }));
   panel.setAttribute('aria-label', TITLE);
 
   const button = el('button', { className: 'ebm-chat-btn', type: 'button' });

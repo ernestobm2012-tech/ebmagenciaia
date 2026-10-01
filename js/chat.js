@@ -3,7 +3,8 @@
 //   <script src=".../js/chat.js" data-client="identificador" data-welcome="..." defer></script>
 // Opcionales: data-title, data-color (#hex), data-avatar (dirección https de una
 // foto, se muestra redonda) y data-position="left" si la web ya tiene otro botón
-// flotante a la derecha.
+// flotante a la derecha, o data-bottom="90" para subirlo (en píxeles) por encima
+// de él. Cualquier enlace con el atributo data-open-chat abre el chat.
 (() => {
   const script = document.currentScript;
   const ENDPOINT = 'https://rhjbpkaesobsbnkvioyh.supabase.co/functions/v1/chat';
@@ -14,6 +15,7 @@
   // La cabecera usa el color de la marca si se indica; si no, el azul noche de EBM.
   const HEAD = COLOR === '#1483DC' ? '#12294A' : COLOR;
   const SIDE = script.dataset.position === 'left' ? 'left' : 'right';
+  const BOTTOM = Math.min(Math.max(parseInt(script.dataset.bottom, 10) || 20, 0), 400);
   const AVATAR = /^https:\/\//.test(script.dataset.avatar || '') ? script.dataset.avatar : null;
   const KEY = `ebm-chat-${CLIENT}`;
 
@@ -35,12 +37,12 @@
     .ebm-chat-btn, .ebm-chat { font-family: "Lato", -apple-system, "Segoe UI", Arial, sans-serif; box-sizing: border-box; }
     .ebm-chat, .ebm-chat * { box-sizing: border-box; margin: 0; letter-spacing: normal; text-transform: none; text-align: left; }
     .ebm-chat { padding: 0; line-height: 1.45; }
-    .ebm-chat-btn { padding: 0; overflow: hidden; position: fixed; ${SIDE}: 20px; bottom: 20px; z-index: 9998; width: 60px; height: 60px; border-radius: 50%;
+    .ebm-chat-btn { padding: 0; overflow: hidden; position: fixed; ${SIDE}: 20px; bottom: ${BOTTOM}px; z-index: 9998; width: 60px; height: 60px; border-radius: 50%;
       border: 0; background: ${COLOR}; color: #fff; cursor: pointer; box-shadow: 0 12px 30px -10px rgba(18,41,74,.6);
       display: grid; place-items: center; }
     .ebm-chat-btn:focus-visible, .ebm-chat button:focus-visible, .ebm-chat textarea:focus-visible { outline: 2px solid #12294A; outline-offset: 2px; }
-    .ebm-chat { position: fixed; ${SIDE}: 20px; bottom: 92px; z-index: 9999; width: 370px; max-width: calc(100vw - 24px);
-      height: 520px; max-height: calc(100dvh - 112px); display: none; flex-direction: column; overflow: hidden;
+    .ebm-chat { position: fixed; ${SIDE}: 20px; bottom: ${BOTTOM + 72}px; z-index: 9999; width: 370px; max-width: calc(100vw - 24px);
+      height: 520px; max-height: calc(100dvh - ${BOTTOM + 92}px); display: none; flex-direction: column; overflow: hidden;
       background: #fff; color: #242F3D; border: 1px solid #E1E7EE; border-radius: 16px; box-shadow: 0 24px 60px -20px rgba(18,41,74,.5); }
     .ebm-chat.open { display: flex; }
     .ebm-chat-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; background: ${HEAD}; color: #fff; }
@@ -60,7 +62,7 @@
     .ebm-chat form button { border: 0; border-radius: 10px; background: ${COLOR}; color: #fff; font: inherit; font-weight: 700; padding: 0 16px; cursor: pointer; }
     .ebm-chat form button:disabled { opacity: .5; cursor: default; }
     .ebm-chat-note { padding: 0 12px 10px; font-size: 11.5px; color: #5E6C7A; background: #fff; }
-    @media (max-width: 480px) { .ebm-chat { ${SIDE}: 12px; bottom: 88px; height: calc(100dvh - 104px); } }
+    @media (max-width: 480px) { .ebm-chat { ${SIDE}: 12px; bottom: ${BOTTOM + 68}px; height: calc(100dvh - ${BOTTOM + 84}px); } }
   `;
   document.head.append(style);
 
@@ -114,6 +116,8 @@
 
   button.addEventListener('click', () => toggle(!panel.classList.contains('open')));
   close.addEventListener('click', () => toggle(false));
+  document.querySelectorAll('[data-open-chat]').forEach((link) =>
+    link.addEventListener('click', (e) => { e.preventDefault(); toggle(true); }));
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();

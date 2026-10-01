@@ -26,7 +26,7 @@ const MAX_TOOL_ROUNDS = 3;
 const MAX_KNOWLEDGE_CHARS = 300_000;
 const MAX_API_RESULT_CHARS = 4000;
 
-const TOOLS: Anthropic.Tool[] = [
+const BASE_TOOLS: Anthropic.Tool[] = [
   {
     name: "guardar_contacto",
     description:
@@ -54,6 +54,30 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
 ];
+
+type Contact = { id: string; name: string; department: string | null; notify_when: string | null };
+
+// Si el cliente tiene personas a las que avisar, el agente elige a cuál debe
+// llegar cada aviso. Solo puede elegir de esa lista: nunca inventa correos.
+function baseTools(contacts: Contact[]): Anthropic.Tool[] {
+  const options = contacts.filter((c) => c.department);
+  if (!options.length) return BASE_TOOLS;
+  const guide = options.map((c) => `${c.department}: ${c.notify_when || c.name}`).join(" | ");
+  return BASE_TOOLS.map((tool) => ({
+    ...tool,
+    input_schema: {
+      ...tool.input_schema,
+      properties: {
+        ...(tool.input_schema.properties as Record<string, unknown>),
+        departamento: {
+          type: "string",
+          enum: [...new Set(options.map((c) => c.department!))],
+          description: `Departamento al que debe llegar el aviso. Elige el que mejor encaje; si ninguno encaja, omítelo. ${guide}`,
+        },
+      },
+    },
+  }));
+}
 
 type Connection = {
   id: string; tool_name: string; description: string; url_template: string;
@@ -132,19 +156,24 @@ async function callConnection(c: Connection, input: Record<string, string>, clie
 }
 
 async function runTool(
-  name: string, input: Record<string, string>, clientId: string, conversationId: string, connections: Connection[],
+  name: string, input: Record<string, string>, clientId: string, conversationId: string,
+  connections: Connection[], contacts: Contact[],
 ) {
+  const wanted = (input.departamento ?? "").toLowerCase();
+  const notify_contact_id = wanted
+    ? contacts.find((c) => (c.department ?? "").toLowerCase() === wanted)?.id ?? null
+    : null;
   if (name === "guardar_contacto") {
     const { error } = await db.from("leads").insert({
       client_id: clientId, conversation_id: conversationId,
-      name: input.nombre, contact: input.contacto, reason: input.motivo,
+      name: input.nombre, contact: input.contacto, reason: input.motivo, notify_contact_id,
     });
     if (error) throw error;
     return "Contacto guardado. El equipo le escribirá.";
   }
   if (name === "pasar_a_humano") {
     const { error } = await db.from("handoffs").insert({
-      client_id: clientId, conversation_id: conversationId, reason: input.motivo,
+      client_id: clientId, conversation_id: conversationId, reason: input.motivo, notify_contact_id,
     });
     if (error) throw error;
     await db.from("conversations").update({ handed_off: true }).eq("id", conversationId);
@@ -226,7 +255,7 @@ Deno.serve(async (req) => {
       .eq("client_id", client.id).eq("month", monthIso).maybeSingle();
     if (Number(usage?.cost_usd ?? 0) >= Number(client.ai_budget_usd)) throw new Error("Tope mensual de IA superado");
 
-    const [{ data: history }, { data: sources }, { data: conns }] = await Promise.all([
+    const [{ data: history }, { data: sources }, { data: conns }, { data: people }] = await Promise.all([
       db.from("messages").select("role, content")
         .eq("conversation_id", conversationId).in("role", ["user", "assistant"])
         .order("created_at", { ascending: false }).limit(agent.max_history_messages),
@@ -234,9 +263,12 @@ Deno.serve(async (req) => {
       db.from("knowledge_sources").select("kind, title, content")
         .eq("client_id", client.id).eq("active", true).order("created_at"),
       db.from("api_connections").select("*").eq("client_id", client.id).eq("active", true).order("created_at"),
+      db.from("notify_contacts").select("id, name, department, notify_when")
+        .eq("client_id", client.id).eq("active", true).order("created_at"),
     ]);
     const connections = (conns ?? []) as Connection[];
-    const tools = [...TOOLS, ...connections.map(connectionTool)];
+    const contacts = (people ?? []) as Contact[];
+    const tools = [...baseTools(contacts), ...connections.map(connectionTool)];
 
     const messages: Anthropic.MessageParam[] = (history ?? []).reverse()
       .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
@@ -279,7 +311,7 @@ Deno.serve(async (req) => {
       const results: Anthropic.ToolResultBlockParam[] = [];
       for (const use of toolUses) {
         try {
-          const content = await runTool(use.name, use.input as Record<string, string>, client.id, conversationId, connections);
+          const content = await runTool(use.name, use.input as Record<string, string>, client.id, conversationId, connections, contacts);
           results.push({ type: "tool_result", tool_use_id: use.id, content });
         } catch (err) {
           results.push({ type: "tool_result", tool_use_id: use.id, content: `Error: ${err}`, is_error: true });

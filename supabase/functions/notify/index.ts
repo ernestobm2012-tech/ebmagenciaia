@@ -47,6 +47,7 @@ Deno.serve(async (req) => {
   let to: string[] = [];
   let subject = "";
   let html = "";
+  let demoNote = "";
 
   if (kind === "contact") {
     const { data: admins } = await db.from("profiles").select("email").eq("role", "admin");
@@ -57,28 +58,38 @@ Deno.serve(async (req) => {
     ], "Aviso automático de la web de EBM.");
   } else {
     const [{ data: client }, { data: contacts }, { data: conv }] = await Promise.all([
-      db.from("clients").select("name, contact_email").eq("id", row.client_id).maybeSingle(),
-      db.from("notify_contacts").select("email").eq("client_id", row.client_id).eq("active", true),
+      db.from("clients").select("name, status, contact_email").eq("id", row.client_id).maybeSingle(),
+      db.from("notify_contacts").select("id, email").eq("client_id", row.client_id).eq("active", true),
       row.conversation_id
         ? db.from("conversations").select("channel, summary").eq("id", row.conversation_id).maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
-    to = (contacts ?? []).map((c) => c.email);
+    // Si el agente eligió a una persona, solo a ella; si no, a todas las activas.
+    const chosen = (contacts ?? []).filter((c) => c.id === row.notify_contact_id);
+    to = (chosen.length ? chosen : contacts ?? []).map((c) => c.email);
     if (!to.length && client?.contact_email) to = [client.contact_email];
+    // Cliente en demo: el aviso va solo a los administradores de EBM, para no
+    // escribir a su equipo durante las pruebas.
+    if (client?.status === "demo") {
+      const { data: admins } = await db.from("profiles").select("email").eq("role", "admin");
+      demoNote = to.join(", ") || "nadie (sin destinatarios)";
+      to = (admins ?? []).map((a) => a.email).filter(Boolean);
+    }
     const channel = CHANNELS[conv?.channel ?? ""] ?? "el agente";
     const footer = `Aviso automático del asistente de ${client?.name ?? "tu negocio"}.`;
     if (kind === "lead") {
       subject = `Nuevo contacto por ${channel}: ${row.name ?? "sin nombre"}`;
       html = layout(`Nuevo contacto en ${client?.name ?? ""}`, [
         ["Nombre", row.name], ["Contacto", row.contact], ["Qué necesita", row.reason], ["Canal", channel],
-        ["Resumen", conv?.summary],
+        ["Resumen", conv?.summary], ["Demo: en real iría a", demoNote],
       ], footer);
     } else {
       subject = `Una conversación necesita a una persona (${channel})`;
       html = layout(`Atención: conversación para revisar en ${client?.name ?? ""}`, [
-        ["Motivo", row.reason], ["Canal", channel],
+        ["Motivo", row.reason], ["Canal", channel], ["Demo: en real iría a", demoNote],
       ], footer);
     }
+    if (demoNote) subject = `[DEMO] ${subject}`;
   }
 
   let status = "failed";

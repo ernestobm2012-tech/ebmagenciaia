@@ -3,7 +3,7 @@
 import { db } from './app.js';
 import { h, q, table, tabs, badge, modal, fmtDateTime, errorText } from './ui.js';
 
-const CHANNELS = { web: 'Web', whatsapp: 'WhatsApp', instagram: 'Instagram', email: 'Correo' };
+const CHANNELS = { web: 'Web', whatsapp: 'WhatsApp', instagram: 'Instagram', email: 'Correo', phone: 'Teléfono' };
 const LIMIT = 200;
 
 // clientId: filtra por cliente. showClient: añade la columna "Cliente" (solo admin).
@@ -41,7 +41,7 @@ export function activityTabs({ clientId = null, showClient = false, isAdmin = fa
         { label: 'Inicio', cell: (r) => fmtDateTime(r.started_at) },
         ...clientCol(showClient),
         { label: 'Canal', cell: (r) => CHANNELS[r.channel] || r.channel },
-        { label: 'Tema', cell: (r) => r.topic || '—' },
+        { label: 'Resumen', cell: (r) => h('span', { class: 'clip', title: r.summary || r.topic || '' }, r.summary || r.topic || '—') },
         { label: 'Mensajes', num: true, cell: (r) => r.message_count },
         { label: 'Humano', cell: (r) => (r.handed_off ? 'Sí' : '—') },
         { label: 'Estado', cell: (r) => badge(r.status) },

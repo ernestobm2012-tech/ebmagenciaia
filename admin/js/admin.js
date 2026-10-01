@@ -227,7 +227,9 @@ function agentForm(clientId, agent, onSaved) {
         AGENT_ROLES.map(([v, l]) => h('option', { value: v, selected: (a.role || 'general') === v }, l)))),
       field('Modelo', h('select', { name: 'model' },
         MODELS.map((m) => h('option', { value: m.id, selected: (a.model || MODELS[0].id) === m.id }, m.label)))),
-      field('Activo', h('input', { name: 'active', type: 'checkbox', checked: a.active ?? true }))),
+      field('Activo', h('input', { name: 'active', type: 'checkbox', checked: a.active ?? true })),
+      field('Agente de voz (ElevenLabs)', h('input', { name: 'voice_agent_id', class: 'mono', placeholder: 'agent_…', value: a.voice_agent_id || '' }),
+        'Id del agente telefónico. Sus llamadas se importan aquí cada 5 minutos. El prompt de voz se edita en ElevenLabs.')),
     field('Instrucciones (prompt)', h('textarea', { name: 'system_prompt', rows: 12, class: 'mono' }, a.system_prompt || ''),
       'Cómo debe hablar y qué puede y no puede hacer.'),
     field('Datos del negocio', h('textarea', { name: 'knowledge', rows: 10, class: 'mono' }, a.knowledge || ''),
@@ -368,7 +370,17 @@ async function contactsTab(clientId) {
 
 // ---------------------------------------------------------------- actividad
 async function activityPage() {
+  const sync = async () => {
+    const { data, error } = await db.functions.invoke('sync-voice', { body: {} });
+    if (error) {
+      const detail = await error.context?.json?.().catch(() => null);
+      return toast(detail?.error || error.message, 'error');
+    }
+    toast(data.skipped ? 'Se acaba de sincronizar. Prueba en medio minuto.' : `Llamadas nuevas: ${data.imported}. Contactos: ${data.leads}.`);
+    if (data.imported) refresh();
+  };
   return page('Actividad', h('p', { class: 'muted' }, 'Lo último de todos los clientes.'),
+    h('div', { class: 'toolbar' }, h('button', { class: 'btn', type: 'button', onclick: sync }, 'Traer llamadas ahora')),
     activityTabs({ showClient: true, isAdmin: true }));
 }
 

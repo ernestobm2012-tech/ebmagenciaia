@@ -40,6 +40,7 @@ p { margin: 0 0 12px; }
 .warn { color: var(--red); font-weight: 700; }
 .empty { color: var(--ink-soft); padding: 28px 0; }
 .spacer { flex: 1; }
+.clip { display: inline-block; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 
 /* ---------- login ---------- */
 .auth {

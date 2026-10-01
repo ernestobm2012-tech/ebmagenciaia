@@ -14,7 +14,10 @@ function list(tableName, { clientId, showClient, orderBy = 'created_at' }) {
   return q(query);
 }
 
-const clientCol = (showClient) => (showClient ? [{ label: 'Cliente', cell: (r) => r.clients?.name || '—' }] : []);
+const clientCol = (showClient, names) => (
+  showClient ? [{ label: 'Cliente', cell: (r) => r.clients?.name || '—' }]
+  : names ? [{ label: 'Cliente', cell: (r) => names[r.client_id] || '—' }]
+  : []);
 
 async function openConversation(conv) {
   const body = h('div', { class: 'chat' }, h('p', { class: 'empty' }, 'Cargando…'));
@@ -32,14 +35,15 @@ async function openConversation(conv) {
   }
 }
 
-export function activityTabs({ clientId = null, showClient = false, isAdmin = false } = {}) {
+// clientNames: { id: nombre } para quien ve varios clientes sin ser admin (un partner).
+export function activityTabs({ clientId = null, showClient = false, isAdmin = false, clientNames = null } = {}) {
   const opts = { clientId, showClient };
   const items = [
     {
       id: 'conversations', label: 'Conversaciones',
       render: async () => table([
         { label: 'Inicio', cell: (r) => fmtDateTime(r.started_at) },
-        ...clientCol(showClient),
+        ...clientCol(showClient, clientNames),
         { label: 'Canal', cell: (r) => CHANNELS[r.channel] || r.channel },
         { label: 'Resumen', cell: (r) => h('span', { class: 'clip', title: r.summary || r.topic || '' }, r.summary || r.topic || '—') },
         { label: 'Mensajes', num: true, cell: (r) => r.message_count },
@@ -52,7 +56,7 @@ export function activityTabs({ clientId = null, showClient = false, isAdmin = fa
       id: 'leads', label: 'Leads',
       render: async () => table([
         { label: 'Fecha', cell: (r) => fmtDateTime(r.created_at) },
-        ...clientCol(showClient),
+        ...clientCol(showClient, clientNames),
         { label: 'Nombre', cell: (r) => r.name || '—' },
         { label: 'Contacto', cell: (r) => r.contact || '—' },
         { label: 'Motivo', cell: (r) => r.reason || '—' },
@@ -63,7 +67,7 @@ export function activityTabs({ clientId = null, showClient = false, isAdmin = fa
       id: 'handoffs', label: 'Pasos a humano',
       render: async () => table([
         { label: 'Fecha', cell: (r) => fmtDateTime(r.created_at) },
-        ...clientCol(showClient),
+        ...clientCol(showClient, clientNames),
         { label: 'Motivo', cell: (r) => r.reason || '—' },
       ], await list('handoffs', opts), { empty: 'El agente no ha tenido que pasar ninguna conversación.' }),
     },
@@ -71,7 +75,7 @@ export function activityTabs({ clientId = null, showClient = false, isAdmin = fa
       id: 'appointments', label: 'Citas',
       render: async () => table([
         { label: 'Cita', cell: (r) => fmtDateTime(r.scheduled_at) },
-        ...clientCol(showClient),
+        ...clientCol(showClient, clientNames),
         { label: 'Nombre', cell: (r) => r.name || '—' },
         { label: 'Contacto', cell: (r) => r.contact || '—' },
         { label: 'Notas', cell: (r) => r.notes || '—' },
@@ -81,7 +85,7 @@ export function activityTabs({ clientId = null, showClient = false, isAdmin = fa
       id: 'notifications', label: 'Avisos enviados',
       render: async () => table([
         { label: 'Fecha', cell: (r) => fmtDateTime(r.created_at) },
-        ...clientCol(showClient),
+        ...clientCol(showClient, clientNames),
         { label: 'Asunto', cell: (r) => r.subject || '—' },
         { label: 'Estado', cell: (r) => badge(r.status) },
       ], await list('notifications', opts), { empty: 'Aún no se ha enviado ningún aviso.' }),
@@ -92,7 +96,7 @@ export function activityTabs({ clientId = null, showClient = false, isAdmin = fa
       id: 'errors', label: 'Errores',
       render: async () => table([
         { label: 'Fecha', cell: (r) => fmtDateTime(r.created_at) },
-        ...clientCol(showClient),
+        ...clientCol(showClient, clientNames),
         { label: 'Origen', cell: (r) => r.source || '—' },
         { label: 'Mensaje', cell: (r) => r.message || '—' },
       ], await list('error_log', opts), { empty: 'Sin errores. Bien.' }),

@@ -123,7 +123,8 @@ async function contactsPage() {
 }
 
 // ---------------------------------------------------------------- clientes
-function clientForm(client, onSaved) {
+// partners: clientes que pueden hacer de partner (todos menos el propio).
+function clientForm(client, onSaved, partners = []) {
   const c = client || {};
   const slug = h('input', { name: 'slug', required: true, pattern: '[a-z0-9-]+', value: c.slug || '' });
   const name = h('input', {
@@ -145,7 +146,17 @@ function clientForm(client, onSaved) {
         'Si se supera, el agente de este cliente se frena.'),
       field('Web', h('input', { name: 'website_url', type: 'url', placeholder: 'https://', value: c.website_url || '' })),
       field('Persona de contacto', h('input', { name: 'contact_name', value: c.contact_name || '' })),
-      field('Correo de contacto', h('input', { name: 'contact_email', type: 'email', value: c.contact_email || '' }))),
+      field('Correo de contacto', h('input', { name: 'contact_email', type: 'email', value: c.contact_email || '' })),
+      field('Se factura a través de', h('select', { name: 'parent_client_id' },
+        h('option', { value: '' }, '— Directamente a EBM —'),
+        partners.filter((p) => p.id !== c.id).map((p) => h('option', { value: p.id, selected: c.parent_client_id === p.id }, p.name))),
+        'Si eliges un partner, este cliente ve la marca del partner y el partner lo ve en su panel.')),
+    h('h2', {}, 'Marca propia (solo partners)'),
+    h('p', { class: 'muted' }, 'Rellénalo si este cliente revende agentes a sus propios clientes. Ellos verán este nombre, logo y color en el panel y en los avisos, en lugar de los de EBM.'),
+    h('div', { class: 'grid2' },
+      field('Nombre de marca', h('input', { name: 'brand_name', value: c.brand_name || '' })),
+      field('Color (#RRGGBB)', h('input', { name: 'brand_color', pattern: '#[0-9a-fA-F]{6}', placeholder: '#00A3E0', value: c.brand_color || '' })),
+      field('Logo (dirección https)', h('input', { name: 'brand_logo_url', type: 'url', pattern: 'https://.+', value: c.brand_logo_url || '' }))),
     field('Notas', h('textarea', { name: 'notes', rows: 3 }, c.notes || '')),
     h('div', { class: 'actions' }, h('button', { class: 'btn primary', type: 'submit' }, client ? 'Guardar' : 'Crear cliente')),
     note);
@@ -168,17 +179,19 @@ function clientForm(client, onSaved) {
 
 async function clientsPage() {
   const clients = await q(db.from('clients').select('*').order('name'));
+  const nameOf = Object.fromEntries(clients.map((c) => [c.id, c.name]));
   const add = () => {
     const close = modal('Nuevo cliente', clientForm(null, (saved) => {
       close();
       location.hash = `#/clientes/${saved.id}`;
-    }), { wide: true });
+    }, clients), { wide: true });
   };
   return page('Clientes',
     h('div', { class: 'toolbar' }, h('button', { class: 'btn primary', type: 'button', onclick: add }, 'Nuevo cliente')),
     table([
       { label: 'Cliente', cell: (r) => r.name },
       { label: 'Estado', cell: (r) => badge(r.status) },
+      { label: 'A través de', cell: (r) => nameOf[r.parent_client_id] || '—' },
       { label: 'Plan', cell: (r) => r.plan || '—' },
       { label: 'Cuota', num: true, cell: (r) => fmtEur(r.monthly_fee_eur) },
       { label: 'Alta', cell: (r) => fmtDate(r.created_at) },
@@ -186,7 +199,10 @@ async function clientsPage() {
 }
 
 async function clientPage(id) {
-  const client = await q(db.from('clients').select('*').eq('id', id).maybeSingle());
+  const [client, partners] = await Promise.all([
+    q(db.from('clients').select('*').eq('id', id).maybeSingle()),
+    q(db.from('clients').select('id, name').order('name')),
+  ]);
   if (!client) return page('Cliente no encontrado', h('a', { href: '#/clientes' }, 'Volver a clientes'));
 
   const setStatus = async (status) => {
@@ -207,7 +223,7 @@ async function clientPage(id) {
         ? h('button', { class: 'btn', type: 'button', onclick: () => setStatus('active') }, 'Reactivar')
         : h('button', { class: 'btn', type: 'button', onclick: () => setStatus('paused') }, 'Pausar')),
     tabs([
-      { id: 'data', label: 'Datos', render: async () => clientForm(client, refresh) },
+      { id: 'data', label: 'Datos', render: async () => clientForm(client, refresh, partners) },
       { id: 'agents', label: 'Agentes', render: () => agentsTab(id) },
       { id: 'knowledge', label: 'Conocimiento', render: () => knowledgeTab(id) },
       { id: 'connections', label: 'Conexiones (ERP/API)', render: () => connectionsTab(id) },
@@ -506,7 +522,7 @@ async function usersPage() {
   };
 
   return page('Usuarios',
-    h('p', { class: 'muted' }, 'Los usuarios se crean en Supabase (Authentication › Users › Add user). Aquí decides qué ve cada uno. Un usuario nuevo no ve nada hasta que le asignas un cliente.'),
+    h('p', { class: 'muted' }, 'Los usuarios se crean en Supabase (Authentication › Users › Add user). Aquí decides qué ve cada uno. Un usuario nuevo no ve nada hasta que le asignas un cliente. El rol Partner ve su cliente y todos los que se facturan a través de él.'),
     table([
       { label: 'Correo', cell: (r) => r.email },
       { label: 'Rol', cell: (r) => {
@@ -514,7 +530,7 @@ async function usersPage() {
         return h('select', {
           disabled: me, title: me ? 'No puedes cambiar tu propio rol.' : null,
           onchange: (e) => save(r, { role: e.target.value, ...(e.target.value === 'admin' ? { client_id: null } : {}) }),
-        }, [['client', 'Cliente'], ['admin', 'Admin']].map(([v, l]) => h('option', { value: v, selected: r.role === v }, l)));
+        }, [['client', 'Cliente'], ['partner', 'Partner'], ['admin', 'Admin']].map(([v, l]) => h('option', { value: v, selected: r.role === v }, l)));
       } },
       { label: 'Cliente que ve', cell: (r) => h('select', { onchange: (e) => save(r, { client_id: e.target.value || null }) },
         h('option', { value: '' }, '— Ninguno —'),

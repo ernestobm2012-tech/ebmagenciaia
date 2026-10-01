@@ -5,10 +5,13 @@ import { adminRoutes, adminNav } from './admin.js';
 import { clientRoutes, clientNav } from './client.js';
 
 const root = document.getElementById('root');
-const logo = () => h('img', { src: '../assets/logo-ebm.png', alt: 'EBM', class: 'logo' });
+// Con marca de partner (p. ej. Palmo), su logo sustituye al de EBM.
+const logo = () => (session.brand?.logo_url
+  ? h('img', { src: session.brand.logo_url, alt: session.brand.name, class: 'logo' })
+  : h('img', { src: '../assets/logo-ebm.png', alt: 'EBM', class: 'logo' }));
 
 export let db = null;
-export let session = { user: null, profile: null, client: null };
+export let session = { user: null, profile: null, client: null, clients: [], brand: null };
 // Mientras se cambia la contraseña desde el enlace del correo no se entra al panel.
 let recovering = false;
 
@@ -38,18 +41,31 @@ async function start(s) {
   if (!s) return renderLogin();
   try {
     const profile = await q(db.from('profiles').select('*').eq('id', s.user.id).maybeSingle());
-    if (!profile) throw new Error('Tu usuario no tiene perfil. Avisa a EBM.');
-    const client = profile.role === 'client' ? (await q(db.rpc('my_client')))[0] || null : null;
+    if (!profile) throw new Error('Tu usuario no tiene perfil. Avisa al administrador.');
+    // No admin: sus clientes (uno, o varios si es partner) y la marca que debe ver.
+    const isAdmin = profile.role === 'admin';
+    const [clients, brands] = isAdmin ? [[], []] : await Promise.all([q(db.rpc('my_clients')), q(db.rpc('my_brand'))]);
     if (recovering) return;
-    session = { user: s.user, profile, client };
+    session = { user: s.user, profile, clients, client: clients.find((c) => c.is_own) || null, brand: brands[0] || null };
+    applyBrand();
     renderShell();
   } catch (err) {
     renderLogin(errorText(err));
   }
 }
 
+// Colores y título de la marca del partner; sin marca, los de EBM.
+function applyBrand() {
+  const style = document.documentElement.style;
+  const color = session.brand?.color;
+  for (const name of ['--blue', '--blue-strong']) color ? style.setProperty(name, color) : style.removeProperty(name);
+  color ? style.setProperty('--blue-wash', `color-mix(in srgb, ${color} 12%, white)`) : style.removeProperty('--blue-wash');
+  document.title = `${session.brand?.name || 'EBM'} · Panel de agentes`;
+}
+
 function renderLogin(message) {
-  session = { user: null, profile: null, client: null };
+  session = { user: null, profile: null, client: null, clients: [], brand: null };
+  applyBrand();
   const note = h('p', { class: message ? 'error' : 'muted' }, message || '');
   const form = h('form', { class: 'auth-card', onsubmit: submit }, logo(),
     h('h1', {}, 'Panel de agentes'),

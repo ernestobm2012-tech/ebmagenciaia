@@ -17,11 +17,16 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
     h('h1', {}, 'Falta conectar Supabase'),
     h('p', {}, 'Rellena SUPABASE_URL y SUPABASE_KEY en js/config.js con los datos del proyecto.'))));
 } else {
+  // Quien llega desde el enlace de invitación aún no tiene contraseña: se la pedimos.
+  let invited = /type=invite/.test(location.hash);
   db = createClient(SUPABASE_URL, SUPABASE_KEY);
   db.auth.onAuthStateChange((event, s) => {
     // Fuera del callback: supabase-js no permite llamadas a la API dentro de él.
     setTimeout(() => {
-      if (event === 'PASSWORD_RECOVERY') renderNewPassword();
+      if (event === 'PASSWORD_RECOVERY' || (invited && s)) {
+        invited = false;
+        renderNewPassword();
+      }
       else if (event === 'SIGNED_OUT') renderLogin();
       else if (event === 'INITIAL_SESSION' || (event === 'SIGNED_IN' && !session.user)) start(s);
     }, 0);

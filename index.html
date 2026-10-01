@@ -3,17 +3,224 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="robots" content="noindex">
-  <title>EBM · Panel de agentes</title>
+  <title>EBM · Webs, software y agentes de IA para tu negocio</title>
+  <meta name="description" content="Soy Ernesto. Diseño la web de tu negocio, la conecto con tus reservas y tu gestión, y pongo un agente de IA a atender a tus clientes.">
+  <meta property="og:title" content="EBM · Webs, software y agentes de IA para tu negocio">
+  <meta property="og:description" content="Páginas web, gestión del negocio desde la web, software a medida y agentes de IA.">
+  <meta property="og:type" content="website">
   <link rel="icon" href="assets/logo-ebm.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&family=Space+Mono:wght@400;700&display=swap">
-  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/site.css">
+  <script>
+    // Los enlaces de invitación y de cambio de contraseña de Supabase son del panel.
+    if (/(access_token|type=(invite|recovery)|error_code)=?/.test(location.hash)) location.replace('admin/' + location.hash);
+  </script>
 </head>
 <body>
-  <div id="root"></div>
-  <noscript>Este panel necesita JavaScript.</noscript>
-  <script type="module" src="js/app.js"></script>
+  <header class="top">
+    <div class="wrap navrow">
+      <a class="brand" href="#inicio" aria-label="EBM, inicio"><img src="assets/logo-ebm.png" alt="EBM"></a>
+      <nav class="links" aria-label="Secciones">
+        <a href="#servicios">Servicios</a>
+        <a href="#trabajos">Casos de éxito</a>
+        <a href="#proceso">Cómo trabajo</a>
+        <a href="#sobre-mi">Sobre mí</a>
+      </nav>
+      <a class="btn primary small" href="#contacto">Hablemos</a>
+    </div>
+  </header>
+
+  <main id="inicio">
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div>
+          <span class="eyebrow">&lt;/&gt; webs · software · agentes de IA</span>
+          <h1>Tu negocio, funcionando solo <em>también cuando tú no estás</em>.</h1>
+          <p class="lead">Soy Ernesto. Diseño tu web, la conecto con tus reservas y tu gestión, y pongo un agente de IA a atender a tus clientes a cualquier hora.</p>
+          <div class="cta-row">
+            <a class="btn primary" href="#contacto">Cuéntame tu proyecto</a>
+            <a class="btn" href="#servicios">Ver qué hago</a>
+          </div>
+        </div>
+
+        <div class="panel" aria-hidden="true">
+          <div class="ptitle">
+            <span class="dots"><span></span><span></span><span></span></span>
+            <span class="lbl">agente · hoy</span>
+          </div>
+          <div class="msg in">¿Tenéis hueco el sábado por la tarde para un cumpleaños?</div>
+          <div class="msg out">Sí, queda libre de 17:00 a 20:00. ¿Te lo reservo y te paso el presupuesto?</div>
+          <div class="rows">
+            <div class="row"><span class="who">Reserva creada</span><span class="when">sáb · 17:00</span><span class="status ok">confirmada</span></div>
+            <div class="row"><span class="who">Aviso al equipo</span><span class="when">23:41</span><span class="status ok">enviado</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="servicios">
+      <div class="wrap">
+        <div class="kicker"><span class="num">01</span><span class="label">Servicios</span></div>
+        <h2>Cuatro formas de ayudarte</h2>
+        <p class="dek">Puedes empezar por una y crecer después. Todo lo hago yo, así que siempre hablas con quien lo construye.</p>
+
+        <div class="services">
+          <article class="service">
+            <span class="ic">&lt;/&gt;</span>
+            <h3>Diseño de páginas web</h3>
+            <p>Una web clara, rápida y hecha a tu medida, que explica lo que haces y consigue que te contacten.</p>
+            <ul>
+              <li>Diseño propio, sin plantillas genéricas</li>
+              <li>Se ve bien en el móvil</li>
+              <li>Preparada para aparecer en Google</li>
+            </ul>
+          </article>
+          <article class="service">
+            <span class="ic">{ }</span>
+            <h3>Web + gestión de tu negocio</h3>
+            <p>La misma web, pero trabajando para ti: reservas, citas, presupuestos y un panel desde el que lo llevas todo.</p>
+            <ul>
+              <li>Reservas y citas online</li>
+              <li>Panel privado para ti y tu equipo</li>
+              <li>Avisos automáticos a tus clientes</li>
+            </ul>
+          </article>
+          <article class="service">
+            <span class="ic">fn</span>
+            <h3>Proyectos de software</h3>
+            <p>Cuando lo que necesitas no existe o lo que usas no encaja. Aplicaciones y paneles hechos para tu forma de trabajar.</p>
+            <ul>
+              <li>Paneles de gestión a medida</li>
+              <li>Integración con lo que ya usas</li>
+              <li>Mantenimiento después de entregar</li>
+            </ul>
+          </article>
+          <article class="service featured">
+            <span class="ic">IA</span>
+            <h3>Agentes de IA</h3>
+            <p>Un asistente que entiende lo que le preguntan y responde con los datos de tu negocio. No es un chat de respuestas fijas.</p>
+            <ul>
+              <li>Atiende por web y WhatsApp</li>
+              <li>Recoge contactos y agenda citas</li>
+              <li>Te pasa la conversación cuando hace falta</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="block tint" id="trabajos">
+      <div class="wrap">
+        <div class="kicker"><span class="num">02</span><span class="label">Casos de éxito</span></div>
+        <h2>Negocios que ya funcionan con esto</h2>
+        <p class="dek">Proyectos reales, en uso cada día. Puedes entrar y verlos.</p>
+
+        <div class="cases">
+          <article class="case">
+            <a href="https://gestionmypadel.com/" target="_blank" rel="noopener"><img src="assets/caso-gestionmypadel.jpg" alt="Web de GestionMyPadel" width="735" height="455" loading="lazy"></a>
+            <div class="case-body">
+              <span class="tag">Proyecto de software</span>
+              <h3>GestionMyPadel</h3>
+              <p>Un panel para llevar las pistas de pádel de ayuntamientos, comunidades de vecinos y clubes: reservas online a cualquier hora, torneos y ligas con ranking, facturación y estadísticas.</p>
+              <a class="case-link" href="https://gestionmypadel.com/" target="_blank" rel="noopener">gestionmypadel.com →</a>
+            </div>
+          </article>
+          <article class="case">
+            <a href="https://mipequenorincon.es/" target="_blank" rel="noopener"><img src="assets/caso-mi-pequeno-rincon.jpg" alt="Web de Mi Pequeño Rincón" width="735" height="455" loading="lazy"></a>
+            <div class="case-body">
+              <span class="tag">Web + gestión</span>
+              <h3>Mi Pequeño Rincón</h3>
+              <p>Sala de eventos en Chozas de Canales. Sus clientes consultan disponibilidad y precios y reservan fecha desde la web; el negocio lleva reservas, extras y facturas desde su panel.</p>
+              <a class="case-link" href="https://mipequenorincon.es/" target="_blank" rel="noopener">mipequenorincon.es →</a>
+            </div>
+          </article>
+          <article class="case">
+            <a href="https://lienzoblanco.es/" target="_blank" rel="noopener"><img src="assets/caso-lienzo-blanco.jpg" alt="Web de Lienzo Blanco" width="735" height="455" loading="lazy"></a>
+            <div class="case-body">
+              <span class="tag">Web + gestión</span>
+              <h3>Lienzo Blanco</h3>
+              <p>Estudio de diseño de bodas y eventos en Madrid y Toledo. Una web a la altura de su trabajo, con solicitud de presupuesto y un panel para organizar eventos, citas y proveedores.</p>
+              <a class="case-link" href="https://lienzoblanco.es/" target="_blank" rel="noopener">lienzoblanco.es →</a>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="proceso">
+      <div class="wrap">
+        <div class="kicker"><span class="num">03</span><span class="label">Cómo trabajo</span></div>
+        <h2>Sin sorpresas, paso a paso</h2>
+        <img class="wide-photo" src="assets/ernesto-presentando.jpg" alt="Ernesto explicando un proyecto: objetivos, estrategia, acción y resultados" width="1200" height="900" loading="lazy">
+
+        <ol class="steps">
+          <li><span class="n">1</span><h3>Hablamos</h3><p>Me cuentas tu negocio y qué te quita tiempo. Sin compromiso.</p></li>
+          <li><span class="n">2</span><h3>Te enseño una propuesta</h3><p>Qué voy a hacer, cuánto cuesta y cuándo estará. Por escrito.</p></li>
+          <li><span class="n">3</span><h3>Lo construyo</h3><p>Lo vas viendo mientras avanza y ajustamos lo que haga falta.</p></li>
+          <li><span class="n">4</span><h3>Sigo ahí</h3><p>Lo mantengo y lo mejoro. Si algo falla, te lo digo yo primero.</p></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="block tint" id="sobre-mi">
+      <div class="wrap about">
+        <div>
+          <div class="kicker"><span class="num">04</span><span class="label">Sobre mí</span></div>
+          <h2>Hola, soy Ernesto 👋</h2>
+          <p>EBM soy yo: un desarrollador que construye software para negocios locales. No hay comerciales ni intermediarios. Quien te escucha es quien lo programa.</p>
+          <p>Me gusta que las cosas se entiendan. Te explico qué hago y por qué, sin tecnicismos, y te entrego algo que puedes usar desde el primer día.</p>
+          <a class="btn primary" href="#contacto">Escríbeme</a>
+        </div>
+        <img class="portrait" src="assets/ernesto.jpg" alt="Ernesto, fundador de EBM" width="800" height="800" loading="lazy">
+      </div>
+    </section>
+
+    <section class="block" id="contacto">
+      <div class="wrap contact">
+        <div>
+          <div class="kicker"><span class="num">05</span><span class="label">Contacto</span></div>
+          <h2>Cuéntame qué necesitas</h2>
+          <p class="dek">Escríbeme y te respondo yo, normalmente en uno o dos días laborables.</p>
+        </div>
+
+        <form id="contact-form" class="form" novalidate>
+          <div class="grid2">
+            <label class="field"><span>Nombre</span><input name="name" required minlength="2" maxlength="120" autocomplete="name"></label>
+            <label class="field"><span>Correo</span><input name="email" type="email" required maxlength="200" autocomplete="email"></label>
+            <label class="field"><span>Teléfono <small>(opcional)</small></span><input name="phone" type="tel" maxlength="40" autocomplete="tel"></label>
+            <label class="field"><span>¿Qué te interesa?</span>
+              <select name="service">
+                <option value="">No lo tengo claro</option>
+                <option value="web">Página web</option>
+                <option value="web-gestion">Web + gestión del negocio</option>
+                <option value="software">Proyecto de software</option>
+                <option value="agentes">Agente de IA</option>
+                <option value="otro">Otra cosa</option>
+              </select>
+            </label>
+          </div>
+          <label class="field"><span>Mensaje</span><textarea name="message" rows="5" required minlength="10" maxlength="4000" placeholder="Cuéntame a qué se dedica tu negocio y qué te gustaría conseguir."></textarea></label>
+          <label class="hp" aria-hidden="true">No rellenar<input name="website" tabindex="-1" autocomplete="off"></label>
+          <label class="check"><input type="checkbox" name="consent" required><span>Acepto que EBM use estos datos para responder a mi mensaje.</span></label>
+          <button class="btn primary" type="submit">Enviar mensaje</button>
+          <p class="form-note" role="status" aria-live="polite"></p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap foot-row">
+      <div class="foot-brand"><img src="assets/logo-ebm.png" alt="EBM"><span>Webs, software y agentes de IA</span></div>
+      <div class="foot-links">
+        <a href="https://www.instagram.com/ebmagenciaia" rel="noopener">Instagram</a>
+        <a href="admin/">Acceso clientes</a>
+      </div>
+    </div>
+  </footer>
+
+  <script type="module" src="js/site.js"></script>
 </body>
 </html>

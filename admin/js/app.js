@@ -5,7 +5,7 @@ import { adminRoutes, adminNav } from './admin.js';
 import { clientRoutes, clientNav } from './client.js';
 
 const root = document.getElementById('root');
-const logo = () => h('img', { src: 'assets/logo-ebm.png', alt: 'EBM', class: 'logo' });
+const logo = () => h('img', { src: '../assets/logo-ebm.png', alt: 'EBM', class: 'logo' });
 
 export let db = null;
 export let session = { user: null, profile: null, client: null };

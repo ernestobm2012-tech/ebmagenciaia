@@ -9,6 +9,7 @@ import {
 
 export const adminNav = [
   { href: '#/', label: 'Resumen' },
+  { href: '#/contactos', label: 'Contactos web' },
   { href: '#/clientes', label: 'Clientes' },
   { href: '#/actividad', label: 'Actividad' },
   { href: '#/costes', label: 'Costes y margen' },
@@ -17,6 +18,7 @@ export const adminNav = [
 
 export const adminRoutes = [
   [/^\/$/, overview],
+  [/^\/contactos$/, contactsPage],
   [/^\/clientes$/, clientsPage],
   [/^\/clientes\/([0-9a-f-]{36})$/, clientPage],
   [/^\/actividad$/, activityPage],
@@ -81,6 +83,39 @@ async function overview() {
       { label: 'Coste IA', num: true, cell: (r) => fmtUsd(r.cost_usd) },
       { label: 'Tope usado', num: true, cell: budgetCell },
     ], rows, { empty: 'Aún no hay clientes. Crea el primero en Clientes.', onRow: (r) => (location.hash = `#/clientes/${r.id}`) }));
+}
+
+// ---------------------------------------------------------------- contactos web
+const SERVICES = { web: 'Página web', 'web-gestion': 'Web + gestión', software: 'Software a medida', agentes: 'Agentes de IA', otro: 'Otro' };
+
+async function contactsPage() {
+  const rows = await q(db.from('contact_messages').select('*').order('created_at', { ascending: false }).limit(200));
+  const setStatus = async (row, status) => {
+    try {
+      await q(db.from('contact_messages').update({ status }).eq('id', row.id));
+      row.status = status;
+    } catch (err) {
+      toast(errorText(err), 'error');
+      refresh();
+    }
+  };
+  const open = (r) => modal(`${r.name} · ${fmtDate(r.created_at)}`, h('div', { class: 'form' },
+    h('p', {}, h('a', { href: `mailto:${r.email}` }, r.email), r.phone ? ` · ${r.phone}` : ''),
+    h('p', { class: 'muted' }, SERVICES[r.service] || 'Sin servicio indicado'),
+    h('div', { class: 'bubble-text' }, r.message)));
+
+  return page('Contactos web', h('p', { class: 'muted' }, 'Mensajes que llegan desde el formulario de la web pública.'),
+    table([
+      { label: 'Fecha', cell: (r) => fmtDate(r.created_at) },
+      { label: 'Nombre', cell: (r) => r.name },
+      { label: 'Correo', cell: (r) => r.email },
+      { label: 'Teléfono', cell: (r) => r.phone || '—' },
+      { label: 'Interés', cell: (r) => SERVICES[r.service] || '—' },
+      { label: 'Mensaje', cell: (r) => h('button', { class: 'btn link', type: 'button', onclick: () => open(r) }, 'Leer') },
+      { label: 'Estado', cell: (r) => h('select', { onchange: (e) => setStatus(r, e.target.value) },
+        [['new', 'Nuevo'], ['contacted', 'Contactado'], ['closed', 'Cerrado']].map(([v, l]) =>
+          h('option', { value: v, selected: r.status === v }, l))) },
+    ], rows, { empty: 'Aún no ha escrito nadie.' }));
 }
 
 // ---------------------------------------------------------------- clientes

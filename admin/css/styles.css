@@ -61,7 +61,7 @@ p { margin: 0 0 12px; }
   flex-direction: column;
   gap: 14px;
 }
-.auth-card .logo { height: 44px; width: auto; align-self: flex-start; }
+.auth-card .logo { height: 72px; width: auto; align-self: flex-start; }
 .auth-card h1 { font-size: 24px; margin: 6px 0 0; }
 .auth-card p { margin: 0; min-height: 1px; }
 
@@ -75,7 +75,7 @@ p { margin: 0 0 12px; }
   background: var(--surface);
 }
 .brand { display: block; padding: 0 8px; }
-.brand .logo { height: 34px; width: auto; display: block; mix-blend-mode: multiply; }
+.brand .logo { height: 60px; width: auto; display: block; }
 .who {
   font-family: var(--mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em;
   color: var(--ink-soft); padding: 12px 8px 14px;

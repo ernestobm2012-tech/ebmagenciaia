@@ -2,4 +2,6 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://ebmagenciaia.es/</loc><changefreq>monthly</changefreq><priority>1.0</priority></url>
   <url><loc>https://ebmagenciaia.es/privacidad.html</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://ebmagenciaia.es/cookies.html</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://ebmagenciaia.es/aviso-legal.html</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
 </urlset>

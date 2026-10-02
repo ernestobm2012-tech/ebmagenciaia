@@ -7,15 +7,26 @@
   <meta name="description" content="Cómo trata EBM Agencia IA los datos personales de la web, los asistentes de IA y la conexión con Google Calendar.">
   <link rel="canonical" href="https://ebmagenciaia.es/privacidad.html">
   <link rel="icon" href="assets/logo-ebm.png">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&family=Space+Mono:wght@400;700&display=swap">
+  <link rel="stylesheet" href="css/fonts.css">
   <link rel="stylesheet" href="css/site.css">
   <style>
-    .legal { max-width: 760px; padding-top: 48px; padding-bottom: 64px; }
+    .legal { max-width: 780px; padding-top: 48px; padding-bottom: 64px; }
     .legal h1 { margin-bottom: 8px; }
     .legal h2 { margin: 36px 0 10px; font-size: 20px; }
     .legal p, .legal li { color: var(--ink); }
     .legal ul { padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
     .legal .upd { color: var(--ink-soft); font-family: var(--mono); font-size: 12.5px; }
+    .legal table { width: 100%; border-collapse: collapse; font-size: 14.5px; margin: 8px 0; }
+    .legal th, .legal td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+    .legal th { font-family: var(--mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); }
+    .legal .scroll { overflow-x: auto; }
+    @media (max-width: 640px) {
+      .legal thead { display: none; }
+      .legal table, .legal tbody, .legal tr, .legal td { display: block; width: 100%; }
+      .legal tr { border: 1px solid var(--line); border-radius: 12px; padding: 6px 12px; margin-bottom: 12px; background: var(--surface); }
+      .legal td { border: 0; padding: 6px 0; }
+      .legal td::before { content: attr(data-label); display: block; font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); }
+    }
   </style>
 </head>
 <body>
@@ -33,38 +44,66 @@
     <h1>Política de privacidad</h1>
     <p class="upd">Última actualización: 2 de octubre de 2026</p>
 
-    <h2>Quién es el responsable</h2>
-    <p>Ernesto Bermejo, que opera bajo la marca EBM Agencia IA (ebmagenciaia.es). Para cualquier asunto de privacidad puedes escribir a <a href="mailto:hola@ebmagenciaia.es">hola@ebmagenciaia.es</a>.</p>
+    <h2>1. Quién es el responsable</h2>
+    <p>Ernesto Bermejo, que actúa bajo la marca EBM Agencia IA (ebmagenciaia.es). Contacto para cualquier asunto de privacidad: <a href="mailto:hola@ebmagenciaia.es">hola@ebmagenciaia.es</a>.</p>
+    <p>Cuando EBM presta sus servicios a un negocio cliente (por ejemplo, un asistente de IA en su web o en su teléfono), ese negocio es el responsable de los datos de las personas que hablan con su asistente, y EBM actúa como encargado del tratamiento, siguiendo sus instrucciones. Lo que pone en esta política sobre el chat, las llamadas y los calendarios describe cómo funciona la tecnología de EBM.</p>
 
-    <h2>Qué datos tratamos y para qué</h2>
-    <ul>
-      <li><strong>Formulario de contacto de la web:</strong> nombre, correo, teléfono (si lo das), el interés y tu mensaje. Los usamos solo para responderte.</li>
-      <li><strong>Asistentes de IA (chat y teléfono):</strong> lo que escribes o dices en la conversación y los datos de contacto que nos des para que te atienda una persona. Se guardan para poder atenderte, avisar al equipo correspondiente y mejorar el servicio. Las llamadas con asistentes de voz pueden quedar grabadas y transcritas.</li>
-      <li><strong>Clientes del servicio (panel):</strong> correo y contraseña de acceso, y la actividad de su asistente (conversaciones, contactos captados, avisos).</li>
-      <li><strong>Calendarios:</strong> citas que el cliente crea en el panel y, si decide conectarlo, las de su calendario de Google (ver más abajo).</li>
-    </ul>
+    <h2>2. Qué datos tratamos, para qué y con qué base legal</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Dónde</th><th>Datos</th><th>Para qué</th><th>Base legal</th></tr></thead>
+      <tbody>
+        <tr><td data-label="Dónde">Formulario de contacto</td><td data-label="Datos">Nombre, correo, teléfono (opcional), interés y mensaje</td><td data-label="Para qué">Responderte</td><td data-label="Base legal">Tu consentimiento (art. 6.1.a RGPD)</td></tr>
+        <tr><td data-label="Dónde">Chat con el asistente</td><td data-label="Datos">Lo que escribes, los datos de contacto que nos des y un identificador aleatorio del navegador</td><td data-label="Para qué">Atenderte, pasar tu consulta a una persona y avisar al equipo</td><td data-label="Base legal">Tu consentimiento y la aplicación de medidas a petición tuya (art. 6.1.a y 6.1.b)</td></tr>
+        <tr><td data-label="Dónde">Llamadas con el asistente de voz</td><td data-label="Datos">Tu voz, la transcripción, tu número y los datos que des</td><td data-label="Para qué">Atenderte, avisar al equipo y mejorar el servicio</td><td data-label="Base legal">Tu consentimiento (art. 6.1.a)</td></tr>
+        <tr><td data-label="Dónde">Panel de clientes</td><td data-label="Datos">Correo, contraseña (cifrada) y la actividad del asistente del cliente</td><td data-label="Para qué">Prestar el servicio contratado</td><td data-label="Base legal">Ejecución del contrato (art. 6.1.b)</td></tr>
+        <tr><td data-label="Dónde">Sistema en general</td><td data-label="Datos">Registros técnicos y errores</td><td data-label="Para qué">Seguridad y buen funcionamiento</td><td data-label="Base legal">Interés legítimo (art. 6.1.f)</td></tr>
+      </tbody>
+    </table></div>
+    <p>Los datos nos los das tú. No tomamos decisiones con efectos jurídicos sobre ti basadas únicamente en tratamientos automatizados.</p>
 
-    <h2>Base legal</h2>
-    <p>Tu consentimiento cuando nos escribes o hablas con un asistente, la ejecución del servicio contratado en el caso de los clientes, y nuestro interés legítimo en mantener la seguridad del sistema.</p>
+    <h2>3. Asistentes de inteligencia artificial</h2>
+    <p>Los asistentes de chat y de voz son sistemas automáticos basados en inteligencia artificial. Si preguntas si hablas con una persona o con una máquina, te lo dicen. En cualquier momento puedes pedir que te atienda una persona. No les des datos que no quieras compartir, como datos de salud, contraseñas o datos bancarios.</p>
+    <p>Las llamadas con asistentes de voz se graban y se transcriben. Si no quieres que se graben, no uses la voz y escríbenos por el formulario.</p>
 
-    <h2>Conexión con Google Calendar</h2>
+    <h2>4. Conexión con Google Calendar</h2>
     <p>Si un cliente conecta su calendario de Google, pedimos únicamente el permiso para ver y gestionar los eventos de su calendario (<em>calendar.events</em>) y su correo para identificar la cuenta. Usamos esos datos solo para mostrar su agenda en el panel, sincronizar las citas en los dos sentidos y comprobar la disponibilidad cuando el asistente atiende a un cliente suyo. En esa comprobación el asistente solo ve las horas ocupadas, nunca los títulos ni los detalles de los eventos.</p>
-    <p>No vendemos esos datos, no los usamos para publicidad ni los compartimos con terceros, salvo con los proveedores técnicos imprescindibles para prestar el servicio. El uso de la información recibida de las API de Google se ajusta a la <a href="https://developers.google.com/terms/api-services-user-data-policy" rel="noopener">Política de datos de usuario de los servicios de API de Google</a>, incluidos los requisitos de uso limitado. Puedes desconectar tu calendario cuando quieras desde el panel; al hacerlo se revoca el permiso y se borran los eventos importados. También puedes retirar el acceso desde tu cuenta de Google.</p>
+    <p>No vendemos esos datos, no los usamos para publicidad, no los transferimos a terceros salvo a los proveedores técnicos imprescindibles para prestar el servicio, y ninguna persona de EBM los lee salvo para resolver una incidencia con permiso del cliente. El uso de la información recibida de las API de Google se ajusta a la <a href="https://developers.google.com/terms/api-services-user-data-policy" rel="noopener">Política de datos de usuario de los servicios de API de Google</a>, incluidos los requisitos de uso limitado.</p>
+    <p>Puedes desconectar tu calendario cuando quieras desde el panel: se revoca el permiso y se borran del panel los eventos importados. También puedes retirar el acceso desde tu cuenta de Google.</p>
 
-    <h2>Con quién compartimos los datos</h2>
-    <p>Solo con los proveedores que hacen posible el servicio, que actúan por nuestra cuenta: Supabase (base de datos y alojamiento de funciones), Anthropic (modelo de IA del chat), ElevenLabs (voz), Zadarma y Twilio (telefonía), Resend (envío de correos), Google (calendarios, si el cliente lo conecta) y GitHub y Cloudflare (alojamiento y dominio de la web). Algunos están fuera del Espacio Económico Europeo y aplican las garantías habituales (cláusulas contractuales tipo).</p>
+    <h2>5. Con quién compartimos los datos</h2>
+    <p>Solo con proveedores que hacen posible el servicio y que tratan los datos por nuestra cuenta, con contrato de encargado del tratamiento:</p>
+    <ul>
+      <li><strong>Supabase:</strong> base de datos y funciones del servicio.</li>
+      <li><strong>Anthropic:</strong> modelo de inteligencia artificial del chat.</li>
+      <li><strong>ElevenLabs:</strong> voz y llamadas con el asistente de voz.</li>
+      <li><strong>Zadarma y Twilio:</strong> telefonía.</li>
+      <li><strong>Resend:</strong> envío de correos de aviso.</li>
+      <li><strong>Google:</strong> calendarios, solo si el cliente los conecta.</li>
+      <li><strong>GitHub y Cloudflare:</strong> alojamiento y dominio de esta web.</li>
+    </ul>
+    <p>No cedemos tus datos a otras empresas para sus propios fines.</p>
 
-    <h2>Cuánto tiempo los guardamos</h2>
-    <p>Los mensajes del formulario y las conversaciones, mientras sean necesarios para atenderte y, como máximo, durante el tiempo de la relación con el cliente más los plazos legales. Puedes pedirnos que los borremos antes.</p>
+    <h2>6. Transferencias fuera del Espacio Económico Europeo</h2>
+    <p>Algunos de esos proveedores tratan datos fuera del Espacio Económico Europeo, por ejemplo en Estados Unidos. En esos casos se apoyan en decisiones de adecuación de la Comisión Europea, como el Marco de Privacidad de Datos UE-EE. UU., o en cláusulas contractuales tipo.</p>
 
-    <h2>Tus derechos</h2>
-    <p>Puedes pedir acceso, rectificación, supresión, oposición, limitación y portabilidad escribiendo a <a href="mailto:hola@ebmagenciaia.es">hola@ebmagenciaia.es</a>. Si crees que no hemos tratado bien tus datos, puedes reclamar ante la Agencia Española de Protección de Datos (aepd.es).</p>
+    <h2>7. Cuánto tiempo los guardamos</h2>
+    <p>Los mensajes del formulario, las conversaciones y las grabaciones se guardan mientras sean necesarios para atenderte y, después, durante los plazos legales de prescripción de posibles responsabilidades. Los datos del panel, mientras dure el servicio. Puedes pedir que los borremos antes.</p>
 
-    <h2>Cookies</h2>
-    <p>La web no usa cookies de seguimiento ni de publicidad. El panel de clientes guarda en tu navegador lo imprescindible para mantener tu sesión iniciada.</p>
+    <h2>8. Tus derechos</h2>
+    <p>Puedes ejercer los derechos de acceso, rectificación, supresión, oposición, limitación del tratamiento y portabilidad, y retirar tu consentimiento en cualquier momento, escribiendo a <a href="mailto:hola@ebmagenciaia.es">hola@ebmagenciaia.es</a>. Respondemos en un mes como máximo. Si crees que no hemos tratado bien tus datos, puedes reclamar ante la Agencia Española de Protección de Datos (<a href="https://www.aepd.es" rel="noopener">aepd.es</a>).</p>
 
-    <h2>Asistentes de IA</h2>
-    <p>Los asistentes son sistemas automáticos. Si preguntas si hablas con una persona o con una máquina, te lo dicen. En cualquier momento puedes pedir que te atienda una persona.</p>
+    <h2>9. Menores</h2>
+    <p>Este servicio no está dirigido a menores de 14 años. Si sabes que un menor nos ha dado datos sin autorización de sus padres o tutores, escríbenos y los borraremos.</p>
+
+    <h2>10. Seguridad</h2>
+    <p>Los datos viajan cifrados, el acceso al panel exige usuario y contraseña, cada cliente solo ve sus propios datos y las claves de los servicios no se guardan en la web.</p>
+
+    <h2>11. Cookies</h2>
+    <p>Consulta la <a href="cookies.html">política de cookies</a>.</p>
+
+    <h2>12. Cambios en esta política</h2>
+    <p>Si cambiamos algo importante, lo actualizaremos aquí y cambiaremos la fecha de arriba.</p>
+
   </main>
 
   <footer>
@@ -72,7 +111,9 @@
       <div class="foot-brand"><img src="assets/logo-ebm.png" alt="EBM"><span>Webs, software y agentes de IA</span></div>
       <div class="foot-links">
         <a href="./">Inicio</a>
+        <a href="aviso-legal.html">Aviso legal</a>
         <a href="privacidad.html">Privacidad</a>
+        <a href="cookies.html">Cookies</a>
       </div>
     </div>
   </footer>

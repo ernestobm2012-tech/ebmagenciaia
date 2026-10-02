@@ -11,7 +11,7 @@ Dueño: Ernesto. Habla en español (tuteo), quiere respuestas directas y prácti
 - `admin/`: panel (Supabase Auth) con clientes (cada uno con `services`: agentes, web y/o software; las pestañas de agente solo salen si tiene agentes), agentes, conocimiento, conexiones, a quién avisar, código de instalación, gastos, actividad, costes, usuarios (roles client/partner/admin).
 - `supabase/migrations/0001…0014` y `supabase/functions/` (`chat`, `learn-web`, `sync-voice`, `notify`, `calendar`, `google-calendar`, `push`).
 - Panel instalable (PWA) con avisos push: `admin/manifest.webmanifest`, `admin/sw.js`, `admin/js/push.js` y la función `push`. Las claves VAPID las genera la función y viven en `push_config` (solo service_role). Los triggers de `leads`, `handoffs`, `contact_messages` y `error_log` llaman a `push?action=send`; los contactos de la web y los errores solo van a administradores, y los clientes en demo solo avisan a administradores. En iPhone hay que instalar la app antes de poder activar los avisos.
-- `privacidad.html`: política de privacidad (necesaria para verificar la app en Google). Falta el aviso legal con NIF y dirección de Ernesto. Las funciones se despliegan con el conector de Supabase pegando el archivo completo.
+- Textos legales de la web: `aviso-legal.html`, `privacidad.html` y `cookies.html` (enlazados en el pie; el formulario, las demos y el chat de EBM enlazan a la privacidad). Las fuentes están alojadas en `assets/fonts` y `css/fonts.css`: no se carga nada de Google Fonts. La web no usa cookies de seguimiento, por eso no hay banner; si se añade analítica o publicidad habrá que poner un banner de consentimiento. El chat acepta `data-privacy="dirección"` para enlazar la política (los clientes con marca propia, como Palmo, deben enlazar la suya, no la de EBM). Falta el domicilio y NIF de Ernesto en el aviso legal (ahora dice que se facilitan por escrito). Las funciones se despliegan con el conector de Supabase pegando el archivo completo.
 
 Ernesto autorizó hacer commits directamente a `main` y publicar en GitHub Pages en sus webs, y fusionar él mismo los pull requests de sus repositorios (Mi-peque-o-rincon, ebmagenciaia, palmo) sin pedir permiso cada vez.
 
@@ -51,7 +51,7 @@ Ernesto autorizó hacer commits directamente a `main` y publicar en GitHub Pages
 - Que el agente reserve citas en el calendario (ahora solo consulta). Conexión directa con Outlook.
 - Limpieza pendiente de aprobación de Ernesto: calendario «[prueba-interna] Festivos» (EBM, id ab23481e-b7dc-4423-a547-ada0a666eea7) y 3 conversaciones de prueba del chat de EBM (38f4561c-d0ec-458e-89d0-aecdaffb805d, f0e7f7e2-f659-4ca3-aa3a-3f4eaeb1bac0, bbab0565-7628-49db-a04a-1ca349d9d661); los DELETE por SQL se quedan esperando permiso.
 - Que el agente del chat reserve citas (herramienta `reservar_cita` en la función `chat`): sin hacer.
-- Aviso legal (NIF y dirección de Ernesto), permisos de partner, CRM, transferencia de llamadas y botón para recargar el catálogo.
+- Domicilio y NIF de Ernesto en el aviso legal; contrato de encargado del tratamiento para clientes; políticas propias de Palmo y Mi Pequeño Rincón; permisos de partner, CRM, transferencia de llamadas y botón para recargar el catálogo.
 
 ## Reglas
 

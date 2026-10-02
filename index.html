@@ -45,9 +45,7 @@
   }
   </script>
   <link rel="icon" href="assets/logo-ebm.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&family=Space+Mono:wght@400;700&display=swap">
+  <link rel="stylesheet" href="css/fonts.css">
   <link rel="stylesheet" href="css/site.css">
   <script>
     // Los enlaces de invitación y de cambio de contraseña de Supabase son del panel.
@@ -222,6 +220,7 @@
             <p class="demo-status" aria-live="polite"></p>
           </article>
         </div>
+        <p class="demo-note">Las llamadas de prueba se graban y se transcriben para poder mejorar el servicio. Al llamar aceptas la <a href="privacidad.html" target="_blank" rel="noopener">política de privacidad</a>.</p>
         <p class="demo-phone" data-phone="" hidden>¿Prefieres por teléfono? Llama a Lucía al <a></a>.</p>
       </div>
     </section>
@@ -280,7 +279,7 @@
           </div>
           <label class="field"><span>Mensaje</span><textarea name="message" rows="5" required minlength="10" maxlength="4000" placeholder="Cuéntame a qué se dedica tu negocio y qué te gustaría conseguir."></textarea></label>
           <label class="hp" aria-hidden="true">No rellenar<input name="website" tabindex="-1" autocomplete="off"></label>
-          <label class="check"><input type="checkbox" name="consent" required><span>Acepto que EBM use estos datos para responder a mi mensaje.</span></label>
+          <label class="check"><input type="checkbox" name="consent" required><span>Acepto que EBM use estos datos para responder a mi mensaje, según la <a href="privacidad.html" target="_blank" rel="noopener">política de privacidad</a>.</span></label>
           <button class="btn primary" type="submit">Enviar mensaje</button>
           <p class="form-note" role="status" aria-live="polite"></p>
         </form>
@@ -293,13 +292,15 @@
       <div class="foot-brand"><img src="assets/logo-ebm.png" alt="EBM"><span>Webs, software y agentes de IA</span></div>
       <div class="foot-links">
         <a href="https://www.instagram.com/ebmagenciaia" rel="noopener">Instagram</a>
+        <a href="aviso-legal.html">Aviso legal</a>
         <a href="privacidad.html">Privacidad</a>
+        <a href="cookies.html">Cookies</a>
       </div>
     </div>
   </footer>
 
   <script type="module" src="js/site.js"></script>
   <script type="module" src="js/demos.js"></script>
-  <script src="js/chat.js" data-client="ebm" data-title="EBM" data-welcome="¡Hola! Soy el asistente de EBM. ¿En qué puedo ayudarte?" defer></script>
+  <script src="js/chat.js" data-client="ebm" data-privacy="privacidad.html" data-title="EBM" data-welcome="¡Hola! Soy el asistente de EBM. ¿En qué puedo ayudarte?" defer></script>
 </body>
 </html>

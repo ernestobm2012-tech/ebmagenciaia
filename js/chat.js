@@ -4,7 +4,8 @@
 // Opcionales: data-title, data-color (#hex), data-avatar (dirección https de una
 // foto, se muestra redonda) y data-position="left" si la web ya tiene otro botón
 // flotante a la derecha, o data-bottom="90" para subirlo (en píxeles) por encima
-// de él. Cualquier enlace con el atributo data-open-chat abre el chat.
+// de él. data-privacy="dirección" añade un enlace a la política de privacidad.
+// Cualquier enlace con el atributo data-open-chat abre el chat.
 (() => {
   const script = document.currentScript;
   const ENDPOINT = 'https://rhjbpkaesobsbnkvioyh.supabase.co/functions/v1/chat';
@@ -17,6 +18,7 @@
   const SIDE = script.dataset.position === 'left' ? 'left' : 'right';
   const BOTTOM = Math.min(Math.max(parseInt(script.dataset.bottom, 10) || 20, 0), 400);
   const AVATAR = /^https:\/\//.test(script.dataset.avatar || '') ? script.dataset.avatar : null;
+  const PRIVACY = /^(https:\/\/|\/|[\w.-]+\.html$)/.test(script.dataset.privacy || '') ? script.dataset.privacy : null;
   const KEY = `ebm-chat-${CLIENT}`;
 
   // El almacenamiento puede fallar (modo privado, cookies bloqueadas): el chat funciona igual.
@@ -62,6 +64,7 @@
     .ebm-chat form button { border: 0; border-radius: 10px; background: ${COLOR}; color: #fff; font: inherit; font-weight: 700; padding: 0 16px; cursor: pointer; }
     .ebm-chat form button:disabled { opacity: .5; cursor: default; }
     .ebm-chat-note { padding: 0 12px 10px; font-size: 11.5px; color: #5E6C7A; background: #fff; }
+    .ebm-chat-note a { color: inherit; text-decoration: underline; }
     @media (max-width: 480px) { .ebm-chat { ${SIDE}: 12px; bottom: ${BOTTOM + 68}px; height: calc(100dvh - ${BOTTOM + 84}px); } }
   `;
   document.head.append(style);
@@ -87,7 +90,8 @@
         el('div', {}, el('strong', { textContent: TITLE }), el('small', { textContent: 'Asistente de IA' }))),
       close),
     log, form,
-    el('div', { className: 'ebm-chat-note', textContent: 'Guardamos la conversación para poder atenderte.' }));
+    el('div', { className: 'ebm-chat-note' }, 'Guardamos la conversación para poder atenderte.',
+      ...(PRIVACY ? [' ', el('a', { href: PRIVACY, target: '_blank', rel: 'noopener', textContent: 'Privacidad' })] : [])));
   panel.setAttribute('aria-label', TITLE);
 
   const button = el('button', { className: 'ebm-chat-btn', type: 'button' });

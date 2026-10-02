@@ -257,3 +257,6 @@ footer { padding: 40px 0 48px; }
   .nav-cta { gap: 6px; }
   .nav-cta .btn.small { padding: 9px 12px; font-size: 13px; }
 }
+
+.demo-note { margin-top: 18px; color: var(--ink-soft); font-size: 13.5px; max-width: 62ch; }
+.demo-note a { color: inherit; }

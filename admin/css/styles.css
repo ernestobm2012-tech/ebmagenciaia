@@ -295,3 +295,17 @@ tr.clickable:hover td { background: var(--blue-wash); }
 .btn.small-primary:hover { background: var(--blue-strong); border-color: var(--blue-strong); }
 .cal-actions { align-items: center; }
 .checks { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 6px 0; }
+
+/* ---------- avisos en el móvil ---------- */
+.push-card {
+  margin: 16px 0 4px; padding: 16px 18px; border-radius: 14px;
+  background: linear-gradient(135deg, var(--navy), #1d4a7e); color: #fff;
+}
+.push-card:empty { display: none; }
+.push-card h2 { margin: 0 0 4px; font-size: 16px; color: #fff; }
+.push-card .muted { color: #C9D8EA; margin: 0 0 12px; font-size: 14px; }
+.push-card .actions { flex-wrap: wrap; align-items: center; }
+.push-card .actions.install { margin-top: 10px; }
+.push-card .btn { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.3); color: #fff; }
+.push-card .btn.primary { background: var(--blue); border-color: var(--blue); }
+.push-card .btn.link { background: none; border: 0; color: #C9D8EA; text-decoration: underline; }

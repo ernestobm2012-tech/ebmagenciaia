@@ -3,8 +3,10 @@ import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 import { h, q, toast, errorText, field } from './ui.js';
 import { adminRoutes, adminNav } from './admin.js';
 import { clientRoutes, clientNav } from './client.js';
+import { pushCard, registerWorker } from './push.js';
 
 const root = document.getElementById('root');
+registerWorker();
 // Con marca de partner (p. ej. Palmo), su logo sustituye al de EBM.
 const logo = () => (session.brand?.logo_url
   ? h('img', { src: session.brand.logo_url, alt: session.brand.name, class: 'logo' })
@@ -164,7 +166,11 @@ async function route() {
     try {
       const node = await view(...match.slice(1));
       // Si el usuario ya navegó a otra ruta mientras cargaba, no pisar.
-      if ((location.hash.replace(/^#/, '') || '/') === path) outlet.replaceChildren(node);
+      if ((location.hash.replace(/^#/, '') || '/') === path) {
+        // En el Resumen, justo debajo del título: instalar la app y activar los avisos.
+        if (path === '/' && node.children.length >= 2) node.children[1].after(pushCard(db));
+        outlet.replaceChildren(node);
+      }
     } catch (err) {
       outlet.replaceChildren(h('p', { class: 'error' }, errorText(err)));
     }

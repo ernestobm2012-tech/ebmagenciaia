@@ -7,6 +7,7 @@ Dueño: Ernesto. Habla en español (tuteo), quiere respuestas directas y prácti
 - Web pública de la agencia en GitHub Pages: https://ernestobm2012-tech.github.io/ebmagenciaia/ (HTML/CSS/JS sin build, supabase-js por CDN).
 - `js/chat.js`: widget de chat embebible. Atributos `data-client`, `data-title`, `data-welcome`, `data-color`, `data-avatar`, `data-position="left"`, `data-bottom`. Llama a la Edge Function `chat`.
 - `demo.html?cliente=<slug>&nombre=<Nombre>`: muestra el agente de cualquier cliente.
+- Sección «Pruébalo» (`#demos`, `js/demos.js`): llamadas de voz desde el navegador a los cuatro agentes demo de ElevenLabs (Lucía, Nadia, Marta, Javi; ver `agentes-voz/README.md`). El número de Twilio para demos está pendiente de importar en ElevenLabs (lo hace Ernesto con sus credenciales).
 - `admin/`: panel (Supabase Auth) con clientes (cada uno con `services`: agentes, web y/o software; las pestañas de agente solo salen si tiene agentes), agentes, conocimiento, conexiones, a quién avisar, código de instalación, gastos, actividad, costes, usuarios (roles client/partner/admin).
 - `supabase/migrations/0001…0013` y `supabase/functions/` (`chat`, `learn-web`, `sync-voice`, `notify`, `calendar`, `google-calendar`). Las funciones se despliegan con el conector de Supabase pegando el archivo completo.
 

@@ -155,10 +155,96 @@ async function callConnection(c: Connection, input: Record<string, string>, clie
   return text || "Sin datos.";
 }
 
+type Calendar = { id: string; name: string };
+const MAX_AGENDA_DAYS = 31;
+
+// Si el cliente tiene calendarios, el agente puede ver cuándo está ocupado.
+// Solo ve horas, nunca el título ni los datos de las citas (pueden ser personales).
+function agendaTool(calendars: Calendar[]): Anthropic.Tool {
+  const names = calendars.map((c) => c.name);
+  return {
+    name: "consultar_agenda",
+    description:
+      `Consulta qué horas están ocupadas en la agenda del negocio entre dos fechas (máximo ${MAX_AGENDA_DAYS} días). ` +
+      "Úsala antes de proponer o confirmar un día u hora. Lo que no aparece como ocupado está libre, " +
+      "siempre dentro del horario del negocio. Nunca digas qué hay en las horas ocupadas: solo que no están disponibles.",
+    input_schema: {
+      type: "object",
+      properties: {
+        desde: { type: "string", description: "Primer día, formato AAAA-MM-DD" },
+        hasta: { type: "string", description: "Último día incluido, formato AAAA-MM-DD" },
+        ...(names.length > 1 ? {
+          calendario: { type: "string", enum: names, description: "Solo esta agenda. Omítelo para ver todas." },
+        } : {}),
+      },
+      required: ["desde", "hasta"],
+      additionalProperties: false,
+    },
+  };
+}
+
+// Medianoche en Madrid del día AAAA-MM-DD, como instante UTC.
+function madridMidnight(day: string) {
+  const [y, m, d] = day.split("-").map(Number);
+  const guess = Date.UTC(y, m - 1, d);
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Madrid", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date(guess));
+  const hh = Number(parts.find((p) => p.type === "hour")!.value);
+  const mm = Number(parts.find((p) => p.type === "minute")!.value);
+  return new Date(guess - (hh * 60 + mm) * 60_000);
+}
+
+async function checkAgenda(input: Record<string, string>, clientId: string, calendars: Calendar[]) {
+  const valid = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d ?? "");
+  if (!valid(input.desde) || !valid(input.hasta)) throw new Error("Fechas en formato AAAA-MM-DD");
+  const from = madridMidnight(input.desde);
+  const [y, m, d] = input.hasta.split("-").map(Number);
+  const to = madridMidnight(new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10));
+  if (to <= from) throw new Error("La fecha final es anterior a la inicial");
+  if (to.getTime() - from.getTime() > (MAX_AGENDA_DAYS + 1) * 86_400_000) throw new Error(`Como máximo ${MAX_AGENDA_DAYS} días por consulta`);
+
+  const chosen = input.calendario ? calendars.filter((c) => c.name === input.calendario) : calendars;
+  if (!chosen.length) throw new Error("Esa agenda no existe");
+  const { data, error } = await db.from("calendar_events").select("calendar_id, starts_at, ends_at, all_day")
+    .eq("client_id", clientId).in("calendar_id", chosen.map((c) => c.id))
+    .lt("starts_at", to.toISOString()).gt("ends_at", from.toISOString()).order("starts_at").limit(500);
+  if (error) throw error;
+
+  return formatAgenda(data ?? [], input.desde, input.hasta, chosen.length > 1 ? calendars : null);
+}
+
+type Busy = { calendar_id: string; starts_at: string; ends_at: string; all_day: boolean };
+
+// Una línea por día con las horas ocupadas, en hora de Madrid.
+export function formatAgenda(events: Busy[], desde: string, hasta: string, named: Calendar[] | null) {
+  const day = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", weekday: "long", day: "numeric", month: "long" });
+  const time = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const nameOf = Object.fromEntries((named ?? []).map((c) => [c.id, c.name]));
+  const [y, m, d0] = desde.split("-").map(Number);
+  const lines: string[] = [];
+  for (let i = 0; ; i++) {
+    const iso = new Date(Date.UTC(y, m - 1, d0 + i)).toISOString().slice(0, 10);
+    if (iso > hasta) break;
+    const start = madridMidnight(iso);
+    const next = madridMidnight(new Date(Date.UTC(y, m - 1, d0 + i + 1)).toISOString().slice(0, 10));
+    const busy = events.filter((e) => new Date(e.starts_at) < next && new Date(e.ends_at) > start).map((e) => {
+      const s = new Date(e.starts_at);
+      const en = new Date(e.ends_at);
+      const range = e.all_day || (s <= start && en >= next) ? "todo el día"
+        : `${s < start ? "00:00" : time.format(s)}-${en >= next ? "24:00" : time.format(en)}`;
+      return named ? `${range} (${nameOf[e.calendar_id]})` : range;
+    });
+    lines.push(`${day.format(start)} (${iso}): ${busy.length ? `ocupado ${busy.join(", ")}` : "nada ocupado"}`);
+  }
+  return lines.join("\n");
+}
+
 async function runTool(
   name: string, input: Record<string, string>, clientId: string, conversationId: string,
-  connections: Connection[], contacts: Contact[],
+  connections: Connection[], contacts: Contact[], calendars: Calendar[],
 ) {
+  if (name === "consultar_agenda" && calendars.length) return await checkAgenda(input, clientId, calendars);
   const wanted = (input.departamento ?? "").toLowerCase();
   const notify_contact_id = wanted
     ? contacts.find((c) => (c.department ?? "").toLowerCase() === wanted)?.id ?? null
@@ -255,7 +341,7 @@ Deno.serve(async (req) => {
       .eq("client_id", client.id).eq("month", monthIso).maybeSingle();
     if (Number(usage?.cost_usd ?? 0) >= Number(client.ai_budget_usd)) throw new Error("Tope mensual de IA superado");
 
-    const [{ data: history }, { data: sources }, { data: conns }, { data: people }] = await Promise.all([
+    const [{ data: history }, { data: sources }, { data: conns }, { data: people }, { data: cals }] = await Promise.all([
       db.from("messages").select("role, content")
         .eq("conversation_id", conversationId).in("role", ["user", "assistant"])
         .order("created_at", { ascending: false }).limit(agent.max_history_messages),
@@ -265,10 +351,16 @@ Deno.serve(async (req) => {
       db.from("api_connections").select("*").eq("client_id", client.id).eq("active", true).order("created_at"),
       db.from("notify_contacts").select("id, name, department, notify_when")
         .eq("client_id", client.id).eq("active", true).order("created_at"),
+      db.from("calendars").select("id, name").eq("client_id", client.id).eq("active", true).order("created_at"),
     ]);
     const connections = (conns ?? []) as Connection[];
     const contacts = (people ?? []) as Contact[];
-    const tools = [...baseTools(contacts), ...connections.map(connectionTool)];
+    const calendars = (cals ?? []) as Calendar[];
+    const tools = [
+      ...baseTools(contacts),
+      ...(calendars.length ? [agendaTool(calendars)] : []),
+      ...connections.filter((c) => c.tool_name !== "consultar_agenda").map(connectionTool),
+    ];
 
     const messages: Anthropic.MessageParam[] = (history ?? []).reverse()
       .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
@@ -311,7 +403,7 @@ Deno.serve(async (req) => {
       const results: Anthropic.ToolResultBlockParam[] = [];
       for (const use of toolUses) {
         try {
-          const content = await runTool(use.name, use.input as Record<string, string>, client.id, conversationId, connections, contacts);
+          const content = await runTool(use.name, use.input as Record<string, string>, client.id, conversationId, connections, contacts, calendars);
           results.push({ type: "tool_result", tool_use_id: use.id, content });
         } catch (err) {
           results.push({ type: "tool_result", tool_use_id: use.id, content: `Error: ${err}`, is_error: true });

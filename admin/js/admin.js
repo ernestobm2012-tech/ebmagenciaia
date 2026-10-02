@@ -3,6 +3,7 @@ import { db, session, refresh } from './app.js';
 import { MODELS, USD_TO_EUR } from './config.js';
 import { activityTabs } from './activity.js';
 import { knowledgeTab, connectionsTab } from './knowledge.js';
+import { calendarsTab } from './calendars.js';
 import { expensesPage, expensesTab, fetchExpenses, monthlyEur } from './expenses.js';
 import {
   h, q, table, tabs, badge, kpi, field, modal, toast, formData, errorText, slugify,
@@ -228,6 +229,7 @@ async function clientPage(id) {
       { id: 'knowledge', label: 'Conocimiento', render: () => knowledgeTab(id) },
       { id: 'connections', label: 'Conexiones (ERP/API)', render: () => connectionsTab(id) },
       { id: 'contacts', label: 'A quién avisar', render: () => contactsTab(id) },
+      { id: 'calendars', label: 'Calendarios', render: () => calendarsTab(id) },
       { id: 'install', label: 'Instalar en su web', render: () => installTab(client) },
       { id: 'expenses', label: 'Gastos', render: () => expensesTab(id) },
       { id: 'activity', label: 'Actividad', render: async () => activityTabs({ clientId: id, isAdmin: true }) },

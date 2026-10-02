@@ -198,6 +198,41 @@ tr.clickable:hover td { background: var(--blue-wash); }
 .bubble-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .bubble-meta { font-family: var(--mono); font-size: 10.5px; color: var(--ink-soft); margin-top: 4px; }
 
+/* ---------- calendarios ---------- */
+[hidden] { display: none !important; }
+.check { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; }
+.picker { max-width: 320px; margin: 8px 0 4px; }
+.pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.steps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.modal h3 { font-size: 15px; font-weight: 900; margin: 6px 0 -6px; }
+.cal-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.cal-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cal-card.off { opacity: .6; }
+.cal-card .error { overflow-wrap: anywhere; }
+.cal-name { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.cal-name input { width: 18px; height: 18px; flex: none; }
+.dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.cal-actions { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.agenda-nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 12px; }
+.agenda { border: 1px solid var(--line); border-radius: var(--radius); }
+.day { padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.day:last-child { border-bottom: 0; }
+.day-head { display: flex; justify-content: space-between; align-items: center; font-weight: 900; font-size: 14px; margin-bottom: 6px; }
+.day-head::first-letter { text-transform: uppercase; }
+.day-empty { padding: 2px 0 4px; }
+.event {
+  font: inherit; text-align: left; cursor: pointer; width: 100%;
+  display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 4px 12px; align-items: baseline;
+  background: var(--surface); border: 0; border-left: 4px solid; border-radius: 6px;
+  padding: 8px 12px; margin-bottom: 6px; color: var(--ink);
+}
+.event:hover { background: var(--blue-wash); }
+.event-time { font-family: var(--mono); font-size: 12.5px; }
+.event-title { font-weight: 700; overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .event { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* ---------- móvil ---------- */
 @media (max-width: 760px) {
   .shell { grid-template-columns: minmax(0, 1fr); }

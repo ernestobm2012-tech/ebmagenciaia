@@ -1,16 +1,19 @@
 // Panel del cliente: solo lectura y solo sus datos (lo garantiza RLS).
 import { db, session } from './app.js';
 import { activityTabs } from './activity.js';
+import { calendarsTab } from './calendars.js';
 import { h, q, table, kpi, fmtNum, monthStart } from './ui.js';
 
 export const clientNav = [
   { href: '#/', label: 'Resumen' },
   { href: '#/actividad', label: 'Actividad' },
+  { href: '#/calendarios', label: 'Calendarios' },
 ];
 
 export const clientRoutes = [
   [/^\/$/, overview],
   [/^\/actividad$/, activityPage],
+  [/^\/calendarios$/, calendarsPage],
 ];
 
 async function overview() {
@@ -61,4 +64,18 @@ async function activityPage() {
     ? Object.fromEntries(session.clients.map((c) => [c.id, c.name]))
     : null;
   return h('div', { class: 'page' }, h('h1', {}, 'Actividad'), activityTabs({ clientNames }));
+}
+
+// Un partner elige de qué cliente ver los calendarios; el resto ve los suyos.
+async function calendarsPage() {
+  const holder = h('div', {});
+  const show = async (id) => holder.replaceChildren(await calendarsTab(id));
+  const picker = session.clients.length > 1
+    ? h('select', { class: 'picker', onchange: (e) => show(e.target.value) },
+      session.clients.map((c) => h('option', { value: c.id, selected: c.is_own }, c.name)))
+    : null;
+  await show(session.client.id);
+  return h('div', { class: 'page' }, h('h1', {}, 'Calendarios'),
+    h('p', { class: 'muted' }, 'Tus agendas. Puedes tener las que necesites y verlas también en Google u Outlook.'),
+    picker, holder);
 }

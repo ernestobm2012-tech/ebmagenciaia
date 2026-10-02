@@ -8,14 +8,15 @@ Dueño: Ernesto. Habla en español (tuteo), quiere respuestas directas y prácti
 - `js/chat.js`: widget de chat embebible. Atributos `data-client`, `data-title`, `data-welcome`, `data-color`, `data-avatar`, `data-position="left"`, `data-bottom`. Llama a la Edge Function `chat`.
 - `demo.html?cliente=<slug>&nombre=<Nombre>`: muestra el agente de cualquier cliente.
 - `admin/`: panel (Supabase Auth) con clientes, agentes, conocimiento, conexiones, a quién avisar, código de instalación, gastos, actividad, costes, usuarios (roles client/partner/admin).
-- `supabase/migrations/0001…0010` y `supabase/functions/` (`chat`, `learn-web`, `sync-voice`, `notify`). Las funciones se despliegan con el conector de Supabase pegando el archivo completo.
+- `supabase/migrations/0001…0011` y `supabase/functions/` (`chat`, `learn-web`, `sync-voice`, `notify`, `calendar`). Las funciones se despliegan con el conector de Supabase pegando el archivo completo.
 
 Ernesto autorizó hacer commits directamente a `main` y publicar en GitHub Pages en sus webs.
 
 ## Servicios
 
 - Supabase, proyecto **ebm-agentes** (`rhjbpkaesobsbnkvioyh`). RLS multi-cliente por `client_id`; funciones auxiliares en el esquema `private`. Secretos (los pone Ernesto, nunca en el chat): `ANTHROPIC_API_KEY`, `ELEVENLABS_API_KEY`, `RESEND_API_KEY`.
-- pg_cron: `sync-voice` y `retry-notifications` cada 5 min.
+- pg_cron: `sync-voice` y `retry-notifications` cada 5 min; `sync-calendars` cada 15 min.
+- Calendarios (`calendars`, `calendar_events`): cada cliente crea los que quiera desde el panel (menú Calendarios o pestaña del cliente). Se sincronizan por iCal: se importa la dirección iCal secreta de Google/Outlook y se exporta con `calendar?feed=<token>`. El chat tiene la herramienta `consultar_agenda`, que solo ve horas ocupadas, nunca los títulos.
 - Chat: Claude Haiku 4.5 por defecto, con un bucle de herramientas (`guardar_contacto`, `pasar_a_humano` con departamento, y conexiones GET dinámicas), un presupuesto mensual por cliente y un calendario de 35 días en el prompt.
 - Agente telefónico en ElevenLabs: "EBM - Asistente telefónico" (`agent_8701m3wg0657eaxbzxk0m0n1s061`), voz Cristina, Haiku 4.5, recogida de nombre/contacto/motivo.
 - Número de Zadarma +34 919 930 664 (3,40 €/mes), que estaba en verificación. Después: centralita, extensión, importar en ElevenLabs por SIP (pbx.zadarma.com, TCP) y desvío a `+34919930664@sip.rtc.elevenlabs.io:5060;transport=tcp`.
@@ -33,7 +34,8 @@ Ernesto autorizó hacer commits directamente a `main` y publicar en GitHub Pages
 - Avatar de Claudia (foto de Beatriz que mandará Ernesto).
 - Dominio propio: Pages, URLs del widget, Site URL de Supabase y dominio de Resend.
 - Envío de avisos desde un buzón que dará Palmo para sus clientes finales, y marca del partner en los correos de `notify`.
-- Permisos de partner en el panel, sincronización de calendario con Google/Outlook, CRM, transferencia de llamadas a una persona, botón para recargar el catálogo y páginas legales.
+- Que el agente reserve citas en el calendario (ahora solo consulta). Sincronización instantánea con Google por OAuth (ahora iCal, con unas horas de retraso hacia Google).
+- Permisos de partner en el panel, CRM, transferencia de llamadas a una persona, botón para recargar el catálogo y páginas legales.
 
 ## Reglas
 

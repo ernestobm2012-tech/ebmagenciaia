@@ -309,3 +309,25 @@ tr.clickable:hover td { background: var(--blue-wash); }
 .push-card .btn { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.3); color: #fff; }
 .push-card .btn.primary { background: var(--blue); border-color: var(--blue); }
 .push-card .btn.link { background: none; border: 0; color: #C9D8EA; text-decoration: underline; }
+
+/* ---------- ordenador: barra lateral con más imagen ---------- */
+@media (min-width: 761px) {
+  .sidebar {
+    background: linear-gradient(180deg, var(--navy) 0%, #0E2038 100%);
+    border-right: 0; color: #fff; padding: 22px 16px;
+  }
+  .brand { background: #fff; border-radius: 12px; padding: 10px 12px; box-shadow: 0 10px 24px -14px rgba(0, 0, 0, .6); }
+  .brand .logo { height: 48px; margin: 0 auto; }
+  .who { color: #8FB4DA; padding: 18px 8px 10px; }
+  .sidebar nav { gap: 4px; }
+  .sidebar nav a { color: #D4E3F3; padding: 10px 12px; border-radius: 10px; }
+  .sidebar nav a:hover { background: rgba(255, 255, 255, .08); color: #fff; }
+  .sidebar nav a.active { background: var(--blue); color: #fff; box-shadow: 0 8px 18px -10px var(--blue); }
+  .sidebar-foot { padding: 12px 8px 0; border-top: 1px solid rgba(255, 255, 255, .12); }
+  .sidebar-foot .muted { color: #8FB4DA; }
+  .sidebar-foot .btn.link { color: #D4E3F3; }
+  .main { background: var(--surface); }
+  .page > h1:first-child { letter-spacing: -.02em; }
+  .kpi { background: var(--bg); box-shadow: 0 10px 28px -22px rgba(18, 41, 74, .5); }
+  .table-wrap, .cal-card, .agenda { background: var(--bg); }
+}

@@ -260,3 +260,5 @@ footer { padding: 40px 0 48px; }
 
 .demo-note { margin-top: 18px; color: var(--ink-soft); font-size: 13.5px; max-width: 62ch; }
 .demo-note a { color: inherit; }
+
+.demo-status a { color: var(--blue-strong); font-weight: 700; }

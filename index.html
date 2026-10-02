@@ -25,6 +25,7 @@
       <nav class="links" aria-label="Secciones">
         <a href="#servicios">Servicios</a>
         <a href="#trabajos">Casos de éxito</a>
+        <a href="#demos">Pruébalo</a>
         <a href="#proceso">Cómo trabajo</a>
         <a href="#sobre-mi">Sobre mí</a>
       </nav>
@@ -150,9 +151,45 @@
       </div>
     </section>
 
-    <section class="block" id="proceso">
+    <section class="block" id="demos">
       <div class="wrap">
-        <div class="kicker"><span class="num">03</span><span class="label">Cómo trabajo</span></div>
+        <div class="kicker"><span class="num">03</span><span class="label">Pruébalo</span></div>
+        <h2>Habla con una recepcionista de IA</h2>
+        <p class="dek">Son negocios de ejemplo, pero la llamada es real: pulsa, permite el micrófono y habla como lo haría un cliente. Pide cita, pregunta precios o cambia una reserva.</p>
+
+        <div class="demos">
+          <article class="demo" data-agent="agent_2101m3yte6h9f6xv8t1vete5mf6f">
+            <div class="demo-head"><span class="avatar">L</span><div><h3>Lucía</h3><p>Clínica dental</p></div></div>
+            <p class="demo-try">Prueba: «Me duele una muela, ¿me podéis ver hoy?»</p>
+            <button class="btn primary demo-call" type="button">Llamar a Lucía</button>
+            <p class="demo-status" aria-live="polite"></p>
+          </article>
+          <article class="demo" data-agent="agent_5101m3ytfp7defkaczw68cfd7a3n">
+            <div class="demo-head"><span class="avatar">N</span><div><h3>Nadia</h3><p>Peluquería y estética</p></div></div>
+            <p class="demo-try">Prueba: «Quiero hacerme mechas el sábado, ¿cuánto sale?»</p>
+            <button class="btn primary demo-call" type="button">Llamar a Nadia</button>
+            <p class="demo-status" aria-live="polite"></p>
+          </article>
+          <article class="demo" data-agent="agent_5101m3yvx1j2fe489r97yg42b1ky">
+            <div class="demo-head"><span class="avatar">M</span><div><h3>Marta</h3><p>Restaurante</p></div></div>
+            <p class="demo-try">Prueba: «Mesa para cuatro el viernes por la noche.»</p>
+            <button class="btn primary demo-call" type="button">Llamar a Marta</button>
+            <p class="demo-status" aria-live="polite"></p>
+          </article>
+          <article class="demo" data-agent="agent_9701m3yvwygvexrvekyp23sf9wkf">
+            <div class="demo-head"><span class="avatar">J</span><div><h3>Javi</h3><p>Taller mecánico</p></div></div>
+            <p class="demo-try">Prueba: «Me pita el coche al frenar, ¿cuándo lo podéis mirar?»</p>
+            <button class="btn primary demo-call" type="button">Llamar a Javi</button>
+            <p class="demo-status" aria-live="polite"></p>
+          </article>
+        </div>
+        <p class="demo-phone" data-phone="" hidden>¿Prefieres por teléfono? Llama a Lucía al <a></a>.</p>
+      </div>
+    </section>
+
+    <section class="block tint" id="proceso">
+      <div class="wrap">
+        <div class="kicker"><span class="num">04</span><span class="label">Cómo trabajo</span></div>
         <h2>Sin sorpresas, paso a paso</h2>
         <img class="wide-photo" src="assets/ernesto-presentando.jpg" alt="Ernesto explicando un proyecto: objetivos, estrategia, acción y resultados" width="1200" height="900" loading="lazy">
 
@@ -165,10 +202,10 @@
       </div>
     </section>
 
-    <section class="block tint" id="sobre-mi">
+    <section class="block" id="sobre-mi">
       <div class="wrap about">
         <div>
-          <div class="kicker"><span class="num">04</span><span class="label">Sobre mí</span></div>
+          <div class="kicker"><span class="num">05</span><span class="label">Sobre mí</span></div>
           <h2>Hola, soy Ernesto 👋</h2>
           <p>EBM soy yo: un desarrollador que construye software para negocios locales. No hay comerciales ni intermediarios. Quien te escucha es quien lo programa.</p>
           <p>Me gusta que las cosas se entiendan. Te explico qué hago y por qué, sin tecnicismos, y te entrego algo que puedes usar desde el primer día.</p>
@@ -178,10 +215,10 @@
       </div>
     </section>
 
-    <section class="block" id="contacto">
+    <section class="block tint" id="contacto">
       <div class="wrap contact">
         <div>
-          <div class="kicker"><span class="num">05</span><span class="label">Contacto</span></div>
+          <div class="kicker"><span class="num">06</span><span class="label">Contacto</span></div>
           <h2>Cuéntame qué necesitas</h2>
           <p class="dek">Escríbeme y te respondo yo, normalmente en uno o dos días laborables.</p>
         </div>
@@ -223,6 +260,7 @@
   </footer>
 
   <script type="module" src="js/site.js"></script>
+  <script type="module" src="js/demos.js"></script>
   <script src="js/chat.js" data-client="ebm" data-title="EBM" data-welcome="¡Hola! Soy el asistente de EBM. ¿En qué puedo ayudarte?" defer></script>
 </body>
 </html>

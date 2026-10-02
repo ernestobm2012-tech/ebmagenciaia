@@ -249,3 +249,11 @@ footer { padding: 40px 0 48px; }
 @media (max-width: 980px) { .demos { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .demos { grid-template-columns: minmax(0, 1fr); } }
 @media (prefers-reduced-motion: reduce) { .demo.live .avatar { animation: none; } }
+
+/* ---------- acceso de clientes en la cabecera ---------- */
+.nav-cta { display: flex; align-items: center; gap: 10px; }
+@media (max-width: 520px) {
+  .brand img { height: 40px; }
+  .nav-cta { gap: 6px; }
+  .nav-cta .btn.small { padding: 9px 12px; font-size: 13px; }
+}

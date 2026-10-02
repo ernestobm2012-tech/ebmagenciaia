@@ -26,8 +26,10 @@ Ernesto autorizó hacer commits directamente a `main` y publicar en GitHub Pages
 ## Clientes
 
 - `ebm`: interno.
-- `gestionmypadel`: página web propia de Ernesto (services `{web}`, sin cuota). Está para ver sus gastos mensuales.
-- `mi-pequeno-rincon`: agente "Claudia", color `#7C9A44`, a la izquierda, con consulta de disponibilidad (`agent_availability` en el proyecto de Supabase de MPR `ztsdkfwnqrlmsirfvoat`). Instalado en mipequenorincon.es (repo `Mi-peque-o-rincon`).
+- `gestionmypadel` y `lienzo-blanco`: páginas web propias de Ernesto (services `{web}`, sin cuota). Están para ver sus gastos.
+- Dominios: gestionmypadel.com en Cloudflare (cuenta de Ernesto; 10,46 $/año; correo por Cloudflare); lienzoblanco.es en IONOS (cuenta de Beatriz; 1 €/mes + IVA); mipequenorincon.es en DonDominio (cuenta de Beatriz; 4,95 €/año + IVA). Gastos generales: Claude Pro (18 €/mes + IVA), Google AI Plus (1,99 €/mes hasta el 25/12/2026 y luego 4,99 €, con IVA), número de Zadarma. Resend, Supabase, GitHub y ElevenLabs en plan gratis; GoHighLevel, gratis por la formación.
+- Los conectores de Gmail y Calendar están en ernestobm2012@gmail.com (antes en mipqrincon@gmail.com).
+- `mi-pequeno-rincon` (agentes + web): agente "Claudia", color `#7C9A44`, a la izquierda, con consulta de disponibilidad (`agent_availability` en el proyecto de Supabase de MPR `ztsdkfwnqrlmsirfvoat`). Instalado en mipequenorincon.es (repo `Mi-peque-o-rincon`).
 - `palmo`: en modo demo. Agente **"Sara"** con avatar de IA, color `#00a3e0`, catálogo de 1.964 productos (`buscar_producto`) y avisos por departamento. Instalado en https://ernestobm2012-tech.github.io/palmo/ (repo `palmo`). Palmo es cliente directo y también partner/revendedor con su propia marca (`parent_client_id`, `brand_*`): sus clientes finales no deben ver EBM en ningún sitio.
 
 ## Pendiente

@@ -21,7 +21,7 @@ const SCOPES = "openid email https://www.googleapis.com/auth/calendar.events";
 const TZ = "Europe/Madrid";
 const PAST_DAYS = 30;
 const FUTURE_DAYS = 365;
-const RETURN_PREFIXES = ["https://ernestobm2012-tech.github.io/", Deno.env.get("PANEL_URL") ?? ""].filter(Boolean);
+const RETURN_PREFIXES = ["https://ernestobm2012-tech.github.io/", "https://ebmagenciaia.es/", Deno.env.get("PANEL_URL") ?? ""].filter(Boolean);
 const MAX_ATTEMPTS = 5;
 
 const CORS = {

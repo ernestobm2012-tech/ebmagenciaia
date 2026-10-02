@@ -1,6 +1,7 @@
 // Sincroniza los calendarios de los clientes con Google/Outlook mediante iCal.
 //   GET  ?feed=<token>       -> el calendario en formato iCal, para suscribirse
-//                               desde Google/Outlook (solo los eventos creados aquí).
+//                               desde Google/Outlook (solo los eventos creados aquí,
+//                               no los que vienen de Google/Outlook).
 //   POST {}                  -> trae los calendarios de fuera que tocan (cron).
 //   POST { calendar_id }     -> trae ese calendario ahora (botón del panel).
 // No recibe datos que se guarden tal cual: solo lee las URLs ya guardadas en
@@ -150,7 +151,7 @@ async function feed(token: string) {
   const to = new Date(Date.now() + FUTURE_DAYS * 86_400_000).toISOString();
   const { data: events } = await db.from("calendar_events")
     .select("id, title, description, location, starts_at, ends_at, all_day, updated_at")
-    .eq("calendar_id", cal.id).neq("source", "import")
+    .eq("calendar_id", cal.id).not("source", "in", "(import,google)")
     .gte("ends_at", from).lte("starts_at", to).order("starts_at").limit(MAX_EVENTS);
 
   const lines = [

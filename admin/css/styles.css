@@ -249,3 +249,7 @@ tr.clickable:hover td { background: var(--blue-wash); }
   .grid2 { grid-template-columns: minmax(0, 1fr); }
   h1 { font-size: 24px; }
 }
+
+.btn.small-primary { padding: 5px 12px; font-size: 13px; background: var(--blue); border-color: var(--blue); color: #fff; }
+.btn.small-primary:hover { background: var(--blue-strong); border-color: var(--blue-strong); }
+.cal-actions { align-items: center; }

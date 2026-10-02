@@ -10,6 +10,31 @@ const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/calendar`;
 const COLORS = ['#1483DC', '#7C9A44', '#E07A1F', '#C24545', '#8E5CC9', '#17A2B8', '#5E6C7A'];
 
 const feedUrl = (cal) => `${FUNCTION_URL}?feed=${cal.feed_token}`;
+
+// Vuelta de Google tras conectar una cuenta: se avisa y se limpia la dirección.
+const GOOGLE_RESULT = {
+  conectado: ['Calendario conectado con Google. Desde ahora se sincroniza al momento.', 'ok'],
+  cancelado: ['Has cancelado la conexión con Google.', 'error'],
+  'sin-permiso': ['Hay que marcar la casilla de permiso del calendario. Vuelve a intentarlo.', 'error'],
+  error: ['No se pudo conectar con Google. Inténtalo otra vez en unos minutos.', 'error'],
+};
+const googleResult = new URLSearchParams(location.search).get('google');
+if (googleResult) {
+  const url = new URL(location.href);
+  url.searchParams.delete('google');
+  history.replaceState(null, '', url);
+  const [text, kind] = GOOGLE_RESULT[googleResult] || GOOGLE_RESULT.error;
+  setTimeout(() => toast(text, kind), 800);
+}
+
+async function callGoogle(action, body) {
+  const { data, error } = await db.functions.invoke(`google-calendar?action=${action}`, { body });
+  if (error) {
+    const detail = await error.context?.json?.().catch(() => null);
+    throw new Error(detail?.error || error.message);
+  }
+  return data;
+}
 const pad = (n) => String(n).padStart(2, '0');
 const dateInput = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const timeInput = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -74,9 +99,11 @@ export async function calendarsTab(clientId) {
   }
 
   function calendarCard(cal) {
-    const status = !cal.ics_import_url
-      ? 'Sin enlazar con Google/Outlook'
-      : cal.sync_error ? `Error al traerlo: ${cal.sync_error}` : `Traído de Google/Outlook ${ago(cal.last_synced_at)}`;
+    const status = cal.google_account
+      ? (cal.sync_error ? `Google: ${cal.sync_error}` : `Conectado con Google (${cal.google_account}) · al momento`)
+      : !cal.ics_import_url
+        ? 'Sin enlazar con Google/Outlook'
+        : cal.sync_error ? `Error al traerlo: ${cal.sync_error}` : `Traído de Google/Outlook ${ago(cal.last_synced_at)}`;
     return h('div', { class: `cal-card${cal.active ? '' : ' off'}` },
       h('label', { class: 'cal-name' },
         h('input', { type: 'checkbox', checked: !hidden.has(cal.id), onchange: (e) => {
@@ -87,9 +114,48 @@ export async function calendarsTab(clientId) {
         h('strong', {}, cal.name), cal.active ? null : h('span', { class: 'muted small' }, ' (apagado)')),
       h('div', { class: `small ${cal.sync_error ? 'error' : 'muted'}` }, status),
       h('div', { class: 'cal-actions' },
-        h('button', { class: 'btn link', type: 'button', onclick: () => linkCalendar(cal) }, 'Enlazar con Google/Outlook'),
-        cal.ics_import_url ? h('button', { class: 'btn link', type: 'button', onclick: () => syncNow(cal) }, 'Traer ahora') : null,
+        cal.google_account ? [
+          h('button', { class: 'btn link', type: 'button', onclick: () => googlePull(cal) }, 'Traer ahora'),
+          h('button', { class: 'btn link danger', type: 'button', onclick: () => googleDisconnect(cal) }, 'Desconectar Google'),
+        ] : [
+          h('button', { class: 'btn small-primary', type: 'button', onclick: () => googleConnect(cal) }, 'Conectar con Google'),
+          h('button', { class: 'btn link', type: 'button', onclick: () => linkCalendar(cal) }, 'Outlook, iPhone o enlace'),
+          cal.ics_import_url ? h('button', { class: 'btn link', type: 'button', onclick: () => syncNow(cal) }, 'Traer ahora') : null,
+        ],
         h('button', { class: 'btn link', type: 'button', onclick: () => editCalendar(cal) }, 'Editar')));
+  }
+
+  // ------------------------------------------------------------ Google directo
+  async function googleConnect(cal) {
+    toast('Abriendo Google…');
+    try {
+      const { url } = await callGoogle('connect', { calendar_id: cal.id, return_url: location.href });
+      location.href = url;
+    } catch (err) {
+      toast(errorText(err), 'error');
+    }
+  }
+
+  async function googlePull(cal) {
+    toast('Trayendo de Google…');
+    try {
+      const { changed } = await callGoogle('pull', { calendar_id: cal.id });
+      toast(changed ? `Listo: ${changed} cambios traídos.` : 'Listo: ya estaba al día.');
+    } catch (err) {
+      toast(errorText(err), 'error');
+    }
+    load();
+  }
+
+  async function googleDisconnect(cal) {
+    if (!confirm(`¿Desconectar "${cal.name}" de Google (${cal.google_account})? Las citas de Google dejarán de verse aquí; las creadas en el panel se quedan.`)) return;
+    try {
+      await callGoogle('disconnect', { calendar_id: cal.id });
+      toast('Desconectado de Google.');
+    } catch (err) {
+      toast(errorText(err), 'error');
+    }
+    load();
   }
 
   function agenda(events, to) {
@@ -120,7 +186,7 @@ export async function calendarsTab(clientId) {
     const en = new Date(e.ends_at);
     const when = e.all_day ? 'Todo el día'
       : s < day ? `hasta ${timeFmt.format(en)}` : `${timeFmt.format(s)} – ${timeFmt.format(en)}`;
-    const origin = { import: 'Google/Outlook', agent: 'Agente' }[e.source];
+    const origin = { import: 'Google/Outlook', google: 'Google', agent: 'Agente' }[e.source];
     return h('button', { class: 'event', type: 'button', style: `border-left-color:${cal?.color || '#999'}`, onclick: () => editEvent(e) },
       h('span', { class: 'event-time' }, when),
       h('span', { class: 'event-title' }, e.title),

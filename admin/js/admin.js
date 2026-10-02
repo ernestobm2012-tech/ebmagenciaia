@@ -125,6 +125,9 @@ async function contactsPage() {
 
 // ---------------------------------------------------------------- clientes
 // partners: clientes que pueden hacer de partner (todos menos el propio).
+const SERVICES_OFFERED = [['agentes', 'Agentes de IA'], ['web', 'Página web'], ['software', 'Software']];
+const servicesText = (r) => (r.services || []).map((s) => Object.fromEntries(SERVICES_OFFERED)[s] || s).join(' · ');
+
 function clientForm(client, onSaved, partners = []) {
   const c = client || {};
   const slug = h('input', { name: 'slug', required: true, pattern: '[a-z0-9-]+', value: c.slug || '' });
@@ -141,6 +144,10 @@ function clientForm(client, onSaved, partners = []) {
         [['demo', 'Demo'], ['active', 'Activo'], ['paused', 'Pausado']].map(([v, l]) =>
           h('option', { value: v, selected: (c.status || 'demo') === v }, l)))),
       field('Plan', h('input', { name: 'plan', value: c.plan || '' })),
+      h('div', { class: 'field' }, h('span', {}, 'Qué le hacemos'),
+        h('div', { class: 'checks' }, SERVICES_OFFERED.map(([v, l]) =>
+          h('label', { class: 'check' }, h('input', { type: 'checkbox', name: `service_${v}`, checked: (c.services || ['agentes']).includes(v) }), ` ${l}`))),
+        h('small', {}, 'Las pestañas del cliente se adaptan a esto.')),
       field('Cuota mensual (€)', h('input', { name: 'monthly_fee_eur', type: 'number', min: 0, step: '0.01', value: c.monthly_fee_eur ?? 0 })),
       field('Conversaciones incluidas', h('input', { name: 'included_conversations', type: 'number', min: 0, value: c.included_conversations ?? 0 })),
       field('Tope mensual de IA ($)', h('input', { name: 'ai_budget_usd', type: 'number', min: 0, step: '0.01', value: c.ai_budget_usd ?? 20 }),
@@ -166,6 +173,9 @@ function clientForm(client, onSaved, partners = []) {
     e.preventDefault();
     try {
       const values = formData(form);
+      values.services = SERVICES_OFFERED.map(([v]) => v).filter((v) => values[`service_${v}`]);
+      for (const [v] of SERVICES_OFFERED) delete values[`service_${v}`];
+      if (!values.services.length) return (note.textContent = 'Marca al menos un servicio.');
       const saved = client
         ? await q(db.from('clients').update(values).eq('id', client.id).select().single())
         : await q(db.from('clients').insert(values).select().single());
@@ -192,6 +202,7 @@ async function clientsPage() {
     table([
       { label: 'Cliente', cell: (r) => r.name },
       { label: 'Estado', cell: (r) => badge(r.status) },
+      { label: 'Servicios', cell: servicesText },
       { label: 'A través de', cell: (r) => nameOf[r.parent_client_id] || '—' },
       { label: 'Plan', cell: (r) => r.plan || '—' },
       { label: 'Cuota', num: true, cell: (r) => fmtEur(r.monthly_fee_eur) },
@@ -205,6 +216,7 @@ async function clientPage(id) {
     q(db.from('clients').select('id, name').order('name')),
   ]);
   if (!client) return page('Cliente no encontrado', h('a', { href: '#/clientes' }, 'Volver a clientes'));
+  const hasAgents = (client.services || ['agentes']).includes('agentes');
 
   const setStatus = async (status) => {
     try {
@@ -219,20 +231,23 @@ async function clientPage(id) {
   return h('div', { class: 'page' },
     h('a', { href: '#/clientes', class: 'back' }, '← Clientes'),
     h('div', { class: 'title-row' }, h('h1', {}, client.name), badge(client.status),
+      h('span', { class: 'muted small' }, servicesText(client)),
       h('div', { class: 'spacer' }),
       client.status === 'paused'
         ? h('button', { class: 'btn', type: 'button', onclick: () => setStatus('active') }, 'Reactivar')
         : h('button', { class: 'btn', type: 'button', onclick: () => setStatus('paused') }, 'Pausar')),
     tabs([
       { id: 'data', label: 'Datos', render: async () => clientForm(client, refresh, partners) },
-      { id: 'agents', label: 'Agentes', render: () => agentsTab(id) },
-      { id: 'knowledge', label: 'Conocimiento', render: () => knowledgeTab(id) },
-      { id: 'connections', label: 'Conexiones (ERP/API)', render: () => connectionsTab(id) },
-      { id: 'contacts', label: 'A quién avisar', render: () => contactsTab(id) },
-      { id: 'calendars', label: 'Calendarios', render: () => calendarsTab(id) },
-      { id: 'install', label: 'Instalar en su web', render: () => installTab(client) },
+      ...(hasAgents ? [
+        { id: 'agents', label: 'Agentes', render: () => agentsTab(id) },
+        { id: 'knowledge', label: 'Conocimiento', render: () => knowledgeTab(id) },
+        { id: 'connections', label: 'Conexiones (ERP/API)', render: () => connectionsTab(id) },
+        { id: 'contacts', label: 'A quién avisar', render: () => contactsTab(id) },
+        { id: 'calendars', label: 'Calendarios', render: () => calendarsTab(id) },
+        { id: 'install', label: 'Instalar en su web', render: () => installTab(client) },
+      ] : []),
       { id: 'expenses', label: 'Gastos', render: () => expensesTab(id) },
-      { id: 'activity', label: 'Actividad', render: async () => activityTabs({ clientId: id, isAdmin: true }) },
+      ...(hasAgents ? [{ id: 'activity', label: 'Actividad', render: async () => activityTabs({ clientId: id, isAdmin: true }) }] : []),
     ]));
 }
 

@@ -253,3 +253,4 @@ tr.clickable:hover td { background: var(--blue-wash); }
 .btn.small-primary { padding: 5px 12px; font-size: 13px; background: var(--blue); border-color: var(--blue); color: #fff; }
 .btn.small-primary:hover { background: var(--blue-strong); border-color: var(--blue-strong); }
 .cal-actions { align-items: center; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 6px 0; }

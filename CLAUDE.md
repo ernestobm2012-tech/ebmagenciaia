@@ -7,8 +7,8 @@ Dueño: Ernesto. Habla en español (tuteo), quiere respuestas directas y prácti
 - Web pública de la agencia en GitHub Pages: https://ernestobm2012-tech.github.io/ebmagenciaia/ (HTML/CSS/JS sin build, supabase-js por CDN).
 - `js/chat.js`: widget de chat embebible. Atributos `data-client`, `data-title`, `data-welcome`, `data-color`, `data-avatar`, `data-position="left"`, `data-bottom`. Llama a la Edge Function `chat`.
 - `demo.html?cliente=<slug>&nombre=<Nombre>`: muestra el agente de cualquier cliente.
-- `admin/`: panel (Supabase Auth) con clientes, agentes, conocimiento, conexiones, a quién avisar, código de instalación, gastos, actividad, costes, usuarios (roles client/partner/admin).
-- `supabase/migrations/0001…0012` y `supabase/functions/` (`chat`, `learn-web`, `sync-voice`, `notify`, `calendar`, `google-calendar`). Las funciones se despliegan con el conector de Supabase pegando el archivo completo.
+- `admin/`: panel (Supabase Auth) con clientes (cada uno con `services`: agentes, web y/o software; las pestañas de agente solo salen si tiene agentes), agentes, conocimiento, conexiones, a quién avisar, código de instalación, gastos, actividad, costes, usuarios (roles client/partner/admin).
+- `supabase/migrations/0001…0013` y `supabase/functions/` (`chat`, `learn-web`, `sync-voice`, `notify`, `calendar`, `google-calendar`). Las funciones se despliegan con el conector de Supabase pegando el archivo completo.
 
 Ernesto autorizó hacer commits directamente a `main` y publicar en GitHub Pages en sus webs.
 
@@ -26,6 +26,7 @@ Ernesto autorizó hacer commits directamente a `main` y publicar en GitHub Pages
 ## Clientes
 
 - `ebm`: interno.
+- `gestionmypadel`: página web propia de Ernesto (services `{web}`, sin cuota). Está para ver sus gastos mensuales.
 - `mi-pequeno-rincon`: agente "Claudia", color `#7C9A44`, a la izquierda, con consulta de disponibilidad (`agent_availability` en el proyecto de Supabase de MPR `ztsdkfwnqrlmsirfvoat`). Instalado en mipequenorincon.es (repo `Mi-peque-o-rincon`).
 - `palmo`: en modo demo. Agente **"Sara"** con avatar de IA, color `#00a3e0`, catálogo de 1.964 productos (`buscar_producto`) y avisos por departamento. Instalado en https://ernestobm2012-tech.github.io/palmo/ (repo `palmo`). Palmo es cliente directo y también partner/revendedor con su propia marca (`parent_client_id`, `brand_*`): sus clientes finales no deben ver EBM en ningún sitio.
 

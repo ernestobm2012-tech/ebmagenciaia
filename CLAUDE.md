@@ -11,7 +11,7 @@ Dueño: Ernesto. Habla en español (tuteo), quiere respuestas directas y prácti
 - `admin/`: panel (Supabase Auth) con clientes (cada uno con `services`: agentes, web y/o software; las pestañas de agente solo salen si tiene agentes), agentes, conocimiento, conexiones, a quién avisar, código de instalación, gastos, actividad, costes, usuarios (roles client/partner/admin).
 - `supabase/migrations/0001…0013` y `supabase/functions/` (`chat`, `learn-web`, `sync-voice`, `notify`, `calendar`, `google-calendar`). Las funciones se despliegan con el conector de Supabase pegando el archivo completo.
 
-Ernesto autorizó hacer commits directamente a `main` y publicar en GitHub Pages en sus webs.
+Ernesto autorizó hacer commits directamente a `main` y publicar en GitHub Pages en sus webs, y fusionar él mismo los pull requests de sus repositorios (Mi-peque-o-rincon, ebmagenciaia, palmo) sin pedir permiso cada vez.
 
 ## Servicios
 
@@ -36,14 +36,19 @@ Ernesto autorizó hacer commits directamente a `main` y publicar en GitHub Pages
 
 ## Pendiente
 
-- Activar Zadarma y conectar el número con ElevenLabs para hacer una prueba de llamada.
+- Número de Twilio para demos: el paquete regulatorio está aprobado pero falta comprar el número (Ernesto). Luego importarlo en ElevenLabs (Ernesto, con sus credenciales), asignarlo a la Clínica Lucía y pasarme solo el número para ponerlo en `.demo-phone[data-phone]` de la web.
+- Zadarma +34 919 930 664 ya funciona con el agente de teléfono de Palmo (trunk SIP importado como «Palmo»; se puede reasignar). Repetir la llamada de prueba tras los últimos ajustes de Sara y comprobar el saludo y la voz entrecortada.
+- Calendarios: crear el cliente OAuth en Google Cloud y poner `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET` en Supabase (Ernesto, desde el ordenador); después, conectar la Agenda de Ernesto y probar. Verificar la app en Google antes de dársela a clientes (ya hay dominio; falta página de privacidad). Actualizar la guía PPTX con «Conectar con Google».
+- Dominio ebmagenciaia.es: Email Routing «Agregar registros faltantes», verificar el dominio en Resend (luego `NOTIFY_FROM` = avisos@ebmagenciaia.es) y añadirlo en Supabase Auth → URL Configuration.
+- Google Search Console: propiedad verificada; falta enviar `sitemap.xml` y pedir la indexación de la portada.
+- Palmo puede no seguir como cliente: confirmar con ellos que sus nombres y correos pueden salir en el agente (en especial vperez@).
+- Conocimiento de fabricantes (Xerox, Lexmark, Kyocera…) para Sara: propuesto, sin hacer.
+- Voces de pago (Diego, Antea): requieren plan Creator de ElevenLabs. Mientras, restaurante con Cristina.
 - Avatar de Claudia (foto de Beatriz que mandará Ernesto).
-- Dominio ebmagenciaia.es: la web ya carga ahí. Falta que Ernesto haga Email Routing «Agregar registros faltantes» en Cloudflare, verifique el dominio en Resend y añada el dominio en Supabase Auth → URL Configuration; después, cambiar el remitente (`NOTIFY_FROM` = avisos@ebmagenciaia.es) y las URLs del widget en las webs de clientes.
-- Envío de avisos desde un buzón que dará Palmo para sus clientes finales, y marca del partner en los correos de `notify`.
-- Crear el cliente OAuth en Google Cloud y poner los secretos (Ernesto, desde casa); después, probar a conectar la Agenda de Ernesto. Verificar la app en Google antes de dársela a clientes (requiere dominio y página de privacidad).
-- Que el agente reserve citas en el calendario (ahora solo consulta). Conexión directa con Outlook (Microsoft Graph).
-- El calendario "[prueba-interna] Festivos" (EBM) está apagado: falta borrarlo.
-- Permisos de partner en el panel, CRM, transferencia de llamadas a una persona, botón para recargar el catálogo y páginas legales.
+- Envío de avisos desde un buzón que dará Palmo y marca del partner en los correos de `notify`.
+- Que el agente reserve citas en el calendario (ahora solo consulta). Conexión directa con Outlook.
+- Limpieza: calendario «[prueba-interna] Festivos» (EBM) y conversaciones de prueba por borrar.
+- Panel de escritorio con más imagen (el móvil ya está rehecho), páginas legales, permisos de partner, CRM, transferencia de llamadas y botón para recargar el catálogo.
 
 ## Reglas
 

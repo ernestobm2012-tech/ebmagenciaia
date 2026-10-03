@@ -21,18 +21,25 @@
   const PRIVACY = /^(https:\/\/|\/|[\w.-]+\.html$)/.test(script.dataset.privacy || '') ? script.dataset.privacy : null;
   const KEY = `ebm-chat-${CLIENT}`;
 
-  // El almacenamiento puede fallar (modo privado, cookies bloqueadas): el chat funciona igual.
+  // El almacenamiento puede fallar (modo privado, cookies bloqueadas, navegador interno de
+  // Instagram o Facebook): ni siquiera se puede nombrar `localStorage` sin que salte un error,
+  // así que se pide dentro del try y el chat funciona igual sin él.
+  const area = (name) => { try { return window[name]; } catch { return null; } };
   const store = {
-    get(area, key) { try { return JSON.parse(area.getItem(key)); } catch { return null; } },
-    set(area, key, value) { try { area.setItem(key, JSON.stringify(value)); } catch { /* sin almacenamiento */ } },
+    get(name, key) { try { return JSON.parse(area(name).getItem(key)); } catch { return null; } },
+    set(name, key, value) { try { area(name).setItem(key, JSON.stringify(value)); } catch { /* sin almacenamiento */ } },
   };
-  let visitorId = store.get(localStorage, `${KEY}-visitor`);
+  const newId = () => {
+    try { if (crypto.randomUUID) return crypto.randomUUID(); } catch { /* navegador antiguo */ }
+    return 'v-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+  };
+  let visitorId = store.get('localStorage', `${KEY}-visitor`);
   if (!visitorId) {
-    visitorId = crypto.randomUUID();
-    store.set(localStorage, `${KEY}-visitor`, visitorId);
+    visitorId = newId();
+    store.set('localStorage', `${KEY}-visitor`, visitorId);
   }
-  const state = store.get(sessionStorage, KEY) || { conversationId: null, messages: [] };
-  const save = () => store.set(sessionStorage, KEY, state);
+  const state = store.get('sessionStorage', KEY) || { conversationId: null, messages: [] };
+  const save = () => store.set('sessionStorage', KEY, state);
 
   const style = document.createElement('style');
   style.textContent = `

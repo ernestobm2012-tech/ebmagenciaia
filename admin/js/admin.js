@@ -521,10 +521,50 @@ async function costsPage() {
 }
 
 // ---------------------------------------------------------------- usuarios
+const ROLES = {
+  client: {
+    label: 'Cliente',
+    help: 'Ve solo el negocio que le asignes: resumen, actividad (conversaciones, contactos y avisos) y sus calendarios, que puede crear y editar. No puede cambiar agentes, conocimiento ni costes.',
+  },
+  partner: {
+    label: 'Partner',
+    help: 'Lo mismo que un Cliente, y además ve todos los negocios que cuelgan del suyo (sus clientes finales), con sus cifras. Usa la marca del partner, no la de EBM.',
+  },
+  admin: {
+    label: 'Admin',
+    help: 'Acceso total: clientes, agentes, costes, gastos y usuarios. Solo para el equipo de EBM.',
+  },
+};
+
+async function callUsers(action, body = {}) {
+  const { data, error } = await db.functions.invoke(`users?action=${action}`, { body });
+  if (error) {
+    const detail = await error.context?.json?.().catch(() => null);
+    throw new Error(detail?.error || error.message);
+  }
+  return data;
+}
+
+// Ventana con el enlace de acceso para copiárselo a la persona (WhatsApp, correo…).
+function linkModal(title, result, email) {
+  const input = h('input', { type: 'text', readonly: true, value: result.link, onfocus: (e) => e.target.select() });
+  const close = modal(title, h('div', { class: 'form' },
+    h('p', {}, result.emailed
+      ? `Le hemos enviado el enlace a ${email}. Si no le llega, mira en spam o pásaselo tú.`
+      : 'No se ha enviado ningún correo: pásale tú este enlace.'),
+    field('Enlace de acceso', input, 'Sirve una sola vez y caduca. Con él la persona elige su contraseña y entra.'),
+    h('div', { class: 'actions' },
+      h('button', { class: 'btn primary', type: 'button', onclick: async () => {
+        try { await navigator.clipboard.writeText(result.link); toast('Enlace copiado.'); } catch { input.select(); toast('Cópialo a mano: ya está seleccionado.', 'error'); }
+      } }, 'Copiar enlace'),
+      h('button', { class: 'btn', type: 'button', onclick: () => { close(); refresh(); } }, 'Cerrar'))));
+}
+
 async function usersPage() {
-  const [profiles, clients] = await Promise.all([
+  const [profiles, clients, access] = await Promise.all([
     q(db.from('profiles').select('*').order('created_at')),
     q(db.from('clients').select('id, name').order('name')),
+    callUsers('list').then((r) => r.users).catch(() => ({})),
   ]);
 
   const save = async (profile, changes) => {
@@ -538,20 +578,94 @@ async function usersPage() {
     }
   };
 
+  const newLink = async (profile) => {
+    try {
+      const result = await callUsers('link', { user_id: profile.id, send_email: false });
+      linkModal('Nuevo enlace de acceso', result, profile.email);
+    } catch (err) { toast(errorText(err), 'error'); }
+  };
+
+  const toggle = async (profile, active) => {
+    if (!active && !confirm(`¿Quitarle el acceso a ${profile.email}? Podrás volver a activarlo.`)) return;
+    try {
+      await callUsers('set_active', { user_id: profile.id, active });
+      toast(active ? 'Acceso activado.' : 'Acceso desactivado.');
+      refresh();
+    } catch (err) { toast(errorText(err), 'error'); }
+  };
+
+  function addUser() {
+    const role = h('select', { name: 'role' }, Object.entries(ROLES).map(([v, r]) => h('option', { value: v }, r.label)));
+    const business = h('select', { name: 'client_id' },
+      h('option', { value: '' }, '— Elige un negocio —'),
+      clients.map((c) => h('option', { value: c.id }, c.name)));
+    const businessField = field('Negocio que va a ver', business);
+    const help = h('p', { class: 'muted' }, ROLES.client.help);
+    role.addEventListener('change', () => {
+      help.textContent = ROLES[role.value].help;
+      businessField.hidden = role.value === 'admin';
+    });
+
+    const form = h('form', { class: 'form', onsubmit: async (e) => {
+      e.preventDefault();
+      const d = formData(form);
+      const submit = form.querySelector('button[type=submit]');
+      submit.disabled = true;
+      try {
+        const result = await callUsers('create', {
+          email: d.email, full_name: d.full_name, role: d.role, client_id: d.role === 'admin' ? null : d.client_id, send_email: d.send_email,
+        });
+        close();
+        linkModal('Usuario creado', result, d.email);
+      } catch (err) {
+        toast(errorText(err), 'error');
+        submit.disabled = false;
+      }
+    } },
+      field('Correo', h('input', { type: 'email', name: 'email', required: true, autocomplete: 'off' })),
+      field('Nombre (opcional)', h('input', { type: 'text', name: 'full_name', maxlength: 120 })),
+      field('Rol', role), help, businessField,
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'send_email', checked: true }), 'Enviarle el enlace por correo'),
+      h('div', { class: 'actions' },
+        h('button', { class: 'btn primary', type: 'submit' }, 'Crear usuario'),
+        h('button', { class: 'btn', type: 'button', onclick: () => close() }, 'Cancelar')));
+    const close = modal('Añadir usuario', form);
+  }
+
+  const stateCell = (r) => {
+    const a = access[r.id];
+    if (!a) return '—';
+    if (a.disabled) return h('span', { class: 'badge paused' }, 'Desactivado');
+    if (!a.confirmed) return h('span', { class: 'badge pending' }, 'Invitado');
+    return h('span', {}, h('span', { class: 'badge active' }, 'Activo'), ' ',
+      h('small', { class: 'muted' }, a.last_sign_in_at ? `visto ${fmtDate(a.last_sign_in_at)}` : ''));
+  };
+
   return page('Usuarios',
-    h('p', { class: 'muted' }, 'Los usuarios se crean en Supabase (Authentication › Users › Add user). Aquí decides qué ve cada uno. Un usuario nuevo no ve nada hasta que le asignas un cliente. El rol Partner ve su cliente y todos los que se facturan a través de él.'),
+    h('div', { class: 'toolbar' }, h('button', { class: 'btn primary', type: 'button', onclick: addUser }, 'Añadir usuario')),
+    h('p', { class: 'muted' }, 'Al crear un usuario le llega un enlace para elegir su contraseña. Hasta que le asignas un negocio no ve nada (salvo los administradores).'),
+    h('div', { class: 'roles' }, Object.values(ROLES).map((r) => h('div', { class: 'role-card' }, h('strong', {}, r.label), h('p', { class: 'muted' }, r.help)))),
     table([
-      { label: 'Correo', cell: (r) => r.email },
+      { label: 'Correo', cell: (r) => h('span', {}, r.email, r.full_name ? h('small', { class: 'muted' }, ` · ${r.full_name}`) : null) },
       { label: 'Rol', cell: (r) => {
         const me = r.id === session.user.id;
         return h('select', {
           disabled: me, title: me ? 'No puedes cambiar tu propio rol.' : null,
           onchange: (e) => save(r, { role: e.target.value, ...(e.target.value === 'admin' ? { client_id: null } : {}) }),
-        }, [['client', 'Cliente'], ['partner', 'Partner'], ['admin', 'Admin']].map(([v, l]) => h('option', { value: v, selected: r.role === v }, l)));
+        }, Object.entries(ROLES).map(([v, x]) => h('option', { value: v, selected: r.role === v }, x.label)));
       } },
-      { label: 'Cliente que ve', cell: (r) => h('select', { onchange: (e) => save(r, { client_id: e.target.value || null }) },
+      { label: 'Negocio que ve', cell: (r) => h('select', { onchange: (e) => save(r, { client_id: e.target.value || null }) },
         h('option', { value: '' }, '— Ninguno —'),
         clients.map((c) => h('option', { value: c.id, selected: r.client_id === c.id }, c.name))) },
-      { label: 'Alta', cell: (r) => fmtDate(r.created_at) },
+      { label: 'Acceso', cell: stateCell },
+      { label: '', cell: (r) => {
+        if (r.id === session.user.id) return '';
+        const a = access[r.id];
+        return h('span', { class: 'actions' },
+          h('button', { class: 'btn link', type: 'button', onclick: () => newLink(r) }, 'Enlace de acceso'),
+          a?.disabled
+            ? h('button', { class: 'btn link', type: 'button', onclick: () => toggle(r, true) }, 'Activar')
+            : h('button', { class: 'btn link danger', type: 'button', onclick: () => toggle(r, false) }, 'Desactivar'));
+      } },
     ], profiles));
 }

@@ -331,3 +331,10 @@ tr.clickable:hover td { background: var(--blue-wash); }
   .kpi { background: var(--bg); box-shadow: 0 10px 28px -22px rgba(18, 41, 74, .5); }
   .table-wrap, .cal-card, .agenda { background: var(--bg); }
 }
+
+/* ---------- usuarios ---------- */
+.roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 14px 0 22px; }
+.role-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; background: var(--bg); }
+.role-card p { margin: 4px 0 0; font-size: 13.5px; }
+input[readonly] { background: var(--surface); font-family: var(--mono); font-size: 12.5px; }
+td .actions { flex-wrap: wrap; gap: 4px 14px; }

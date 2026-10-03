@@ -60,3 +60,6 @@ Ernesto autorizó hacer commits directamente a `main` y publicar en GitHub Pages
 - Nunca pedir ni pegar claves o contraseñas en el chat; Ernesto las guarda él mismo en los secretos de Supabase.
 - No pagar, no crear cuentas, no subir documentos de identidad.
 - Los datos de prueba se marcan como `[prueba-interna]` y se borran al terminar. Al personal de Palmo no le llegan correos de prueba.
+
+## Web oculta a Google hasta el alta de autónomo (decidido el 03/10/2026)
+Ernesto aún no es autónomo (lo será al llegar su primer cliente, previsto en 1 o 2 semanas). Mientras tanto la web NO debe salir en Google: `index.html`, `aviso-legal.html`, `privacidad.html` y `cookies.html` llevan `<meta name="robots" content="noindex, nofollow">` (comentario «QUITAR al darse de alta») y `robots.txt` tiene la línea del sitemap comentada. No enviar el sitemap ni pedir la indexación en Search Console. AL DARSE DE ALTA: quitar esas cuatro etiquetas, descomentar la línea del sitemap, enviar `sitemap.xml` y pedir la indexación de la portada, y pedir la verificación de negocio de Meta. La web sigue accesible por enlace (las demos y el panel funcionan igual).

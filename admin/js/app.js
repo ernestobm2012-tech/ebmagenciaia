@@ -4,6 +4,7 @@ import { h, q, toast, errorText, field } from './ui.js';
 import { adminRoutes, adminNav } from './admin.js';
 import { clientRoutes, clientNav } from './client.js';
 import { pushCard, registerWorker } from './push.js';
+import { credentialsCard } from './credentials.js';
 
 const root = document.getElementById('root');
 registerWorker();
@@ -168,7 +169,10 @@ async function route() {
       // Si el usuario ya navegó a otra ruta mientras cargaba, no pisar.
       if ((location.hash.replace(/^#/, '') || '/') === path) {
         // En el Resumen, justo debajo del título: instalar la app y activar los avisos.
-        if (path === '/' && node.children.length >= 2) node.children[1].after(pushCard(db));
+        if (path === '/' && node.children.length >= 2) {
+          node.children[1].after(pushCard(db));
+          if (isAdmin) node.children[1].after(credentialsCard(db));
+        }
         outlet.replaceChildren(node);
       }
     } catch (err) {

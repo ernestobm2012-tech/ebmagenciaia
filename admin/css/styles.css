@@ -338,3 +338,19 @@ tr.clickable:hover td { background: var(--blue-wash); }
 .role-card p { margin: 4px 0 0; font-size: 13.5px; }
 input[readonly] { background: var(--surface); font-family: var(--mono); font-size: 12.5px; }
 td .actions { flex-wrap: wrap; gap: 4px 14px; }
+
+/* ---------- caducidad de claves (Resumen, administración) ---------- */
+.cred-card { margin: 12px 0 4px; }
+.cred-card:empty { display: none; }
+.cred-card h2 { margin: 0 0 8px; font-size: 16px; }
+.cred-row {
+  display: flex; flex-wrap: wrap; gap: 10px 16px; justify-content: space-between; align-items: center;
+  padding: 12px 14px; border-radius: 12px; border: 1px solid #E1E7EE; border-left: 6px solid #2E9E5B; background: #fff;
+}
+.cred-row.pronto { border-left-color: #E0A100; background: #FFF9E8; }
+.cred-row.urgente { border-left-color: #D64545; background: #FDEEEE; }
+.cred-row.sin-fecha { border-left-color: #8A97A6; }
+.cred-text { font-size: 14px; margin-top: 2px; }
+.cred-note { font-size: 12.5px; color: #5E6C7A; margin-top: 4px; max-width: 520px; }
+.cred-edit { display: flex; gap: 8px; align-items: center; }
+.cred-edit input { padding: 8px; border: 1px solid #C9D3DE; border-radius: 8px; font: inherit; }

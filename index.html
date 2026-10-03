@@ -191,36 +191,54 @@
     <section class="block" id="demos">
       <div class="wrap">
         <div class="kicker"><span class="num">03</span><span class="label">Pruébalo</span></div>
-        <h2>Habla con una recepcionista de IA</h2>
-        <p class="dek">Son negocios de ejemplo, pero la llamada es real: pulsa, permite el micrófono y habla como lo haría un cliente. Pide cita, pregunta precios o cambia una reserva.</p>
+        <h2>Habla o escribe a una recepcionista de IA</h2>
+        <p class="dek">Son negocios de ejemplo, pero la conversación es real: llama y habla como lo haría un cliente, o prefiere escribir si no puedes hablar ahora. Pide cita, pregunta precios o cambia una reserva.</p>
 
         <div class="demos">
-          <article class="demo" data-agent="agent_2101m3yte6h9f6xv8t1vete5mf6f">
+          <article class="demo" data-agent="agent_2101m3yte6h9f6xv8t1vete5mf6f" data-text-agent="agent_3701m40awp7ve56vd8282v8annz2">
             <div class="demo-head"><span class="avatar">L</span><div><h3>Lucía</h3><p>Clínica dental</p></div></div>
             <p class="demo-try">Prueba: «Me duele una muela, ¿me podéis ver hoy?»</p>
             <button class="btn primary demo-call" type="button">Llamar a Lucía</button>
+            <button class="btn demo-write" type="button">Escribir a Lucía</button>
             <p class="demo-status" aria-live="polite"></p>
           </article>
-          <article class="demo" data-agent="agent_5101m3ytfp7defkaczw68cfd7a3n">
+          <article class="demo" data-agent="agent_5101m3ytfp7defkaczw68cfd7a3n" data-text-agent="agent_4001m40awq3nf5qtjd9ek5mehxs0">
             <div class="demo-head"><span class="avatar">N</span><div><h3>Nadia</h3><p>Peluquería y estética</p></div></div>
             <p class="demo-try">Prueba: «Quiero hacerme mechas el sábado, ¿cuánto sale?»</p>
             <button class="btn primary demo-call" type="button">Llamar a Nadia</button>
+            <button class="btn demo-write" type="button">Escribir a Nadia</button>
             <p class="demo-status" aria-live="polite"></p>
           </article>
-          <article class="demo" data-agent="agent_5101m3yvx1j2fe489r97yg42b1ky">
+          <article class="demo" data-agent="agent_5101m3yvx1j2fe489r97yg42b1ky" data-text-agent="agent_4601m40awr0gezr9pj4m0vkfat27">
             <div class="demo-head"><span class="avatar">M</span><div><h3>Marta</h3><p>Restaurante</p></div></div>
             <p class="demo-try">Prueba: «Mesa para cuatro el viernes por la noche.»</p>
             <button class="btn primary demo-call" type="button">Llamar a Marta</button>
+            <button class="btn demo-write" type="button">Escribir a Marta</button>
             <p class="demo-status" aria-live="polite"></p>
           </article>
-          <article class="demo" data-agent="agent_9701m3yvwygvexrvekyp23sf9wkf">
+          <article class="demo" data-agent="agent_9701m3yvwygvexrvekyp23sf9wkf" data-text-agent="agent_3201m40awsbyef59dhptnhvedc67">
             <div class="demo-head"><span class="avatar">J</span><div><h3>Javi</h3><p>Taller mecánico</p></div></div>
             <p class="demo-try">Prueba: «Me pita el coche al frenar, ¿cuándo lo podéis mirar?»</p>
             <button class="btn primary demo-call" type="button">Llamar a Javi</button>
+            <button class="btn demo-write" type="button">Escribir a Javi</button>
             <p class="demo-status" aria-live="polite"></p>
           </article>
         </div>
-        <p class="demo-note">Cada demo dura 40 segundos y puedes hacer 2 al día. Las llamadas se graban y se transcriben para poder mejorar el servicio. Al llamar aceptas la <a href="privacidad.html" target="_blank" rel="noopener">política de privacidad</a>.</p>
+
+        <dialog class="demo-chat" id="demo-chat" aria-labelledby="demo-chat-title">
+          <header>
+            <span class="avatar"></span>
+            <div><h3 id="demo-chat-title"></h3><p></p></div>
+            <button class="demo-chat-close" type="button" aria-label="Cerrar el chat">×</button>
+          </header>
+          <ol class="demo-msgs" aria-live="polite"></ol>
+          <form class="demo-form" autocomplete="off">
+            <input type="text" name="msg" maxlength="300" placeholder="Escribe tu mensaje…" aria-label="Tu mensaje" required>
+            <button class="btn primary" type="submit">Enviar</button>
+          </form>
+          <p class="demo-status" aria-live="polite"></p>
+        </dialog>
+        <p class="demo-note">Por voz, cada demo dura 40 segundos y puedes hacer 2 al día; por escrito, hasta 8 mensajes y 3 chats al día. Las conversaciones se guardan y se transcriben para poder mejorar el servicio. Al usarlas aceptas la <a href="privacidad.html" target="_blank" rel="noopener">política de privacidad</a>.</p>
         <p class="demo-phone" data-phone="" hidden>¿Prefieres por teléfono? Llama a Lucía al <a></a>.</p>
       </div>
     </section>

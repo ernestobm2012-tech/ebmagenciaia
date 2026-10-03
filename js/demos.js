@@ -1,12 +1,14 @@
-// Zona de demos: llamadas de voz desde el navegador a los agentes de ElevenLabs.
-// Antes de cada llamada se pide permiso a la función demo-token, que limita a
-// 2 demos por persona y día, 20 al día en total y 40 segundos cada una.
+// Zona de demos: llamadas de voz y chats de texto con los agentes de ElevenLabs.
+// Antes de cada una se pide permiso a la función demo-token, que limita la voz a
+// 2 demos por persona y día, 20 al día en total y 40 segundos cada una, y el texto a
+// 3 chats por persona y día, 30 al día en total y 8 mensajes cada uno.
 import { SUPABASE_URL, SUPABASE_KEY } from '../admin/js/config.js';
 
 const SDK = 'https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.26.0/+esm';
 const GATE = `${SUPABASE_URL}/functions/v1/demo-token`;
 const WARN_AT = 8;      // segundos antes del final en que el agente se despide
 const HIDDEN_MAX = 8;   // segundos con la pestaña oculta antes de colgar
+const MAX_MESSAGES = 8; // mensajes del cliente en un chat de texto
 
 let active = null; // { card, conversation, stop }
 
@@ -135,4 +137,130 @@ for (const card of document.querySelectorAll('.demo[data-agent]')) {
         : 'No se ha podido iniciar la demo. Inténtalo otra vez en un rato.');
     }
   });
+}
+
+
+// ---------------------------------------------------------------- chat de texto
+const chat = document.getElementById('demo-chat');
+if (chat) {
+  const msgs = chat.querySelector('.demo-msgs');
+  const form = chat.querySelector('.demo-form');
+  const input = form.querySelector('input');
+  const send = form.querySelector('button');
+  const status = chat.querySelector('.demo-status');
+  let session = null; // { conversation, sent, closed }
+
+  const setStatus = (text, contact = false) => {
+    status.replaceChildren(text);
+    if (contact) {
+      const a = document.createElement('a');
+      a.href = '#contacto';
+      a.textContent = ' Déjanos tu contacto';
+      a.addEventListener('click', () => chat.close());
+      status.append(a);
+    }
+  };
+  const bubble = (who, text) => {
+    msgs.querySelector('.typing')?.remove();
+    const li = document.createElement('li');
+    li.className = who;
+    li.textContent = text;
+    msgs.append(li);
+    msgs.scrollTop = msgs.scrollHeight;
+  };
+  const typing = () => {
+    if (msgs.querySelector('.typing')) return;
+    const li = document.createElement('li');
+    li.className = 'ai typing';
+    li.textContent = 'Escribiendo…';
+    msgs.append(li);
+    msgs.scrollTop = msgs.scrollHeight;
+  };
+  const lock = (locked) => { input.disabled = locked; send.disabled = locked; };
+  const close = () => {
+    const s = session;
+    session = null;
+    s?.conversation?.endSession().catch?.(() => {});
+  };
+  chat.addEventListener('close', close);
+  chat.querySelector('.demo-chat-close').addEventListener('click', () => chat.close());
+  chat.addEventListener('click', (e) => { if (e.target === chat) chat.close(); });
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text || !session?.conversation || session.sent >= MAX_MESSAGES) return;
+    session.sent += 1;
+    bubble('me', text);
+    input.value = '';
+    typing();
+    try { session.conversation.sendUserMessage(text); } catch { setStatus('No se ha podido enviar. Inténtalo otra vez.'); }
+    if (session.sent >= MAX_MESSAGES) {
+      lock(true);
+      setStatus(`Has usado tus ${MAX_MESSAGES} mensajes de la demo.`, true);
+    } else {
+      setStatus(`Te quedan ${MAX_MESSAGES - session.sent} mensajes.`);
+    }
+  });
+
+  for (const card of document.querySelectorAll('.demo[data-text-agent]')) {
+    card.querySelector('.demo-write')?.addEventListener('click', async () => {
+      if (active) await active.conversation?.endSession();
+      const name = card.querySelector('h3').textContent;
+      chat.querySelector('h3').textContent = name;
+      chat.querySelector('header p').textContent = card.querySelector('.demo-head p').textContent + ' · demo por escrito';
+      chat.querySelector('.avatar').textContent = name[0];
+      msgs.replaceChildren();
+      input.value = '';
+      lock(true);
+      setStatus('Conectando…');
+      chat.showModal();
+
+      const mine = { conversation: null, sent: 0 };
+      session = mine;
+      try {
+        const res = await fetch(GATE, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY },
+          body: JSON.stringify({ agent: card.dataset.textAgent, mode: 'text' }),
+        });
+        const gate = await res.json().catch(() => ({}));
+        if (res.status === 429) {
+          setStatus(gate.error === 'persona' ? 'Ya has hecho tus 3 chats de hoy.' : 'Hoy ya se han hecho muchas pruebas.', true);
+          return;
+        }
+        if (!res.ok || !gate.signedUrl) throw new Error(gate.error || 'gate');
+        if (session !== mine) return;
+
+        const { Conversation } = await import(SDK);
+        const conversation = await Conversation.startSession({
+          signedUrl: gate.signedUrl,
+          textOnly: true,
+          overrides: { conversation: { textOnly: true } },
+          onConnect: () => {
+            if (session !== mine) return;
+            lock(false);
+            input.focus();
+            setStatus(`Escribe como un cliente. Tienes ${MAX_MESSAGES} mensajes.`);
+          },
+          onMessage: ({ message, source, role }) => {
+            if (session !== mine) return;
+            if ((role ?? source) === 'user') return; // el mensaje del cliente ya se ha pintado
+            if (message) bubble('ai', message);
+          },
+          onDisconnect: () => {
+            if (session !== mine) return;
+            lock(true);
+            msgs.querySelector('.typing')?.remove();
+            setStatus(mine.sent >= MAX_MESSAGES ? `Has usado tus ${MAX_MESSAGES} mensajes de la demo.` : 'Se acaba la demo.', true);
+          },
+          onError: () => { if (session === mine) setStatus('No se ha podido conectar. Inténtalo otra vez.'); },
+        });
+        if (session === mine) mine.conversation = conversation;
+        else conversation.endSession();
+      } catch {
+        if (session === mine) setStatus('No se ha podido iniciar el chat. Inténtalo otra vez en un rato.');
+      }
+    });
+  }
 }

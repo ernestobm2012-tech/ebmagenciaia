@@ -5,6 +5,8 @@
 //   POST ?action=test          (usuario del panel) -> manda una prueba a sus móviles
 //   POST ?action=send {kind,id} (la base de datos) -> avisa de un contacto, un paso
 //                               a humano, un mensaje de la web o un error
+//   POST ?action=digest        (cron, cada tarde) -> resumen del día a los administradores
+//   POST ?action=digest-test   (usuario del panel) -> manda el resumen de hoy solo a sus móviles
 // Esta función nunca escribe en error_log: un fallo aquí no debe provocar más avisos.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -119,6 +121,63 @@ async function send(kind: string, id: string) {
   return { sent: await deliver(subs, payload) };
 }
 
+// ---- Resumen diario: cuántas conversaciones, llamadas, contactos y avisos ha habido hoy.
+const madridDay = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid" }).format(new Date());
+function madridMidnight() {
+  const now = new Date();
+  const asMadrid = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Madrid" })).getTime();
+  const asUtc = new Date(now.toLocaleString("en-US", { timeZone: "UTC" })).getTime();
+  return new Date(Date.parse(`${madridDay()}T00:00:00Z`) - (asMadrid - asUtc)).toISOString();
+}
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+async function digestPayload(): Promise<Payload> {
+  const since = madridMidnight();
+  const [convs, leads, handoffs, contacts, errors, clients] = await Promise.all([
+    db.from("conversations").select("client_id, channel").gte("started_at", since),
+    db.from("leads").select("client_id").gte("created_at", since),
+    db.from("handoffs").select("client_id").gte("created_at", since),
+    db.from("contact_messages").select("id", { count: "exact", head: true }).gte("created_at", since),
+    db.from("error_log").select("id", { count: "exact", head: true }).gte("created_at", since),
+    db.from("clients").select("id, name"),
+  ]);
+  const name = new Map((clients.data ?? []).map((c) => [c.id as string, c.name as string]));
+  const rows = convs.data ?? [];
+  const calls = rows.filter((c) => c.channel === "phone").length;
+  const chats = rows.length - calls;
+  const nLeads = (leads.data ?? []).length;
+  const nHand = (handoffs.data ?? []).length;
+  const nContacts = contacts.count ?? 0;
+  const nErrors = errors.count ?? 0;
+
+  const parts: string[] = [];
+  if (!rows.length && !nLeads && !nHand && !nContacts) {
+    parts.push("Hoy ha sido un día tranquilo: sin llamadas, chats ni contactos nuevos.");
+  } else {
+    const bits = [plural(calls, "llamada", "llamadas"), plural(chats, "chat", "chats")];
+    parts.push(bits.join(" y ") + ".");
+    const todo = [] as string[];
+    if (nLeads) todo.push(plural(nLeads, "contacto nuevo", "contactos nuevos"));
+    if (nHand) todo.push(plural(nHand, "conversación pasada a una persona", "conversaciones pasadas a una persona"));
+    if (nContacts) todo.push(plural(nContacts, "mensaje desde la web", "mensajes desde la web"));
+    if (todo.length) parts.push("Por atender: " + todo.join(", ") + ".");
+    // Desglose por cliente, los tres con más actividad.
+    const per = new Map<string, number>();
+    for (const c of rows) per.set(c.client_id, (per.get(c.client_id) ?? 0) + 1);
+    const top = [...per.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
+      .map(([id, n]) => `${name.get(id) ?? "Cliente"}: ${n}`);
+    if (top.length > 1) parts.push(top.join(" · "));
+  }
+  if (nErrors) parts.push(`Ojo: ${plural(nErrors, "error registrado", "errores registrados")}.`);
+  const urgent = nLeads + nHand + nContacts > 0;
+  return {
+    title: urgent ? "Resumen de hoy: hay cosas por atender" : "Resumen de hoy",
+    body: short(parts.join(" "), 220),
+    url: `${PANEL_URL}#/actividad`,
+    tag: `digest:${madridDay()}`,
+  };
+}
+
 async function currentUser(req: Request) {
   const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!jwt) return null;
@@ -135,6 +194,18 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({})) as Record<string, any>;
 
     if (action === "send") return json(await send(body.kind, body.id));
+    if (action === "digest") {
+      // Solo por la tarde-noche (para que el resumen sea del día completo) y uno al día,
+      // aunque el cron se dispare dos veces o alguien llame a la dirección.
+      const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Madrid", hour: "2-digit", hourCycle: "h23" }).format(new Date()));
+      if (hour < 20) return json({ skipped: "too_early" });
+      const key = `digest:${madridDay()}`;
+      const { data: prev } = await db.from("push_log").select("sent_at").eq("key", key).maybeSingle();
+      if (prev) return json({ skipped: "duplicate" });
+      await db.from("push_log").upsert({ key, sent_at: new Date().toISOString() });
+      const subs = ((await db.from("push_subscriptions").select("id, user_id, endpoint, p256dh, auth").in("user_id", await adminIds())).data ?? []) as Sub[];
+      return json({ sent: await deliver(subs, await digestPayload()) });
+    }
 
     const user = await currentUser(req);
     if (!user) return json({ error: "Tienes que entrar en el panel." }, 401);
@@ -155,6 +226,12 @@ Deno.serve(async (req) => {
     if (action === "unsubscribe") {
       await db.from("push_subscriptions").delete().eq("user_id", user.id).eq("endpoint", String(body.endpoint ?? ""));
       return json({ ok: true });
+    }
+    if (action === "digest-test") {
+      const { data: me } = await db.from("profiles").select("role").eq("id", user.id).maybeSingle();
+      if (me?.role !== "admin") return json({ error: "Solo administración." }, 403);
+      const { data: subs } = await db.from("push_subscriptions").select("id, user_id, endpoint, p256dh, auth").eq("user_id", user.id);
+      return json({ sent: await deliver((subs ?? []) as Sub[], await digestPayload()) });
     }
     if (action === "test") {
       const { data: subs } = await db.from("push_subscriptions").select("id, user_id, endpoint, p256dh, auth").eq("user_id", user.id);

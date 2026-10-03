@@ -1,4 +1,4 @@
-// Zona de demos: llamadas de voz y chats de texto con los agentes de ElevenLabs.
+// Zona de demos: llamadas de voz con los agentes de ElevenLabs y chats de texto con Claude.
 // Antes de cada una se pide permiso a la función demo-token, que limita la voz a
 // 2 demos por persona y día, 20 al día en total y 40 segundos cada una, y el texto a
 // 3 chats por persona y día, 30 al día en total y 8 mensajes cada uno.
@@ -141,6 +141,15 @@ for (const card of document.querySelectorAll('.demo[data-agent]')) {
 
 
 // ---------------------------------------------------------------- chat de texto
+// El texto no usa ElevenLabs: demo-token da un permiso firmado y demo-chat responde con Claude.
+const CHAT = `${SUPABASE_URL}/functions/v1/demo-chat`;
+const GREETING = {
+  agent_3701m40awp7ve56vd8282v8annz2: 'Clínica Dental Sonrisas, buenos días, te atiende Lucía.',
+  agent_4001m40awq3nf5qtjd9ek5mehxs0: 'Estudio Nadia, hola, buenas.',
+  agent_4601m40awr0gezr9pj4m0vkfat27: 'La Alacena, buenas, dime.',
+  agent_3201m40awsbyef59dhptnhvedc67: 'Talleres Ruiz, buenos días, soy Javi.',
+};
+
 const chat = document.getElementById('demo-chat');
 if (chat) {
   const msgs = chat.querySelector('.demo-msgs');
@@ -148,7 +157,7 @@ if (chat) {
   const input = form.querySelector('input');
   const send = form.querySelector('button');
   const status = chat.querySelector('.demo-status');
-  let session = null; // { conversation, sent, closed }
+  let session = null; // { token, history, sent, busy }
 
   const setStatus = (text, contact = false) => {
     status.replaceChildren(text);
@@ -177,29 +186,63 @@ if (chat) {
     msgs.scrollTop = msgs.scrollHeight;
   };
   const lock = (locked) => { input.disabled = locked; send.disabled = locked; };
-  const close = () => {
-    const s = session;
-    session = null;
-    s?.conversation?.endSession().catch?.(() => {});
-  };
-  chat.addEventListener('close', close);
+  chat.addEventListener('close', () => { session = null; });
   chat.querySelector('.demo-chat-close').addEventListener('click', () => chat.close());
   chat.addEventListener('click', (e) => { if (e.target === chat) chat.close(); });
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const mine = session;
     const text = input.value.trim();
-    if (!text || !session?.conversation || session.sent >= MAX_MESSAGES) return;
-    session.sent += 1;
+    if (!text || !mine?.token || mine.busy || mine.sent >= MAX_MESSAGES) return;
+    mine.busy = true;
+    mine.sent += 1;
+    mine.history.push({ role: 'user', content: text });
     bubble('me', text);
     input.value = '';
+    lock(true);
     typing();
-    try { session.conversation.sendUserMessage(text); } catch { setStatus('No se ha podido enviar. Inténtalo otra vez.'); }
-    if (session.sent >= MAX_MESSAGES) {
-      lock(true);
-      setStatus(`Has usado tus ${MAX_MESSAGES} mensajes de la demo.`, true);
-    } else {
-      setStatus(`Te quedan ${MAX_MESSAGES - session.sent} mensajes.`);
+    try {
+      const res = await fetch(CHAT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY },
+        body: JSON.stringify({ token: mine.token, messages: mine.history }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (session !== mine) return;
+      if (!res.ok || !data.reply) {
+        msgs.querySelector('.typing')?.remove();
+        if (res.status === 429 || res.status === 401) {
+          lock(true);
+          setStatus(res.status === 401 ? 'La demo ha caducado.' : 'Has llegado al límite de la demo.', true);
+        } else {
+          mine.sent -= 1;
+          mine.history.pop();
+          lock(false);
+          setStatus('No se ha podido enviar. Inténtalo otra vez.');
+        }
+        return;
+      }
+      mine.history.push({ role: 'assistant', content: data.reply });
+      bubble('ai', data.reply);
+      if (mine.sent >= MAX_MESSAGES) {
+        lock(true);
+        setStatus(`Has usado tus ${MAX_MESSAGES} mensajes de la demo.`, true);
+      } else {
+        lock(false);
+        input.focus();
+        setStatus(`Te quedan ${MAX_MESSAGES - mine.sent} mensajes.`);
+      }
+    } catch {
+      if (session === mine) {
+        msgs.querySelector('.typing')?.remove();
+        mine.sent -= 1;
+        mine.history.pop();
+        lock(false);
+        setStatus('No se ha podido enviar. Inténtalo otra vez.');
+      }
+    } finally {
+      mine.busy = false;
     }
   });
 
@@ -216,7 +259,7 @@ if (chat) {
       setStatus('Conectando…');
       chat.showModal();
 
-      const mine = { conversation: null, sent: 0 };
+      const mine = { token: null, history: [], sent: 0, busy: false };
       session = mine;
       try {
         const res = await fetch(GATE, {
@@ -229,35 +272,14 @@ if (chat) {
           setStatus(gate.error === 'persona' ? 'Ya has hecho tus 3 chats de hoy.' : 'Hoy ya se han hecho muchas pruebas.', true);
           return;
         }
-        if (!res.ok || !gate.signedUrl) throw new Error(gate.error || 'gate');
+        if (!res.ok || !gate.token) throw new Error(gate.error || 'gate');
         if (session !== mine) return;
-
-        const { Conversation } = await import(SDK);
-        const conversation = await Conversation.startSession({
-          signedUrl: gate.signedUrl,
-          textOnly: true,
-          overrides: { conversation: { textOnly: true } },
-          onConnect: () => {
-            if (session !== mine) return;
-            lock(false);
-            input.focus();
-            setStatus(`Escribe como un cliente. Tienes ${MAX_MESSAGES} mensajes.`);
-          },
-          onMessage: ({ message, source, role }) => {
-            if (session !== mine) return;
-            if ((role ?? source) === 'user') return; // el mensaje del cliente ya se ha pintado
-            if (message) bubble('ai', message);
-          },
-          onDisconnect: () => {
-            if (session !== mine) return;
-            lock(true);
-            msgs.querySelector('.typing')?.remove();
-            setStatus(mine.sent >= MAX_MESSAGES ? `Has usado tus ${MAX_MESSAGES} mensajes de la demo.` : 'Se acaba la demo.', true);
-          },
-          onError: () => { if (session === mine) setStatus('No se ha podido conectar. Inténtalo otra vez.'); },
-        });
-        if (session === mine) mine.conversation = conversation;
-        else conversation.endSession();
+        mine.token = gate.token;
+        const hello = GREETING[card.dataset.textAgent];
+        if (hello) bubble('ai', hello);
+        lock(false);
+        input.focus();
+        setStatus(`Escribe como un cliente. Tienes ${MAX_MESSAGES} mensajes.`);
       } catch {
         if (session === mine) setStatus('No se ha podido iniciar el chat. Inténtalo otra vez en un rato.');
       }

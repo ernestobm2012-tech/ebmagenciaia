@@ -4,8 +4,9 @@
 // por su cuenta.
 //   POST { agent, mode? }  ->  { token | signedUrl | direct, seconds, left }  |  429 { error: "persona" | "dia" }
 // mode "voice" (por defecto): 2 demos por persona y día, 20 en total al día, 40 segundos cada una.
-// mode "text": 3 chats por persona y día, 30 en total al día, 5 minutos y 8 mensajes cada uno
-// (los mensajes los limita la web). Cada modo usa sus propios agentes.
+// mode "text": 3 chats por persona y día, 30 en total al día y 8 mensajes cada uno. El texto
+// NO usa ElevenLabs: se devuelve un token firmado { token } para la función demo-chat, que
+// responde con la API de Claude. Cada modo usa sus propios agentes.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -40,6 +41,15 @@ const json = (body: unknown, status = 200) =>
 
 const madridDay = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid" }).format(new Date());
 
+async function sign(data: string) {
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 // Huella de la conexión: HMAC con una clave que no sale del servidor.
 async function fingerprint(req: Request, day: string) {
   const ip = (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "desconocida";
@@ -55,7 +65,6 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
   if (req.method !== "POST") return json({ error: "Método no permitido" }, 405);
   const apiKey = Deno.env.get("ELEVENLABS_API_KEY");
-  if (!apiKey) return json({ error: "No disponible" }, 503);
 
   const body = await req.json().catch(() => ({}));
   const { agent } = body;
@@ -72,6 +81,15 @@ Deno.serve(async (req) => {
   if ((mine ?? 0) >= perPerson) return json({ error: "persona" }, 429);
   if ((today ?? 0) >= perDay) return json({ error: "dia" }, 429);
 
+  if (mode === "text") {
+    // Token de un solo chat, firmado, que vale 10 minutos. demo-chat lo comprueba.
+    const payload = btoa(JSON.stringify({ a: agent, e: Date.now() + 600_000, i: crypto.randomUUID() }))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    await db.from("demo_calls").insert({ day, ip_hash, agent_id: agent, kind: mode });
+    return json({ token: `${payload}.${await sign(payload)}`, seconds, left: Math.max(0, perPerson - (mine ?? 0) - 1) });
+  }
+  if (!apiKey) return json({ error: "No disponible" }, 503);
+
   // Primero un token para WebRTC; si no se puede, una dirección firmada (WebSocket).
   const ask = async (path: string) => {
     const r = await fetch(`https://api.elevenlabs.io/v1/convai/conversation/${path}?agent_id=${encodeURIComponent(agent)}`, {
@@ -79,8 +97,7 @@ Deno.serve(async (req) => {
     });
     return { status: r.status, data: await r.json().catch(() => ({})) };
   };
-  // El texto solo funciona por WebSocket: dirección firmada.
-  const t = mode === "voice" ? await ask("token") : { status: 0, data: {} as Record<string, string> };
+  const t = await ask("token");
   let access: { token?: string; signedUrl?: string } | null = t.data?.token ? { token: t.data.token } : null;
   let status = t.status;
   if (!access) {

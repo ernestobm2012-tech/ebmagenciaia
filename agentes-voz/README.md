@@ -25,3 +25,6 @@ Copias de los cuatro agentes de demo, con `conversation.text_only` activo, tope 
 | Demo texto · Talleres Ruiz (Javi) | agent_3201m40awsbyef59dhptnhvedc67 |
 
 Si cambias el prompt de un agente de voz, cambia también el de su copia de texto (y viceversa).
+
+## Disponibilidad y fechas (arreglado el 03/10/2026)
+Los agentes de demo daban huecos relativos («este viernes», «mañana») sin saber qué día era hoy y se contradecían. Ahora cada agente (voz y texto) tiene: la disponibilidad por día de la semana (se repite cada semana), `prompt.timezone = Europe/Madrid` (ElevenLabs le pasa la fecha y la hora de ahora) y un bloque «REGLAS PARA NO EQUIVOCARTE» (no contradecirse, ofrecer primero alternativas con el mismo número de personas, un hueco siempre con su día). Hay una prueba de simulación en ElevenLabs («Marta: sin contradicciones con la disponibilidad», `test_2001m40cnq5sey6tz9a56g1hmbrz`) que se puede lanzar con `agents_run_tests` tras tocar el prompt. `restaurante.txt` ya refleja el cambio; los demás negocios (clínica, peluquería y taller) están actualizados en ElevenLabs con huecos por día de la semana, y sus `.txt` siguen con la versión anterior.

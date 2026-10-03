@@ -151,7 +151,7 @@ async function feed(token: string) {
   const to = new Date(Date.now() + FUTURE_DAYS * 86_400_000).toISOString();
   const { data: events } = await db.from("calendar_events")
     .select("id, title, description, location, starts_at, ends_at, all_day, updated_at")
-    .eq("calendar_id", cal.id).not("source", "in", "(import,google)")
+    .eq("calendar_id", cal.id).not("source", "in", "(import,google,microsoft)")
     .gte("ends_at", from).lte("starts_at", to).order("starts_at").limit(MAX_EVENTS);
 
   const lines = [

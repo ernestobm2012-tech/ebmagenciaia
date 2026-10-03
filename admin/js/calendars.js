@@ -18,6 +18,21 @@ const GOOGLE_RESULT = {
   'sin-permiso': ['Hay que marcar la casilla de permiso del calendario. Vuelve a intentarlo.', 'error'],
   error: ['No se pudo conectar con Google. Inténtalo otra vez en unos minutos.', 'error'],
 };
+const OUTLOOK_RESULT = {
+  conectado: ['Calendario conectado con Outlook. Desde ahora se sincroniza al momento.', 'ok'],
+  cancelado: ['Has cancelado la conexión con Outlook.', 'error'],
+  'sin-permiso': ['Hay que aceptar el permiso del calendario. Vuelve a intentarlo.', 'error'],
+  'otro-proveedor': ['Este calendario ya está conectado con Google. Desconéctalo primero.', 'error'],
+  error: ['No se pudo conectar con Outlook. Inténtalo otra vez en unos minutos.', 'error'],
+};
+const outlookResult = new URLSearchParams(location.search).get('outlook');
+if (outlookResult) {
+  const url = new URL(location.href);
+  url.searchParams.delete('outlook');
+  history.replaceState(null, '', url);
+  const [text, kind] = OUTLOOK_RESULT[outlookResult] || OUTLOOK_RESULT.error;
+  setTimeout(() => toast(text, kind), 800);
+}
 const googleResult = new URLSearchParams(location.search).get('google');
 if (googleResult) {
   const url = new URL(location.href);
@@ -25,6 +40,15 @@ if (googleResult) {
   history.replaceState(null, '', url);
   const [text, kind] = GOOGLE_RESULT[googleResult] || GOOGLE_RESULT.error;
   setTimeout(() => toast(text, kind), 800);
+}
+
+async function callOutlook(action, body) {
+  const { data, error } = await db.functions.invoke(`microsoft-calendar?action=${action}`, { body });
+  if (error) {
+    const detail = await error.context?.json?.().catch(() => null);
+    throw new Error(detail?.error || error.message);
+  }
+  return data;
 }
 
 async function callGoogle(action, body) {
@@ -101,6 +125,8 @@ export async function calendarsTab(clientId) {
   function calendarCard(cal) {
     const status = cal.google_account
       ? (cal.sync_error ? `Google: ${cal.sync_error}` : `Conectado con Google (${cal.google_account}) · al momento`)
+      : cal.microsoft_account
+      ? (cal.sync_error ? `Outlook: ${cal.sync_error}` : `Conectado con Outlook (${cal.microsoft_account}) · al momento`)
       : !cal.ics_import_url
         ? 'Sin enlazar con Google/Outlook'
         : cal.sync_error ? `Error al traerlo: ${cal.sync_error}` : `Traído de Google/Outlook ${ago(cal.last_synced_at)}`;
@@ -117,9 +143,13 @@ export async function calendarsTab(clientId) {
         cal.google_account ? [
           h('button', { class: 'btn link', type: 'button', onclick: () => googlePull(cal) }, 'Traer ahora'),
           h('button', { class: 'btn link danger', type: 'button', onclick: () => googleDisconnect(cal) }, 'Desconectar Google'),
+        ] : cal.microsoft_account ? [
+          h('button', { class: 'btn link', type: 'button', onclick: () => outlookPull(cal) }, 'Traer ahora'),
+          h('button', { class: 'btn link danger', type: 'button', onclick: () => outlookDisconnect(cal) }, 'Desconectar Outlook'),
         ] : [
           h('button', { class: 'btn small-primary', type: 'button', onclick: () => googleConnect(cal) }, 'Conectar con Google'),
-          h('button', { class: 'btn link', type: 'button', onclick: () => linkCalendar(cal) }, 'Outlook, iPhone o enlace'),
+          h('button', { class: 'btn small-primary', type: 'button', onclick: () => outlookConnect(cal) }, 'Conectar con Outlook'),
+          h('button', { class: 'btn link', type: 'button', onclick: () => linkCalendar(cal) }, 'iPhone u otro (enlace)'),
           cal.ics_import_url ? h('button', { class: 'btn link', type: 'button', onclick: () => syncNow(cal) }, 'Traer ahora') : null,
         ],
         h('button', { class: 'btn link', type: 'button', onclick: () => editCalendar(cal) }, 'Editar')));
@@ -158,6 +188,39 @@ export async function calendarsTab(clientId) {
     load();
   }
 
+  // ------------------------------------------------------------ Outlook directo
+  async function outlookConnect(cal) {
+    toast('Abriendo Outlook…');
+    try {
+      const { url } = await callOutlook('connect', { calendar_id: cal.id, return_url: location.href });
+      location.href = url;
+    } catch (err) {
+      toast(errorText(err), 'error');
+    }
+  }
+
+  async function outlookPull(cal) {
+    toast('Trayendo de Outlook…');
+    try {
+      const { changed } = await callOutlook('pull', { calendar_id: cal.id });
+      toast(changed ? `Listo: ${changed} cambios traídos.` : 'Listo: ya estaba al día.');
+    } catch (err) {
+      toast(errorText(err), 'error');
+    }
+    load();
+  }
+
+  async function outlookDisconnect(cal) {
+    if (!confirm(`¿Desconectar "${cal.name}" de Outlook (${cal.microsoft_account})? Las citas de Outlook dejarán de verse aquí; las creadas en el panel se quedan.`)) return;
+    try {
+      await callOutlook('disconnect', { calendar_id: cal.id });
+      toast('Desconectado de Outlook.');
+    } catch (err) {
+      toast(errorText(err), 'error');
+    }
+    load();
+  }
+
   function agenda(events, to) {
     const byCal = Object.fromEntries(calendars.map((c) => [c.id, c]));
     const days = [];
@@ -186,7 +249,7 @@ export async function calendarsTab(clientId) {
     const en = new Date(e.ends_at);
     const when = e.all_day ? 'Todo el día'
       : s < day ? `hasta ${timeFmt.format(en)}` : `${timeFmt.format(s)} – ${timeFmt.format(en)}`;
-    const origin = { import: 'Google/Outlook', google: 'Google', agent: 'Agente' }[e.source];
+    const origin = { import: 'Enlace', google: 'Google', microsoft: 'Outlook', agent: 'Agente' }[e.source];
     return h('button', { class: 'event', type: 'button', style: `border-left-color:${cal?.color || '#999'}`, onclick: () => editEvent(e) },
       h('span', { class: 'event-time' }, when),
       h('span', { class: 'event-title' }, e.title),

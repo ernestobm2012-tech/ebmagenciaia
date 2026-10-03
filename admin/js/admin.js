@@ -4,6 +4,7 @@ import { MODELS, USD_TO_EUR } from './config.js';
 import { activityTabs } from './activity.js';
 import { knowledgeTab, connectionsTab } from './knowledge.js';
 import { calendarsTab } from './calendars.js';
+import { socialTab } from './social.js';
 import { expensesPage, expensesTab, fetchExpenses, monthlyEur } from './expenses.js';
 import {
   h, q, table, tabs, badge, kpi, field, modal, toast, formData, errorText, slugify,
@@ -244,6 +245,7 @@ async function clientPage(id) {
         { id: 'connections', label: 'Conexiones (ERP/API)', render: () => connectionsTab(id) },
         { id: 'contacts', label: 'A quién avisar', render: () => contactsTab(id) },
         { id: 'calendars', label: 'Calendarios', render: () => calendarsTab(id) },
+        { id: 'social', label: 'Redes sociales', render: () => socialTab(id) },
         { id: 'install', label: 'Instalar en su web', render: () => installTab(client) },
       ] : []),
       { id: 'expenses', label: 'Gastos', render: () => expensesTab(id) },

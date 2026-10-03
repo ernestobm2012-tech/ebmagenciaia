@@ -2,18 +2,21 @@
 import { db, session } from './app.js';
 import { activityTabs } from './activity.js';
 import { calendarsTab } from './calendars.js';
+import { socialTab } from './social.js';
 import { h, q, table, kpi, fmtNum, monthStart } from './ui.js';
 
 export const clientNav = [
   { href: '#/', label: 'Resumen' },
   { href: '#/actividad', label: 'Actividad' },
   { href: '#/calendarios', label: 'Calendarios' },
+  { href: '#/redes', label: 'Redes sociales' },
 ];
 
 export const clientRoutes = [
   [/^\/$/, overview],
   [/^\/actividad$/, activityPage],
   [/^\/calendarios$/, calendarsPage],
+  [/^\/redes$/, socialPage],
 ];
 
 async function overview() {
@@ -77,5 +80,19 @@ async function calendarsPage() {
   await show(session.client.id);
   return h('div', { class: 'page' }, h('h1', {}, 'Calendarios'),
     h('p', { class: 'muted' }, 'Tus agendas. Puedes tener las que necesites y verlas también en Google u Outlook.'),
+    picker, holder);
+}
+
+// Un partner elige de qué cliente conectar las redes; el resto, las suyas.
+async function socialPage() {
+  const holder = h('div', {});
+  const show = async (id) => holder.replaceChildren(await socialTab(id));
+  const picker = session.clients.length > 1
+    ? h('select', { class: 'picker', onchange: (e) => show(e.target.value) },
+      session.clients.map((c) => h('option', { value: c.id, selected: c.is_own }, c.name)))
+    : null;
+  await show(session.client.id);
+  return h('div', { class: 'page' }, h('h1', {}, 'Redes sociales'),
+    h('p', { class: 'muted' }, 'Conecta tus redes para que el agente conteste por ti.'),
     picker, holder);
 }

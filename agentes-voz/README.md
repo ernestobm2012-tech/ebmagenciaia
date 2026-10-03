@@ -13,7 +13,7 @@ Instrucciones de los agentes telefónicos. `_base.txt` es la parte común (cómo
 Las voces Diego y Antea son premium (plan Creator), por eso no están. Los cuatro demos se pueden probar desde la web, en la sección «Pruébalo» (`js/demos.js`). Para mostrar un teléfono hay que rellenar `data-phone` en `.demo-phone`.
 La Sara de teléfono usa la herramienta `buscar_producto` (tool_6101m3ytbffve5yah75zye46jadz), que llama al RPC `catalog_search` de Supabase, y está enlazada en `agents.voice_agent_id` de Palmo.
 
-## Demos de texto de la web
+## Demos de texto (OBSOLETO: ahora van por demo-chat con la API de Claude, ver CLAUDE.md) de la web
 
 Copias de los cuatro agentes de demo, con `conversation.text_only` activo, tope de 300 s, `auth.enable_auth`, 3 a la vez y 30 conversaciones al día. La web los abre desde el botón «Escribir a …» (chat en `js/demos.js`) y los autoriza `demo-token` con `mode: "text"` (3 chats por persona y día, 30 al día, 8 mensajes cada uno).
 

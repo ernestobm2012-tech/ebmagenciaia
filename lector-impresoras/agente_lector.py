@@ -104,10 +104,17 @@ def _snmp_una_vez(ip, comunidad, oid, tipo, timeout):
     msg = _tlv(0x30, _int(1) + _tlv(0x04, comunidad.encode()) + pdu)
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.settimeout(timeout)
+    # En Windows, si un aparato responde «puerto cerrado», el siguiente recvfrom da el
+    # error 10054. Se desactiva ese aviso y, si aun así llega, se trata como «no contesta».
+    if hasattr(socket, "SIO_UDP_CONNRESET"):
+        try:
+            s.ioctl(socket.SIO_UDP_CONNRESET, False)
+        except (OSError, ValueError):
+            pass
     try:
         s.sendto(msg, (ip, 161))
         data, _ = s.recvfrom(65535)
-    except socket.timeout:
+    except (socket.timeout, OSError):
         return "TIMEOUT"
     finally:
         s.close()
@@ -341,7 +348,10 @@ def ip_local():
 
 
 def sondear(ip, com):
-    r = snmp_request(ip, com, OID_DESCR, 0xA0, timeout=1.5, intentos=2)
+    try:
+        r = snmp_request(ip, com, OID_DESCR, 0xA0, timeout=1.5, intentos=2)
+    except Exception:
+        return None
     return ip if r not in (None, "TIMEOUT") and r[1] is not None else None
 
 

@@ -5,6 +5,7 @@ import { activityTabs } from './activity.js';
 import { knowledgeTab, connectionsTab } from './knowledge.js';
 import { calendarsTab } from './calendars.js';
 import { socialTab } from './social.js';
+import { statsPage } from './stats.js';
 import { expensesPage, expensesTab, fetchExpenses, monthlyEur } from './expenses.js';
 import {
   h, q, table, tabs, badge, kpi, field, modal, toast, formData, errorText, slugify,
@@ -16,6 +17,7 @@ export const adminNav = [
   { href: '#/contactos', label: 'Contactos web' },
   { href: '#/clientes', label: 'Clientes' },
   { href: '#/actividad', label: 'Actividad' },
+  { href: '#/estadisticas', label: 'Estadísticas' },
   { href: '#/costes', label: 'Costes y margen' },
   { href: '#/gastos', label: 'Gastos' },
   { href: '#/usuarios', label: 'Usuarios' },
@@ -27,6 +29,7 @@ export const adminRoutes = [
   [/^\/clientes$/, clientsPage],
   [/^\/clientes\/([0-9a-f-]{36})$/, clientPage],
   [/^\/actividad$/, activityPage],
+  [/^\/estadisticas$/, statsPage],
   [/^\/costes$/, costsPage],
   [/^\/gastos$/, expensesPage],
   [/^\/usuarios$/, usersPage],

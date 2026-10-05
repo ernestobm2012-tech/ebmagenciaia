@@ -81,11 +81,17 @@ Deno.serve(async (req) => {
   if ((mine ?? 0) >= perPerson) return json({ error: "persona" }, 429);
   if ((today ?? 0) >= perDay) return json({ error: "dia" }, 429);
 
+  // Contador de usos por demo y día (para el panel): cada inicio suma, y la persona cuenta una vez por demo.
+  const { count: sameAgent } = await db.from("demo_calls").select("id", { count: "exact", head: true })
+    .eq("day", day).eq("kind", mode).eq("ip_hash", ip_hash).eq("agent_id", agent);
+  const bump = () => db.rpc("demo_usage_bump", { p_day: day, p_agent: agent, p_kind: mode, p_new_person: (sameAgent ?? 0) === 0 });
+
   if (mode === "text") {
     // Token de un solo chat, firmado, que vale 10 minutos. demo-chat lo comprueba.
     const payload = btoa(JSON.stringify({ a: agent, e: Date.now() + 600_000, i: crypto.randomUUID() }))
       .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
     await db.from("demo_calls").insert({ day, ip_hash, agent_id: agent, kind: mode });
+    await bump();
     return json({ token: `${payload}.${await sign(payload)}`, seconds, left: Math.max(0, perPerson - (mine ?? 0) - 1) });
   }
   if (!apiKey) return json({ error: "No disponible" }, 503);
@@ -111,5 +117,6 @@ Deno.serve(async (req) => {
   if (!access) console.log(`demo-token: ElevenLabs respondió ${status}`);
 
   await db.from("demo_calls").insert({ day, ip_hash, agent_id: agent, kind: mode });
+  await bump();
   return json({ ...(access ?? { direct: true }), seconds, left: Math.max(0, perPerson - (mine ?? 0) - 1) });
 });

@@ -114,3 +114,4 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 - En la base de datos solo lo comprueban las tablas de impresoras (`private.can_see`). Resumen, actividad, calendarios y redes se ocultan en el panel pero sus tablas no lo comprueban todavía.
 - Prompts, conocimiento, costes, gastos y usuarios solo los ve el rol admin (no son módulos asignables).
 - Usuario partner de Palmo: spaluso@palmo.es (creado el 05/10/2026).
+- Demos: si el navegador tiene la sesión del panel abierta (admin), demo-token no aplica cupos ni cuenta en estadísticas (js/demos.js manda el access_token de localStorage). Lucía tiene muletillas (soft_timeout 0,7 s: Mmm/Vale/A ver/Ajá) en prueba; Gemini 3.1 Flash Lite se probó y no fue más rápido (vuelta a Haiku).

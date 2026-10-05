@@ -41,6 +41,13 @@ const json = (body: unknown, status = 200) =>
 
 const madridDay = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid" }).format(new Date());
 
+async function isAdmin(jwt: string) {
+  const { data } = await db.auth.getUser(jwt);
+  if (!data.user) return false;
+  const { data: p } = await db.from("profiles").select("role").eq("id", data.user.id).maybeSingle();
+  return p?.role === "admin";
+}
+
 async function sign(data: string) {
   const key = await crypto.subtle.importKey(
     "raw", new TextEncoder().encode(Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!),
@@ -74,23 +81,25 @@ Deno.serve(async (req) => {
 
   const day = madridDay();
   const ip_hash = await fingerprint(req, day);
+  // Administración de EBM (sesión del panel): sin cupo y sin contar en las estadísticas.
+  const admin = typeof body.admin === "string" && body.admin.length < 4000 && await isAdmin(body.admin);
   const [{ count: mine }, { count: today }] = await Promise.all([
     db.from("demo_calls").select("id", { count: "exact", head: true }).eq("day", day).eq("kind", mode).eq("ip_hash", ip_hash),
     db.from("demo_calls").select("id", { count: "exact", head: true }).eq("day", day).eq("kind", mode),
   ]);
-  if ((mine ?? 0) >= perPerson) return json({ error: "persona" }, 429);
-  if ((today ?? 0) >= perDay) return json({ error: "dia" }, 429);
+  if (!admin && (mine ?? 0) >= perPerson) return json({ error: "persona" }, 429);
+  if (!admin && (today ?? 0) >= perDay) return json({ error: "dia" }, 429);
 
   // Contador de usos por demo y día (para el panel): cada inicio suma, y la persona cuenta una vez por demo.
   const { count: sameAgent } = await db.from("demo_calls").select("id", { count: "exact", head: true })
     .eq("day", day).eq("kind", mode).eq("ip_hash", ip_hash).eq("agent_id", agent);
-  const bump = () => db.rpc("demo_usage_bump", { p_day: day, p_agent: agent, p_kind: mode, p_new_person: (sameAgent ?? 0) === 0 });
+  const bump = async () => admin ? null : await db.rpc("demo_usage_bump", { p_day: day, p_agent: agent, p_kind: mode, p_new_person: (sameAgent ?? 0) === 0 });
 
   if (mode === "text") {
     // Token de un solo chat, firmado, que vale 10 minutos. demo-chat lo comprueba.
     const payload = btoa(JSON.stringify({ a: agent, e: Date.now() + 600_000, i: crypto.randomUUID() }))
       .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-    await db.from("demo_calls").insert({ day, ip_hash, agent_id: agent, kind: mode });
+    if (!admin) await db.from("demo_calls").insert({ day, ip_hash, agent_id: agent, kind: mode });
     await bump();
     return json({ token: `${payload}.${await sign(payload)}`, seconds, left: Math.max(0, perPerson - (mine ?? 0) - 1) });
   }
@@ -116,7 +125,7 @@ Deno.serve(async (req) => {
   // siga siendo público. Si el agente exige token, esa llamada fallará y no gastará nada.
   if (!access) console.log(`demo-token: ElevenLabs respondió ${status}`);
 
-  await db.from("demo_calls").insert({ day, ip_hash, agent_id: agent, kind: mode });
+  if (!admin) await db.from("demo_calls").insert({ day, ip_hash, agent_id: agent, kind: mode });
   await bump();
   return json({ ...(access ?? { direct: true }), seconds, left: Math.max(0, perPerson - (mine ?? 0) - 1) });
 });

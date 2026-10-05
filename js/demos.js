@@ -6,6 +6,18 @@ import { SUPABASE_URL, SUPABASE_KEY } from '../admin/js/config.js';
 
 const SDK = 'https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.26.0/+esm';
 const GATE = `${SUPABASE_URL}/functions/v1/demo-token`;
+
+// Si en este navegador hay una sesión abierta del panel, se manda para que las
+// pruebas de administración no gasten el cupo ni cuenten en las estadísticas.
+function adminToken() {
+  try {
+    const ref = new URL(SUPABASE_URL).hostname.split('.')[0];
+    const s = JSON.parse(localStorage.getItem(`sb-${ref}-auth-token`) || 'null');
+    return s?.access_token && s.expires_at * 1000 > Date.now() ? s.access_token : undefined;
+  } catch {
+    return undefined;
+  }
+}
 const WARN_AT = 8;      // segundos antes del final en que el agente se despide
 const HIDDEN_MAX = 8;   // segundos con la pestaña oculta antes de colgar
 const MAX_MESSAGES = 8; // mensajes del cliente en un chat de texto
@@ -63,7 +75,7 @@ for (const card of document.querySelectorAll('.demo[data-agent]')) {
       const res = await fetch(GATE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY },
-        body: JSON.stringify({ agent: card.dataset.agent }),
+        body: JSON.stringify({ agent: card.dataset.agent, admin: adminToken() }),
       });
       const gate = await res.json().catch(() => ({}));
       if (res.status === 429) {
@@ -265,7 +277,7 @@ if (chat) {
         const res = await fetch(GATE, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY },
-          body: JSON.stringify({ agent: card.dataset.textAgent, mode: 'text' }),
+          body: JSON.stringify({ agent: card.dataset.textAgent, mode: 'text', admin: adminToken() }),
         });
         const gate = await res.json().catch(() => ({}));
         if (res.status === 429) {

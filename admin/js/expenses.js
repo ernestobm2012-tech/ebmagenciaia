@@ -3,6 +3,7 @@
 // aquí; sale solo de las conversaciones.
 import { db } from './app.js';
 import { USD_TO_EUR } from './config.js';
+import { elevenUsageCard } from './usage.js';
 import { h, q, table, field, modal, toast, kpi, formData, errorText, fmtDate, fmtEur } from './ui.js';
 
 const PERIODS = { monthly: 'Mensual', annual: 'Anual', once: 'Pago único' };
@@ -119,5 +120,6 @@ export const expensesTab = (clientId) => expensesView(clientId);
 export async function expensesPage() {
   return h('div', { class: 'page' }, h('h1', {}, 'Gastos'),
     h('p', { class: 'muted' }, 'Todo lo que pagas de forma fija: suscripciones, dominios, números de teléfono. Los generales de la agencia y los de cada cliente.'),
-    await expensesView(null));
+    await expensesView(null),
+    await elevenUsageCard());
 }

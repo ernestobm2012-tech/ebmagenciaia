@@ -47,9 +47,11 @@ async function start(s) {
     if (!profile) throw new Error('Tu usuario no tiene perfil. Avisa al administrador.');
     // No admin: sus clientes (uno, o varios si es partner) y la marca que debe ver.
     const isAdmin = profile.role === 'admin';
-    const [clients, brands] = isAdmin ? [[], []] : await Promise.all([q(db.rpc('my_clients')), q(db.rpc('my_brand'))]);
+    const [clients, brands, services] = isAdmin ? [[], [], []]
+      : await Promise.all([q(db.rpc('my_clients')), q(db.rpc('my_brand')), q(db.rpc('my_client_services'))]);
     if (recovering) return;
-    session = { user: s.user, profile, clients, client: clients.find((c) => c.is_own) || null, brand: brands[0] || null };
+    session = { user: s.user, profile, clients, client: clients.find((c) => c.is_own) || null, brand: brands[0] || null,
+      services: [...new Set(services.flatMap((c) => c.services || []))] };
     applyBrand();
     renderShell();
   } catch (err) {
@@ -130,7 +132,7 @@ let outlet;
 
 function renderShell() {
   const isAdmin = session.profile.role === 'admin';
-  const nav = isAdmin ? adminNav : clientNav;
+  const nav = isAdmin ? adminNav : clientNav.filter((n) => !n.needs || session.services?.includes(n.needs));
   outlet = h('main', { class: 'main' });
   root.replaceChildren(h('div', { class: 'shell' },
     h('aside', { class: 'sidebar' },

@@ -6,6 +6,7 @@ import { knowledgeTab, connectionsTab } from './knowledge.js';
 import { calendarsTab } from './calendars.js';
 import { socialTab } from './social.js';
 import { statsPage } from './stats.js';
+import { printersView, printerKeysCard } from './printers.js';
 import { expensesPage, expensesTab, fetchExpenses, monthlyEur } from './expenses.js';
 import {
   h, q, table, tabs, badge, kpi, field, modal, toast, formData, errorText, slugify,
@@ -18,6 +19,7 @@ export const adminNav = [
   { href: '#/clientes', label: 'Clientes' },
   { href: '#/actividad', label: 'Actividad' },
   { href: '#/estadisticas', label: 'Estadísticas' },
+  { href: '#/impresoras', label: 'Impresoras' },
   { href: '#/costes', label: 'Costes y margen' },
   { href: '#/gastos', label: 'Gastos' },
   { href: '#/usuarios', label: 'Usuarios' },
@@ -30,6 +32,7 @@ export const adminRoutes = [
   [/^\/clientes\/([0-9a-f-]{36})$/, clientPage],
   [/^\/actividad$/, activityPage],
   [/^\/estadisticas$/, statsPage],
+  [/^\/impresoras$/, printersPage],
   [/^\/costes$/, costsPage],
   [/^\/gastos$/, expensesPage],
   [/^\/usuarios$/, usersPage],
@@ -129,7 +132,7 @@ async function contactsPage() {
 
 // ---------------------------------------------------------------- clientes
 // partners: clientes que pueden hacer de partner (todos menos el propio).
-const SERVICES_OFFERED = [['agentes', 'Agentes de IA'], ['web', 'Página web'], ['software', 'Software']];
+const SERVICES_OFFERED = [['agentes', 'Agentes de IA'], ['web', 'Página web'], ['software', 'Software'], ['impresoras', 'Lector de impresoras']];
 const servicesText = (r) => (r.services || []).map((s) => Object.fromEntries(SERVICES_OFFERED)[s] || s).join(' · ');
 
 function clientForm(client, onSaved, partners = []) {
@@ -251,6 +254,8 @@ async function clientPage(id) {
         { id: 'social', label: 'Redes sociales', render: () => socialTab(id) },
         { id: 'install', label: 'Instalar en su web', render: () => installTab(client) },
       ] : []),
+      ...((client.services || []).includes('impresoras') ? [{ id: 'printers', label: 'Impresoras', render: async () =>
+        h('div', {}, await printersView([id]), await printerKeysCard(id)) }] : []),
       { id: 'expenses', label: 'Gastos', render: () => expensesTab(id) },
       ...(hasAgents ? [{ id: 'activity', label: 'Actividad', render: async () => activityTabs({ clientId: id, isAdmin: true }) }] : []),
     ]));
@@ -673,4 +678,17 @@ async function usersPage() {
             : h('button', { class: 'btn link danger', type: 'button', onclick: () => toggle(r, false) }, 'Desactivar'));
       } },
     ], profiles));
+}
+
+// ---------------------------------------------------------------- impresoras
+// Todas las impresoras de los clientes con el lector contratado.
+async function printersPage() {
+  const clients = await q(db.from('clients').select('id, name, services').contains('services', ['impresoras']).order('name'));
+  if (!clients.length) {
+    return page('Impresoras', h('p', { class: 'empty' }, 'Ningún cliente tiene el lector de impresoras. Actívalo en Clientes › Datos › «Lector de impresoras».'));
+  }
+  const names = Object.fromEntries(clients.map((c) => [c.id, c.name]));
+  return page('Impresoras',
+    h('p', { class: 'muted' }, 'Las impresoras de todos los clientes con el lector. Las claves del lector se crean en la ficha de cada cliente.'),
+    await printersView(clients.map((c) => c.id), { clientNames: names }));
 }

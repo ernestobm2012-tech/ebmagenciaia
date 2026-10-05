@@ -4,12 +4,14 @@ import { activityTabs } from './activity.js';
 import { calendarsTab } from './calendars.js';
 import { socialTab } from './social.js';
 import { printersView } from './printers.js';
+import { contactsTab } from './contacts.js';
 import { h, q, table, kpi, fmtNum, monthStart } from './ui.js';
 
 export const clientNav = [
   { href: '#/', label: 'Resumen', module: 'resumen' },
   { href: '#/actividad', label: 'Actividad', module: 'actividad' },
   { href: '#/calendarios', label: 'Calendarios', module: 'calendarios' },
+  { href: '#/avisos', label: 'A quién avisar', module: 'avisar' },
   { href: '#/redes', label: 'Redes sociales', module: 'redes' },
   { href: '#/impresoras', label: 'Impresoras', needs: 'impresoras', module: 'impresoras' },
 ];
@@ -18,6 +20,7 @@ export const clientRoutes = [
   [/^\/$/, overview],
   [/^\/actividad$/, activityPage],
   [/^\/calendarios$/, calendarsPage],
+  [/^\/avisos$/, contactsPage],
   [/^\/redes$/, socialPage],
   [/^\/impresoras$/, printersPage],
 ];
@@ -91,6 +94,20 @@ async function calendarsPage() {
   await show(session.client.id);
   return h('div', { class: 'page' }, h('h1', {}, 'Calendarios'),
     h('p', { class: 'muted' }, 'Tus agendas. Puedes tener las que necesites y verlas también en Google u Outlook.'),
+    picker, holder);
+}
+
+// A quién avisa el agente. Un partner elige de qué cliente.
+async function contactsPage() {
+  const holder = h('div', {});
+  const show = async (id) => holder.replaceChildren(await contactsTab(id));
+  const picker = session.clients.length > 1
+    ? h('select', { class: 'picker', onchange: (e) => show(e.target.value) },
+      session.clients.map((c) => h('option', { value: c.id, selected: c.is_own }, c.name)))
+    : null;
+  await show(session.client.id);
+  return h('div', { class: 'page' }, h('h1', {}, 'A quién avisar'),
+    h('p', { class: 'muted' }, 'Las personas a las que el agente avisa cuando entra un contacto o hace falta alguien.'),
     picker, holder);
 }
 

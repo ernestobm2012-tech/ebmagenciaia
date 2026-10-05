@@ -72,3 +72,9 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 - Teléfono +34 919 930 664 (04/10/2026): Ernesto probó la Claudia de voz de Mi Pequeño Rincón (le encantó) y el número volvió a Sara de Palmo para probar a Palmo. Decidir el destino definitivo de cada agente (otro número para Claudia o reasignar según la prueba).
 - Sara, saludo (04/10/2026): el primer mensaje «Hola, Palmo, te atiende Sara» confundía a quien llamaba (parecía un saludo a alguien llamado Palmo). Ahora es «Hola, buenas. Palmo, te atiende Sara.» y el prompt añade: no saludar otra vez si le devuelven el saludo, y callar y esperar si la persona habla con otra. Una llamada del 04/10 acabó con «Unexpected server error» (código 1011) de ElevenLabs a los 16 s: fallo de su plataforma, no de la configuración. Regla general: nunca poner «Hola» pegado al nombre de la empresa en el saludo.
 
+
+## Gasto de IA en el panel (Gastos → "ElevenLabs: gasto real")
+- `eleven-usage` (Edge, solo admin con sesión): lee `/v1/usage/character-stats` de ElevenLabs con `metric=fiat_units_spent` (céntimos de USD) y `minutes_used`, desglosado por `product_type` ("Conversational AI" = voz y plataforma, "… - LLM" = el cerebro). La clave ya tiene permiso de uso; NO tiene `user_read` (no se puede leer la suscripción).
+- Las demos de texto de la web usan la API de Claude: `demo-chat` apunta tokens y `cost_usd` en `demo_text_turns` (migración 0022); ~0,002 $ por respuesta con Haiku 4.5. El panel lo suma al mes.
+- Los chats de texto de clientes ya apuntan su coste en `usage_events` (Costes y margen).
+- Medido el 4/10/2026: voz ≈ 0,08 $/min (mitad plataforma, mitad LLM), sin telefonía (Zadarma).

@@ -78,3 +78,9 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 - Las demos de texto de la web usan la API de Claude: `demo-chat` apunta tokens y `cost_usd` en `demo_text_turns` (migración 0022); ~0,002 $ por respuesta con Haiku 4.5. El panel lo suma al mes.
 - Los chats de texto de clientes ya apuntan su coste en `usage_events` (Costes y margen).
 - Medido el 4/10/2026: voz ≈ 0,08 $/min (mitad plataforma, mitad LLM), sin telefonía (Zadarma).
+
+## Regla para todos los agentes: no inventar (05/10/2026)
+- Sara (Palmo) dijo que Palmo ofrece renting y "mantenimiento incluido" porque el propio prompt hablaba de "renting y mantenimiento" y le hacía preguntar "¿compra o renting?". Lección: NUNCA nombrar en un prompt servicios, modalidades o condiciones que el cliente no haya confirmado; el modelo los da por ciertos.
+- Todo prompt de agente lleva una sección "NO TE INVENTES NADA": solo afirma lo escrito en el prompt o devuelto por una herramienta; lo demás "lo tiene que verificar un compañero" y se pasa al departamento (en Palmo, Comercial/Susana si es de ventas) tomando los datos de contacto.
+- Pendiente: revisar con la misma regla el agente de voz de Claudia (Mi Pequeño Rincón) y los agentes de demo.
+- Al actualizar un prompt con la herramienta de ElevenLabs, escribir las comillas normales (") sin barra: una barra delante se guarda literal.

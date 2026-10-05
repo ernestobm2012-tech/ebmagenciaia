@@ -6,7 +6,7 @@ import { h, q, toast, errorText, fmtNum, fmtEur, fmtDate, modal, field } from '.
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const TONER = [['k', 'Negro'], ['c', 'Cian'], ['m', 'Magenta'], ['y', 'Amarillo']];
 const TONER_NAME = { k: 'negro', c: 'cian', m: 'magenta', y: 'amarillo' };
-const INGEST_URL = 'https://rhjbpkaesobsbnkvioyh.supabase.co/functions/v1/printer-ingest';
+const INSTALLER_URL = 'https://github.com/ernestobm2012-tech/ebmagenciaia/releases/download/lector/LectorImpresoras-Instalador.exe';
 const MONTHS_SHOWN = 7;
 const REFRESH_MS = 20_000;
 
@@ -251,16 +251,20 @@ export async function printerKeysCard(clientId) {
     const close = modal('Nueva clave del lector', form);
   }
   function showToken(token) {
-    const line = `clave=${token}`;
     const copy = async () => {
-      try { await navigator.clipboard.writeText(line); toast('Copiado.'); } catch { toast('Selecciónalo y cópialo a mano.', 'error'); }
+      try { await navigator.clipboard.writeText(token); toast('Clave copiada.'); } catch { toast('Selecciónala y cópiala a mano.', 'error'); }
     };
     modal('Clave del lector', h('div', {},
-      h('p', {}, 'Guárdala ahora: por seguridad no se vuelve a mostrar.'),
-      h('p', {}, 'En el ordenador del cliente, crea un archivo ', h('b', {}, 'lector.txt'), ' en la misma carpeta que el programa, con esta línea:'),
-      h('pre', { class: 'mono pr-token' }, line),
-      h('button', { class: 'btn', type: 'button', onclick: copy }, 'Copiar'),
-      h('p', { class: 'muted small', style: 'margin-top:14px' }, `El lector manda las lecturas a ${INGEST_URL}`)));
+      h('p', {}, h('b', {}, 'Guárdala ahora: por seguridad no se vuelve a mostrar.'), ' Mándatela por WhatsApp o correo para tenerla a mano.'),
+      h('pre', { class: 'mono pr-token' }, token),
+      h('button', { class: 'btn', type: 'button', onclick: copy }, 'Copiar la clave'),
+      h('h3', { style: 'margin-top:20px' }, 'Cómo se instala en el ordenador del cliente'),
+      h('ol', { class: 'pr-steps' },
+        h('li', {}, 'Descarga el instalador: ', h('a', { href: INSTALLER_URL }, 'LectorImpresoras-Instalador.exe'), '.'),
+        h('li', {}, 'Ábrelo. Si Windows avisa de que «protegió el equipo», pulsa «Más información» y luego «Ejecutar de todas formas».'),
+        h('li', {}, 'Pulsa Siguiente, pega esta clave y termina.'),
+        h('li', {}, 'Listo: el lector se queda funcionando solo y arranca cada vez que se enciende el ordenador. En unos minutos salen aquí las impresoras.')),
+      h('p', { class: 'muted small' }, 'El ordenador tiene que estar en la misma red (wifi o cable) que las impresoras.')));
   }
   await draw();
   return box;

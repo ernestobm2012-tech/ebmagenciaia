@@ -7,11 +7,11 @@ import { printersView } from './printers.js';
 import { h, q, table, kpi, fmtNum, monthStart } from './ui.js';
 
 export const clientNav = [
-  { href: '#/', label: 'Resumen' },
-  { href: '#/actividad', label: 'Actividad' },
-  { href: '#/calendarios', label: 'Calendarios' },
-  { href: '#/redes', label: 'Redes sociales' },
-  { href: '#/impresoras', label: 'Impresoras', needs: 'impresoras' },
+  { href: '#/', label: 'Resumen', module: 'resumen' },
+  { href: '#/actividad', label: 'Actividad', module: 'actividad' },
+  { href: '#/calendarios', label: 'Calendarios', module: 'calendarios' },
+  { href: '#/redes', label: 'Redes sociales', module: 'redes' },
+  { href: '#/impresoras', label: 'Impresoras', needs: 'impresoras', module: 'impresoras' },
 ];
 
 export const clientRoutes = [
@@ -104,10 +104,11 @@ async function socialPage() {
 async function printersPage() {
   const names = Object.fromEntries(session.clients.map((c) => [c.id, c.name]));
   const allIds = session.clients.map((c) => c.id);
+  const canEditPrices = !session.profile.modules || session.profile.modules.includes('impresoras_precios');
   const holder = h('div', {});
   const show = async (id) => holder.replaceChildren(id === 'all'
-    ? await printersView(allIds, { clientNames: names })
-    : await printersView([id]));
+    ? await printersView(allIds, { clientNames: names, canEditPrices })
+    : await printersView([id], { canEditPrices }));
   const picker = session.clients.length > 1
     ? h('select', { class: 'picker', onchange: (e) => show(e.target.value) },
       h('option', { value: 'all' }, 'Todos mis clientes'),

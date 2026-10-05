@@ -130,9 +130,16 @@ function renderNewPassword() {
 
 let outlet;
 
+// Menú de un usuario no admin: lo que tiene contratado su negocio y lo que tú le has dejado ver.
+function allowedClientNav() {
+  const modules = session.profile?.modules;
+  return clientNav.filter((n) => (!n.needs || session.services?.includes(n.needs))
+    && (!modules || modules.includes(n.module)));
+}
+
 function renderShell() {
   const isAdmin = session.profile.role === 'admin';
-  const nav = isAdmin ? adminNav : clientNav.filter((n) => !n.needs || session.services?.includes(n.needs));
+  const nav = isAdmin ? adminNav : allowedClientNav();
   outlet = h('main', { class: 'main' });
   root.replaceChildren(h('div', { class: 'shell' },
     h('aside', { class: 'sidebar' },
@@ -156,6 +163,18 @@ async function route() {
     const target = a.dataset.nav.slice(1);
     a.classList.toggle('active', target === '/' ? path === '/' : path.startsWith(target));
   });
+
+  if (!isAdmin) {
+    const allowed = allowedClientNav();
+    const here = allowed.find((n) => (n.href === '#/' ? path === '/' : path.startsWith(n.href.slice(1))));
+    if (!here) {
+      if (allowed.length && location.hash !== allowed[0].href) { location.hash = allowed[0].href; return; }
+      if (!allowed.length) {
+        return outlet.replaceChildren(h('div', { class: 'page' }, h('h1', {}, 'Aún no tienes nada que ver aquí'),
+          h('p', {}, 'Pide a quien te dio acceso que te active alguna sección.')));
+      }
+    }
+  }
 
   if (!isAdmin && !session.client) {
     return outlet.replaceChildren(h('div', { class: 'page' }, h('h1', {}, 'Tu cuenta está casi lista'),

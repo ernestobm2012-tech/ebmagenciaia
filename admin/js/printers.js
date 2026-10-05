@@ -125,7 +125,8 @@ function tonerBars(t) {
       h('span', { class: t[k] <= 15 ? 'warn' : null }, `${t[k]} %`))));
 }
 
-function priceInput(printer, col, onSaved) {
+function priceInput(printer, col, onSaved, editable = true) {
+  if (!editable) return new Intl.NumberFormat('es-ES', { maximumFractionDigits: 4 }).format(Number(printer[col]) || 0);
   return h('input', {
     type: 'number', min: 0, step: '0.001', class: 'pr-price', value: printer[col],
     'aria-label': col === 'price_bn_eur' ? 'Precio copia blanco y negro' : 'Precio copia color',
@@ -144,7 +145,7 @@ function priceInput(printer, col, onSaved) {
 }
 
 // Vista de las impresoras de uno o varios clientes. Se refresca sola mientras está en pantalla.
-export async function printersView(clientIds, { clientNames } = {}) {
+export async function printersView(clientIds, { clientNames, canEditPrices = true } = {}) {
   const holder = h('div', { class: 'pr' });
   const months = lastMonths(MONTHS_SHOWN);
   const since = `${months[0]}-01T00:00:00+01:00`;
@@ -228,8 +229,8 @@ export async function printersView(clientIds, { clientNames } = {}) {
             h('td', { class: 'num' }, p.last_bn != null ? fmtNum(p.last_bn) : '—'),
             h('td', { class: 'num' }, p.last_color != null ? fmtNum(p.last_color) : '—'),
             h('td', { class: 'num' }, u ? fmtNum(u.bn + u.color) : '—'),
-            h('td', { class: 'num' }, priceInput(p, 'price_bn_eur', rerender)),
-            h('td', { class: 'num' }, priceInput(p, 'price_color_eur', rerender)),
+            h('td', { class: 'num' }, priceInput(p, 'price_bn_eur', rerender, canEditPrices)),
+            h('td', { class: 'num' }, priceInput(p, 'price_color_eur', rerender, canEditPrices)),
             h('td', { class: 'num pr-name' }, u ? fmtEur(u.bn * price(p.price_bn_eur) + u.color * price(p.price_color_eur)) : '—'),
             h('td', {}, tonerBars(p.last_toner)));
         })))),

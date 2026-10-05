@@ -531,6 +531,22 @@ async function costsPage() {
 }
 
 // ---------------------------------------------------------------- usuarios
+// Secciones del panel que puede ver un usuario que no es administrador. Tú eliges cuáles.
+const MODULES = [
+  ['resumen', 'Resumen', 'Las cifras del mes de su agente.'],
+  ['actividad', 'Actividad', 'Conversaciones, contactos y avisos del agente.'],
+  ['calendarios', 'Calendarios', 'Sus agendas, que puede crear y editar.'],
+  ['redes', 'Redes sociales', 'Conectar Instagram para que conteste el agente.'],
+  ['impresoras', 'Impresoras', 'Contadores, copias, tóner y avisos de error.'],
+  ['impresoras_precios', 'Cambiar el precio por copia', 'Si no lo marcas, ve los precios pero no puede tocarlos.'],
+];
+const ALL_MODULES = MODULES.map(([v]) => v);
+const moduleChecks = (selected) => h('div', { class: 'module-checks' }, MODULES.map(([v, label, help]) =>
+  h('label', { class: 'check module-check' },
+    h('input', { type: 'checkbox', name: `mod_${v}`, checked: !selected || selected.includes(v) }),
+    h('span', {}, h('b', {}, label), h('small', { class: 'muted' }, ` ${help}`)))));
+const readModules = (form) => ALL_MODULES.filter((v) => form.querySelector(`[name="mod_${v}"]`)?.checked);
+
 const ROLES = {
   client: {
     label: 'Cliente',
@@ -610,10 +626,13 @@ async function usersPage() {
       h('option', { value: '' }, '— Elige un negocio —'),
       clients.map((c) => h('option', { value: c.id }, c.name)));
     const businessField = field('Negocio que va a ver', business);
+    const modulesField = h('div', { class: 'field' }, h('span', {}, 'Qué puede ver'), moduleChecks(null),
+      h('small', {}, 'Solo verá lo que marques y lo que tenga contratado su negocio.'));
     const help = h('p', { class: 'muted' }, ROLES.client.help);
     role.addEventListener('change', () => {
       help.textContent = ROLES[role.value].help;
       businessField.hidden = role.value === 'admin';
+      modulesField.hidden = role.value === 'admin';
     });
 
     const form = h('form', { class: 'form', onsubmit: async (e) => {
@@ -625,6 +644,10 @@ async function usersPage() {
         const result = await callUsers('create', {
           email: d.email, full_name: d.full_name, role: d.role, client_id: d.role === 'admin' ? null : d.client_id, send_email: d.send_email,
         });
+        if (d.role !== 'admin' && result.id) {
+          const modules = readModules(form);
+          await q(db.from('profiles').update({ modules }).eq('id', result.id));
+        }
         close();
         linkModal('Usuario creado', result, d.email);
       } catch (err) {
@@ -634,12 +657,27 @@ async function usersPage() {
     } },
       field('Correo', h('input', { type: 'email', name: 'email', required: true, autocomplete: 'off' })),
       field('Nombre (opcional)', h('input', { type: 'text', name: 'full_name', maxlength: 120 })),
-      field('Rol', role), help, businessField,
+      field('Rol', role), help, businessField, modulesField,
       h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'send_email', checked: true }), 'Enviarle el enlace por correo'),
       h('div', { class: 'actions' },
         h('button', { class: 'btn primary', type: 'submit' }, 'Crear usuario'),
         h('button', { class: 'btn', type: 'button', onclick: () => close() }, 'Cancelar')));
     const close = modal('Añadir usuario', form);
+  }
+
+  function editModules(profile) {
+    const form = h('form', { class: 'form', onsubmit: async (e) => {
+      e.preventDefault();
+      await save(profile, { modules: readModules(form) });
+      close();
+      refresh();
+    } },
+      h('p', { class: 'muted' }, `Marca lo que puede ver ${profile.full_name || profile.email}. Lo que no marques no le aparece en el menú ni puede abrirlo.`),
+      moduleChecks(profile.modules),
+      h('div', { class: 'actions' },
+        h('button', { class: 'btn primary', type: 'submit' }, 'Guardar'),
+        h('button', { class: 'btn', type: 'button', onclick: () => close() }, 'Cancelar')));
+    const close = modal('Qué puede ver', form);
   }
 
   const stateCell = (r) => {
@@ -667,6 +705,9 @@ async function usersPage() {
       { label: 'Negocio que ve', cell: (r) => h('select', { onchange: (e) => save(r, { client_id: e.target.value || null }) },
         h('option', { value: '' }, '— Ninguno —'),
         clients.map((c) => h('option', { value: c.id, selected: r.client_id === c.id }, c.name))) },
+      { label: 'Qué ve', cell: (r) => (r.role === 'admin' ? h('span', { class: 'muted' }, 'Todo')
+        : h('button', { class: 'btn link', type: 'button', onclick: () => editModules(r) },
+          !r.modules ? 'Todo (elegir)' : `${r.modules.filter((m) => m !== 'impresoras_precios').length} secciones · cambiar`)) },
       { label: 'Acceso', cell: stateCell },
       { label: '', cell: (r) => {
         if (r.id === session.user.id) return '';

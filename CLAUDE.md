@@ -108,3 +108,9 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 - Avisos y errores (migración 0026): el lector lee `prtAlertTable` (1.3.6.1.2.1.43.18.1.1) y `hrDeviceStatus`; `printer-ingest` guarda `printers.last_alerts`/`last_status` y abre/cierra filas en `printer_events` (fecha de inicio y de fin). Se ignoran los códigos que solo dicen que todo va bien (QUIET). El panel traduce los códigos estándar (objeto ALERTS en `printers.js`) y enseña el historial «Avisos y errores».
 - Windows Defender borró el instalador de Descargas tras instalarlo (05/10/2026): el programa instalado siguió enviando. Sin firma de código seguirá pasando.
 - Ernesto quiere un aspecto natural, «hecho con mimo»: frases normales, nada de etiquetas en mayúsculas con letra de máquina ni avisos tipo «datos de ejemplo».
+
+## Qué ve cada usuario (05/10/2026, migración 0027)
+- `profiles.modules` (text[]; null = todo lo de su negocio): resumen, actividad, calendarios, redes, impresoras, impresoras_precios. Se elige en Usuarios (columna «Qué ve» y al crear). El menú y las rutas del panel lo respetan (`allowedClientNav` en app.js).
+- En la base de datos solo lo comprueban las tablas de impresoras (`private.can_see`). Resumen, actividad, calendarios y redes se ocultan en el panel pero sus tablas no lo comprueban todavía.
+- Prompts, conocimiento, costes, gastos y usuarios solo los ve el rol admin (no son módulos asignables).
+- Usuario partner de Palmo: spaluso@palmo.es (creado el 05/10/2026).

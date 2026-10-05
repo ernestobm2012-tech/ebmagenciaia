@@ -1,13 +1,39 @@
 // Lector de impresoras: copias mes a mes, coste por copia y tóner de cada impresora.
 // Los datos los manda el lector (agente_lector.py) a la función printer-ingest.
 import { db } from './app.js';
-import { h, q, toast, errorText, fmtNum, fmtEur, fmtDate, modal, field } from './ui.js';
+import { h, q, toast, errorText, fmtNum, fmtEur, fmtDate, fmtDateTime, modal, field } from './ui.js';
 
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const TONER = [['k', 'Negro'], ['c', 'Cian'], ['m', 'Magenta'], ['y', 'Amarillo']];
 const TONER_NAME = { k: 'negro', c: 'cian', m: 'magenta', y: 'amarillo' };
 const INSTALLER_URL = 'https://github.com/ernestobm2012-tech/ebmagenciaia/releases/download/lector/LectorImpresoras-Instalador.exe';
 const MONTHS_SHOWN = 7;
+
+// Códigos de aviso estándar de las impresoras (Printer MIB, RFC 3805) en palabras normales.
+const ALERTS = {
+  1: 'Aviso de la impresora', 2: 'Aviso desconocido', 3: 'Tapa abierta', 5: 'Cierre de seguridad abierto',
+  8: 'Atasco de papel', 9: 'Falta una pieza', 10: 'Una pieza está casi gastada', 11: 'Una pieza está gastada',
+  12: 'Algo está casi vacío', 13: 'Algo está vacío', 14: 'Algo está casi lleno', 15: 'Algo está lleno',
+  16: 'Cerca del límite', 17: 'Ha llegado al límite', 18: 'Pieza abierta', 21: 'Pieza apagada', 22: 'Pieza desconectada',
+  26: 'Han quitado una pieza', 29: 'Fallo que se puede arreglar', 30: 'Avería', 31: 'Error de almacenamiento',
+  32: 'Fallo del motor', 33: 'Memoria llena', 34: 'Temperatura demasiado baja', 35: 'Temperatura demasiado alta',
+  36: 'Fallo de sincronización', 37: 'Fallo del sensor de temperatura',
+  501: 'Puerta abierta', 504: 'Impresora apagada',
+  801: 'Falta una bandeja de papel', 802: 'Cambio de tamaño de papel', 807: 'Queda poco papel', 808: 'Sin papel',
+  809: 'Pide cambiar el papel', 810: 'Pide meter papel a mano', 811: 'Bandeja mal colocada', 812: 'Fallo al subir la bandeja',
+  813: 'No puede usar el tamaño de papel elegido',
+  901: 'Falta la bandeja de salida', 902: 'Bandeja de salida casi llena', 903: 'Bandeja de salida llena',
+  1001: 'Fusor frío', 1002: 'Fusor demasiado caliente', 1003: 'Fallo del fusor', 1004: 'Fallo del sensor del fusor',
+  1005: 'Ajustando la calidad de impresión',
+  1101: 'Tóner agotado', 1102: 'Tinta agotada', 1104: 'Queda poco tóner', 1105: 'Queda poca tinta',
+  1107: 'Depósito de tóner usado casi lleno', 1109: 'Depósito de tóner usado lleno',
+  1111: 'Tambor casi gastado', 1112: 'Tambor gastado', 1113: 'Queda poco revelador', 1114: 'Revelador agotado',
+  1115: 'Falta el cartucho de tóner',
+  1301: 'Falta una bandeja', 1302: 'Bandeja casi llena', 1303: 'Bandeja llena', 1304: 'No puede imprimir a doble cara este papel',
+  1507: 'Falta un recurso para imprimir', 1509: 'Página muy compleja',
+};
+const alertText = (a) => ALERTS[a.code] || 'Aviso de la impresora';
+const alertClass = (a) => (a.severity === 3 || [8, 13, 30, 32, 808, 1101, 1109, 1112, 1115].includes(a.code) ? 'pr-alert crit' : 'pr-alert');
 const REFRESH_MS = 20_000;
 
 const madridMonth = (d = new Date()) =>
@@ -124,14 +150,15 @@ export async function printersView(clientIds, { clientNames } = {}) {
   const since = `${months[0]}-01T00:00:00+01:00`;
 
   async function load() {
-    const [printers, rows] = await Promise.all([
+    const [printers, rows, events] = await Promise.all([
       q(db.from('printers').select('*').in('client_id', clientIds).order('created_at')),
       q(db.rpc('printer_months', { p_client_ids: clientIds, p_since: since })),
+      q(db.from('printer_events').select('*').in('client_id', clientIds).order('started_at', { ascending: false }).limit(50)),
     ]);
-    return { printers, use: monthlyUse(rows) };
+    return { printers, use: monthlyUse(rows), events };
   }
 
-  function render({ printers, use }) {
+  function render({ printers, use, events }) {
     if (!printers.length) {
       return holder.replaceChildren(h('div', { class: 'pr-empty' },
         h('p', {}, h('b', {}, 'Todavía no hay impresoras.')),
@@ -153,7 +180,9 @@ export async function printersView(clientIds, { clientNames } = {}) {
     for (const p of printers) for (const [k, v] of Object.entries(p.last_toner || {}))
       if (low == null || v < low.v) low = { v, k, p };
     const hasPrices = printers.some((p) => price(p.price_bn_eur) || price(p.price_color_eur));
-    const rerender = () => render({ printers, use });
+    const rerender = () => render({ printers, use, events });
+    const nameOf = Object.fromEntries(printers.map((p) => [p.id, p.name || p.model || 'Impresora']));
+    const withAlerts = printers.filter((p) => (p.last_alerts || []).length || p.last_status === 5).length;
 
     holder.replaceChildren(
       h('div', { class: 'pr-kpis' },
@@ -166,7 +195,7 @@ export async function printersView(clientIds, { clientNames } = {}) {
           h('div', { class: 'pr-n' }, hasPrices ? 'Con el precio por copia de cada impresora' : 'Pon el precio por copia abajo, en cada impresora')),
         h('div', { class: 'pr-kpi' }, h('div', { class: 'pr-l' }, 'Impresoras'),
           h('div', { class: 'pr-v' }, String(printers.length)),
-          h('div', { class: 'pr-n' }, [...new Set(printers.map((p) => p.brand).filter(Boolean))].join(', ') || '—')),
+          h('div', { class: `pr-n${withAlerts ? ' warn' : ''}` }, withAlerts ? `${withAlerts} con avisos ahora mismo` : [...new Set(printers.map((p) => p.brand).filter(Boolean))].join(', ') || '—')),
         h('div', { class: 'pr-kpi' }, h('div', { class: 'pr-l' }, 'Lo que menos tóner tiene'),
           h('div', { class: `pr-v${low && low.v <= 15 ? ' warn' : ''}` }, low ? `${low.v} %` : '—'),
           h('div', { class: 'pr-n' }, low ? `El ${TONER_NAME[low.k]} de ${low.p.name || low.p.model || 'la impresora'}${low.v <= 15 ? ': queda poco' : ''}` : 'Sin datos todavía'))),
@@ -192,7 +221,10 @@ export async function printersView(clientIds, { clientNames } = {}) {
               h('div', { class: 'pr-name' }, p.name || p.model || 'Impresora'),
               h('div', { class: 'muted small' }, [p.name ? p.model : null, p.serial && !p.serial.startsWith('ip-') ? `Serie ${p.serial}` : null, p.ip].filter(Boolean).join(' · ')),
               clientNames && clientNames[p.client_id] ? h('div', { class: 'muted small' }, clientNames[p.client_id]) : null,
-              h('div', { class: 'muted small' }, live ? h('span', { class: 'pr-live' }) : null, ago(p.last_read_at))),
+              h('div', { class: 'muted small' }, live ? h('span', { class: 'pr-live' }) : null, ago(p.last_read_at)),
+              p.last_status === 5 ? h('div', { class: 'pr-alert crit' }, 'Parada') : null,
+              (p.last_alerts || []).map((a) => h('div', { class: alertClass(a), title: a.description || '' },
+                alertText(a), a.description && !ALERTS[a.code] ? `: ${a.description}` : '', h('span', { class: 'pr-code' }, ` · código ${a.code}`)))),
             h('td', { class: 'num' }, p.last_bn != null ? fmtNum(p.last_bn) : '—'),
             h('td', { class: 'num' }, p.last_color != null ? fmtNum(p.last_color) : '—'),
             h('td', { class: 'num' }, u ? fmtNum(u.bn + u.color) : '—'),
@@ -201,6 +233,18 @@ export async function printersView(clientIds, { clientNames } = {}) {
             h('td', { class: 'num pr-name' }, u ? fmtEur(u.bn * price(p.price_bn_eur) + u.color * price(p.price_color_eur)) : '—'),
             h('td', {}, tonerBars(p.last_toner)));
         })))),
+      h('h2', {}, 'Avisos y errores'),
+      h('p', { class: 'muted small' }, 'Lo que han avisado las impresoras, con la hora en que empezó y en que se resolvió.'),
+      events.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'pr-table' },
+        h('thead', {}, h('tr', {}, h('th', {}, 'Cuándo'), h('th', {}, 'Impresora'), h('th', {}, 'Qué pasa'), h('th', {}, 'Estado'))),
+        h('tbody', {}, events.map((e) => h('tr', {},
+          h('td', {}, fmtDateTime(e.started_at)),
+          h('td', {}, nameOf[e.printer_id] || 'Impresora'),
+          h('td', {}, h('span', { class: e.ended_at ? null : 'pr-name' }, alertText(e)),
+            e.description ? h('div', { class: 'muted small' }, e.description) : null,
+            h('div', { class: 'muted small' }, `Código ${e.code}`)),
+          h('td', {}, e.ended_at ? h('span', { class: 'muted' }, `Resuelto el ${fmtDateTime(e.ended_at)}`) : h('span', { class: 'warn' }, 'Sigue activo')))))))
+        : h('p', { class: 'muted' }, 'Ningún aviso por ahora. Aquí saldrán los atascos, la falta de papel o de tóner y las averías, con su fecha y hora.'),
       h('p', { class: 'muted small', style: 'margin-top:16px' },
         'El lector solo mira los contadores y el tóner, nunca los documentos. Esta página se actualiza sola cada 20 segundos.'));
   }

@@ -19,6 +19,40 @@ async function sha256(text: string) {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// Avisos que solo dicen que todo va bien (cerrado, encendido, ahorro de energía, lista…): no se guardan.
+const QUIET = new Set([4, 6, 7, 19, 20, 23, 24, 25, 27, 503, 505, 506, 507, 1501, 1502, 1503, 1504, 1505, 1506]);
+
+function alertList(list: unknown) {
+  if (!Array.isArray(list)) return null;
+  const seen = new Set<string>();
+  const out: { code: number; severity: number | null; description: string | null }[] = [];
+  for (const a of list.slice(0, 30)) {
+    const code = a?.codigo;
+    if (typeof code !== "number" || !Number.isInteger(code) || QUIET.has(code)) continue;
+    const description = typeof a?.descripcion === "string" && a.descripcion.trim() ? a.descripcion.trim().slice(0, 160) : null;
+    const key = `${code}|${description ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ code, severity: Number.isInteger(a?.severidad) ? a.severidad : null, description });
+  }
+  return out;
+}
+
+// Abre los avisos nuevos y cierra los que ya no están.
+async function syncEvents(printerId: string, clientId: string, alerts: ReturnType<typeof alertList>, now: string) {
+  if (!alerts) return;
+  const { data: open } = await db.from("printer_events").select("id, code, description")
+    .eq("printer_id", printerId).is("ended_at", null);
+  const key = (code: number, d: string | null) => `${code}|${d ?? ""}`;
+  const current = new Set(alerts.map((a) => key(a.code, a.description)));
+  const already = new Set((open ?? []).map((e) => key(e.code, e.description)));
+  const toClose = (open ?? []).filter((e) => !current.has(key(e.code, e.description))).map((e) => e.id);
+  if (toClose.length) await db.from("printer_events").update({ ended_at: now }).in("id", toClose);
+  const toOpen = alerts.filter((a) => !already.has(key(a.code, a.description)))
+    .map((a) => ({ printer_id: printerId, client_id: clientId, ...a, started_at: now }));
+  if (toOpen.length) await db.from("printer_events").insert(toOpen);
+}
+
 const count = (v: unknown) =>
   typeof v === "number" && Number.isInteger(v) && v >= 0 && v < 1e12 ? v : null;
 const text = (v: unknown, max = 120) =>
@@ -62,15 +96,19 @@ Deno.serve(async (req) => {
     const total = count(l.total), bn = count(l.bn), color = count(l.color);
     if (total == null && bn == null && color == null) continue;
     const toner = tonerMap(l.toner);
+    const alerts = alertList(l.alertas);
+    const status = Number.isInteger(l.estado) && (l.estado as number) >= 1 && (l.estado as number) <= 5 ? l.estado : null;
 
     const { data: printer, error } = await db.from("printers").upsert({
       client_id: key.client_id, serial,
       model: text(l.modelo), brand: text(l.marca, 40), ip,
       last_read_at: now.toISOString(), last_total: total, last_bn: bn, last_color: color,
       ...(toner ? { last_toner: toner } : {}),
+      ...(alerts ? { last_alerts: alerts, last_status: status } : {}),
     }, { onConflict: "client_id,serial" }).select("id").single();
     if (error || !printer) continue;
     printers++;
+    await syncEvents(printer.id, key.client_id, alerts, now.toISOString());
 
     const { data: prev } = await db.from("printer_readings").select("read_at, total, bn, color")
       .eq("printer_id", printer.id).order("read_at", { ascending: false }).limit(1).maybeSingle();

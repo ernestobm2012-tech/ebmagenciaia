@@ -276,6 +276,28 @@ def leer_toner(ip, com):
     return out
 
 
+BASE_ALERTAS = "1.3.6.1.2.1.43.18.1.1"      # prtAlertTable (Printer MIB): avisos y errores activos
+OID_ESTADO = "1.3.6.1.2.1.25.3.2.1.5.1"      # hrDeviceStatus: 2 bien, 3 aviso, 4 pruebas, 5 parada
+
+
+def leer_alertas(ip, com):
+    filas = {}
+    for o, v in walk(ip, com, BASE_ALERTAS, maximo=300):
+        col, idx = o[len(BASE_ALERTAS) + 1:].split(".", 1)
+        filas.setdefault(idx, {})[col] = v
+    out = []
+    for f in filas.values():
+        codigo = f.get("7")
+        if not isinstance(codigo, int):
+            continue
+        desc = f.get("8")
+        out.append({"codigo": codigo,
+                    "severidad": f.get("2") if isinstance(f.get("2"), int) else None,
+                    "grupo": f.get("4") if isinstance(f.get("4"), int) else None,
+                    "descripcion": desc.strip()[:160] if isinstance(desc, str) else None})
+    return out[:30]
+
+
 def leer_impresora(ip, com):
     """Devuelve un diccionario con la lectura, o None si no es una impresora SNMP."""
     descr = get(ip, com, OID_DESCR)
@@ -313,6 +335,12 @@ def leer_impresora(ip, com):
     if bn is not None and color is not None and total is not None and bn + color != total:
         avisos.append("bn + color no suma el total")
     res["avisos"] = avisos
+    try:
+        res["alertas"] = leer_alertas(ip, com)
+        est = get(ip, com, OID_ESTADO)
+        res["estado"] = est if isinstance(est, int) else None
+    except Exception:
+        pass
     return res
 
 
@@ -564,7 +592,9 @@ def modo_servicio(conf):
                         lects.append(r)
                 except Exception as e:
                     log(f"Error leyendo {ip}: {e}")
-            firma = {l["ip"]: (l["total"], l["bn"], l["color"]) for l in lects}
+            firma = {l["ip"]: (l["total"], l["bn"], l["color"], l.get("estado"),
+                               tuple(sorted((a["codigo"], a["descripcion"] or "") for a in l.get("alertas", []))))
+                     for l in lects}
             if lects and (firma != enviado or time.time() - ultimo > 15 * 60):
                 try:
                     subir(URL_WEB, clave, "", lects)
@@ -666,6 +696,8 @@ def main():
                 print(f"    {t['nombre']}: {t['nivel']}%")
         for av in r["avisos"]:
             print("    AVISO:", av)
+        for al in r.get("alertas", []):
+            print(f"    Aviso de la impresora (código {al['codigo']}): {al['descripcion'] or ''}")
 
     with open(a.salida, "w", encoding="utf-8") as f:
         json.dump({"cliente": a.cliente, "lecturas": lecturas}, f, ensure_ascii=False, indent=2)

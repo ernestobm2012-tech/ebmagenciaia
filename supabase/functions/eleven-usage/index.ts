@@ -39,13 +39,20 @@ Deno.serve(async (req) => {
   };
   try {
     const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString().slice(0, 10);
-    const [usd, minutes, turns] = await Promise.all([
+    const [usd, minutes, turns, events] = await Promise.all([
       get("fiat_units_spent"), get("minutes_used"),
-      db.from("demo_text_turns").select("cost_usd").gte("day", monthStart),
+      db.from("demo_text_turns").select("day, cost_usd").gte("day", monthStart),
+      db.from("usage_events").select("created_at, model, cost_usd").like("model", "claude%").gte("created_at", monthStart),
     ]);
-    const rows = turns.data ?? [];
-    const demoText = { turns: rows.length, usd: rows.reduce((a, r) => a + Number(r.cost_usd ?? 0), 0) };
-    return json({ time: usd.time, usd: usd.usage, minutes: minutes.usage, demoText });
+    // Claude (Anthropic) según nuestros registros: chats de clientes + demos de texto, por día (hora de Madrid).
+    const claudeByDay: Record<string, { chats: number; demos: number; calls: number }> = {};
+    const bucket = (d: string) => (claudeByDay[d] ??= { chats: 0, demos: 0, calls: 0 });
+    const madrid = (iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid" }).format(new Date(iso));
+    for (const e of events.data ?? []) { const b = bucket(madrid(e.created_at)); b.chats += Number(e.cost_usd); b.calls++; }
+    for (const t of turns.data ?? []) { const b = bucket(t.day); b.demos += Number(t.cost_usd ?? 0); b.calls++; }
+    const demoRows = turns.data ?? [];
+    const demoText = { turns: demoRows.length, usd: demoRows.reduce((a, r) => a + Number(r.cost_usd ?? 0), 0) };
+    return json({ time: usd.time, usd: usd.usage, minutes: minutes.usage, demoText, claudeByDay });
   } catch (e) {
     return json({ error: String((e as Error).message ?? e) }, 502);
   }

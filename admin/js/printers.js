@@ -222,7 +222,7 @@ export async function printerKeysCard(clientId) {
     box.replaceChildren(
       h('h2', {}, 'Claves del lector'),
       h('p', { class: 'muted small' }, 'Cada lector instalado en la red del cliente usa una clave para mandar las lecturas a este panel. Si se pierde un ordenador, desactiva su clave.'),
-      keys.length ? h('div', { class: 'table-wrap' }, h('table', {},
+      keys.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'pr-table' },
         h('thead', {}, h('tr', {}, h('th', {}, 'Nombre'), h('th', {}, 'Creada'), h('th', {}, 'Último envío'), h('th', {}, ''))),
         h('tbody', {}, keys.map((k) => h('tr', {},
           h('td', {}, k.label, k.active ? null : h('span', { class: 'muted small' }, ' (desactivada)')),

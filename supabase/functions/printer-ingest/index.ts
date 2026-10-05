@@ -141,6 +141,20 @@ Deno.serve(async (req) => {
     printers++;
     await syncEvents(printer.id, key.client_id, alerts, now.toISOString());
 
+    // Contadores en bruto de marcas sin mapear (solo números y textos cortos, máx. 1000 entradas).
+    const raw = l.bruto;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      const entries = Object.entries(raw as Record<string, unknown>)
+        .filter(([k, v]) => /^[0-9.]{3,120}$/.test(k) && (typeof v === "number" || (typeof v === "string" && v.length < 120)))
+        .slice(0, 1000);
+      if (entries.length) {
+        await db.from("printer_raw").insert({
+          printer_id: printer.id, client_id: key.client_id, read_at: now.toISOString(),
+          data: { marca: text(l.marca, 40), modelo: text(l.modelo), oids: Object.fromEntries(entries) },
+        });
+      }
+    }
+
     const { data: prev } = await db.from("printer_readings").select("read_at, total, bn, color")
       .eq("printer_id", printer.id).order("read_at", { ascending: false }).limit(1).maybeSingle();
     const changed = !prev || prev.total !== total || prev.bn !== bn || prev.color !== color;

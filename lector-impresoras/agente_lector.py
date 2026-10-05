@@ -196,7 +196,7 @@ PERFILES = {
         "total": [["1.3.6.1.4.1.641.2.1.5.1", "1.3.6.1.4.1.641.2.1.5.1.0"]],
         "bn": [["1.3.6.1.4.1.641.2.1.5.2", "1.3.6.1.4.1.641.2.1.5.2.0"]],
         "color": [["1.3.6.1.4.1.641.2.1.5.3", "1.3.6.1.4.1.641.2.1.5.3.0"]],
-        "bruto": "1.3.6.1.4.1.641.2.1.5"},
+        "bruto": ["1.3.6.1.4.1.641.2.1.5", "1.3.6.1.4.1.641.6.4"]},
     "HP": {
         "estado": "documentado, sin probar (bn = total - color)",
         "color": [[HP + "7.0", HP + "7"]], "bn_resta": True,
@@ -204,11 +204,14 @@ PERFILES = {
     "Sharp": {
         "estado": "documentado, sin probar",
         "bn": [[SH + "61"]], "color": [[SH + "63"]],
-        "bruto": "1.3.6.1.4.1.2385.1.1.19.2.1.3.5.4"},
+        "bruto": ["1.3.6.1.4.1.2385.1.1.19.2.1"]},
     "Kyocera": {
         "estado": "sin mapear: se guarda un volcado para mapearlo",
         "total": [["1.3.6.1.4.1.1347.42.3.1.1.1.1"]],
         "bruto": "1.3.6.1.4.1.1347.42.3"},
+    "Toshiba": {
+        "estado": "sin mapear: se guarda un volcado para mapearlo",
+        "bruto": ["1.3.6.1.4.1.1129.2.3.50.1.3.21", "1.3.6.1.4.1.1129.2.3.50.1.3"]},
     "Samsung": {
         "estado": "sin mapear: se guarda un volcado para mapearlo",
         "total": [["1.3.6.1.4.1.236.11.5.1.1.9.2.0"]],
@@ -217,7 +220,7 @@ PERFILES = {
 
 EMPRESAS = {"253": "Xerox", "367": "Ricoh", "18334": "Konica Minolta", "641": "Lexmark",
             "11": "HP", "2385": "Sharp", "1347": "Kyocera", "236": "Samsung",
-            "1602": "Canon", "2435": "Brother"}
+            "1602": "Canon", "2435": "Brother", "1129": "Toshiba"}
 
 OID_DESCR = "1.3.6.1.2.1.1.1.0"
 OID_OBJID = "1.3.6.1.2.1.1.2.0"
@@ -237,7 +240,7 @@ def detectar_marca(descr, objid):
                          ("bizhub", "Konica Minolta"), ("olivetti", "Olivetti"),
                          ("kyocera", "Kyocera"), ("ecosys", "Kyocera"),
                          ("lexmark", "Lexmark"), ("sharp", "Sharp"),
-                         ("samsung", "Samsung"), ("hp ", "HP"),
+                         ("samsung", "Samsung"), ("toshiba", "Toshiba"), ("e-studio", "Toshiba"), ("hp ", "HP"),
                          ("laserjet", "HP"), ("canon", "Canon")]:
         if clave in d:
             return marca
@@ -304,7 +307,7 @@ def leer_alertas(ip, com):
     return out[:30]
 
 
-def leer_impresora(ip, com):
+def leer_impresora(ip, com, con_bruto=True):
     """Devuelve un diccionario con la lectura, o None si no es una impresora SNMP."""
     descr = get(ip, com, OID_DESCR)
     if descr is None:
@@ -333,11 +336,26 @@ def leer_impresora(ip, com):
         "toner": leer_toner(ip, com),
         "estado_perfil": perfil.get("estado", "marca sin perfil: solo contador total estándar"),
     }
-    if (bn is None or color is None) and marca != "Desconocida" and perfil.get("bruto"):
-        res["bruto"] = {o: v for o, v in walk(ip, com, perfil["bruto"], maximo=300)}
-        avisos.append("no se pudo separar bn/color; guardado volcado para mapear")
+    if con_bruto and marca not in ("Xerox", "Desconocida") and perfil.get("bruto"):
+        # Marcas sin probar: se manda también su tabla de contadores para poder mapearla
+        # a distancia (solo la ve administración). Son números de contadores, nada de documentos.
+        bases = perfil["bruto"] if isinstance(perfil["bruto"], list) else [perfil["bruto"]]
+        bruto = {}
+        for base in bases:
+            if len(bruto) >= 600:
+                break
+            bruto.update({o: v for o, v in walk(ip, com, base, maximo=400) if not isinstance(v, str) or len(v) < 120})
+        if bruto:
+            res["bruto"] = bruto
+        if bn is None or color is None:
+            avisos.append("no se pudo separar bn/color; guardado volcado para mapear")
     elif marca == "Desconocida":
         avisos.append("marca no reconocida")
+        if con_bruto and objid and objid.startswith("1.3.6.1.4.1."):
+            base = ".".join(objid.split(".")[:7])   # rama privada del fabricante
+            bruto = {o: v for o, v in walk(ip, com, base, maximo=400) if not isinstance(v, str) or len(v) < 120}
+            if bruto:
+                res["bruto"] = bruto
     if bn is not None and color is not None and total is not None and bn + color != total:
         avisos.append("bn + color no suma el total")
     res["avisos"] = avisos
@@ -399,7 +417,6 @@ def descubrir(redes, com):
 
 
 def subir(url, clave, cliente, lecturas):
-    lecturas = [{k: v for k, v in l.items() if k != "bruto"} for l in lecturas]
     cuerpo = json.dumps({"cliente": cliente, "lecturas": lecturas}).encode()
     req = urllib.request.Request(url, data=cuerpo, method="POST",
         headers={"Content-Type": "application/json", "Authorization": "Bearer " + clave})
@@ -532,7 +549,7 @@ def modo_vivo(ips, com, intervalo, puerto, clave=None, url=URL_WEB):
                     r["color"] = co
                 if clave and b["eventos"] and b.get("subido") != r["total"]:
                     try:
-                        subir(url, clave, "", [r])
+                        subir(url, clave, "", [{k: v for k, v in r.items() if k != "bruto"}])
                         b["subido"] = r["total"]
                     except Exception as e:
                         print("    (no se pudo enviar a la web:", e, ")")
@@ -580,6 +597,7 @@ def modo_servicio(conf):
     redes = [x.strip() for x in conf.get("red", "").split(",") if x.strip()]
     log("Lector en marcha.")
     ips, buscado, enviado, ultimo = [], 0.0, {}, 0.0
+    bruto_enviado = {}   # ip -> hora del último volcado enviado (uno cada 6 horas como mucho)
     while True:
         try:
             if fijas:
@@ -593,15 +611,18 @@ def modo_servicio(conf):
             lects = []
             for ip in ips:
                 try:
-                    r = leer_impresora(ip, com)
+                    quiere_bruto = time.time() - bruto_enviado.get(ip, 0) > 6 * 3600
+                    r = leer_impresora(ip, com, con_bruto=quiere_bruto)
                     if r:
+                        if "bruto" in r:
+                            bruto_enviado[ip] = time.time()
                         lects.append(r)
                 except Exception as e:
                     log(f"Error leyendo {ip}: {e}")
             firma = {l["ip"]: (l["total"], l["bn"], l["color"], l.get("estado"),
                                tuple(sorted((a["codigo"], a["descripcion"] or "") for a in l.get("alertas", []))))
                      for l in lects}
-            if lects and (firma != enviado or time.time() - ultimo > 15 * 60):
+            if lects and (firma != enviado or time.time() - ultimo > 15 * 60 or any("bruto" in l for l in lects)):
                 try:
                     subir(URL_WEB, clave, "", lects)
                     if firma != enviado:
@@ -668,12 +689,14 @@ def main():
     if a.cada:
         print(f"Leyendo cada {a.cada:g} minutos y enviando a la web. Para parar: Ctrl + C")
         ultimo_descubrimiento = time.time()
+        primera = True
         try:
             while True:
                 if not a.ip and (not ips or time.time() - ultimo_descubrimiento > 6 * 3600):
                     ips = descubrir(a.red or [ip_local().rsplit(".", 1)[0] + ".0/24"], a.comunidad)
                     ultimo_descubrimiento = time.time()
-                lects = [r for r in (leer_impresora(ip, a.comunidad) for ip in ips) if r]
+                lects = [r for r in (leer_impresora(ip, a.comunidad, con_bruto=primera) for ip in ips) if r]
+                primera = False
                 hora = datetime.datetime.now().strftime("%H:%M")
                 try:
                     subir(a.subir, a.clave or "", a.cliente, lects) if a.subir else None

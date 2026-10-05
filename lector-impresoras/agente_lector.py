@@ -497,6 +497,77 @@ def modo_vivo(ips, com, intervalo, puerto, clave=None, url=URL_WEB):
         print("\nParado.")
 
 
+# ---------- Modo instalado (sin ventana) ----------
+# Lo usa el programa instalado: arranca con Windows, lee cada minuto y manda a la web
+# cuando cambia un contador (o cada 15 minutos aunque no cambie). Deja un registro en
+# %LOCALAPPDATA%\LectorImpresoras\lector.log para poder ver qué ha pasado.
+def _ruta_log():
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    carpeta = os.path.join(base, "LectorImpresoras")
+    os.makedirs(carpeta, exist_ok=True)
+    return os.path.join(carpeta, "lector.log")
+
+
+def log(msg):
+    try:
+        ruta = _ruta_log()
+        if os.path.exists(ruta) and os.path.getsize(ruta) > 1_000_000:
+            os.replace(ruta, ruta + ".old")
+        with open(ruta, "a", encoding="utf-8") as f:
+            f.write(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S ") + msg + "\n")
+    except Exception:
+        pass
+    print(msg)
+
+
+def modo_servicio(conf):
+    # Solo una copia a la vez (el arranque de Windows y el instalador podrían abrir dos).
+    cerrojo = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        cerrojo.bind(("127.0.0.1", 8766))
+    except OSError:
+        return
+    clave = conf.get("clave")
+    if not clave:
+        log("Falta la clave en lector.txt. Vuelve a instalar el programa y pega la clave.")
+        return
+    com = conf.get("comunidad", "public")
+    fijas = [x.strip() for x in conf.get("ip", "").split(",") if x.strip()]
+    redes = [x.strip() for x in conf.get("red", "").split(",") if x.strip()]
+    log("Lector en marcha.")
+    ips, buscado, enviado, ultimo = [], 0.0, {}, 0.0
+    while True:
+        try:
+            if fijas:
+                ips = fijas
+            elif not ips and time.time() - buscado > 300 or time.time() - buscado > 6 * 3600:
+                mi = ip_local()
+                objetivo = redes or ([mi.rsplit(".", 1)[0] + ".0/24"] if mi else [])
+                ips = descubrir(objetivo, com) if objetivo else []
+                buscado = time.time()
+                log(f"Buscadas impresoras en {', '.join(objetivo) or '(sin red)'}: {len(ips)} encontradas.")
+            lects = []
+            for ip in ips:
+                try:
+                    r = leer_impresora(ip, com)
+                    if r:
+                        lects.append(r)
+                except Exception as e:
+                    log(f"Error leyendo {ip}: {e}")
+            firma = {l["ip"]: (l["total"], l["bn"], l["color"]) for l in lects}
+            if lects and (firma != enviado or time.time() - ultimo > 15 * 60):
+                try:
+                    subir(URL_WEB, clave, "", lects)
+                    if firma != enviado:
+                        log("Enviado: " + "; ".join(f"{l['modelo']} total {l['total']}" for l in lects))
+                    enviado, ultimo = firma, time.time()
+                except Exception as e:
+                    log(f"No se pudo enviar a la web (se reintenta en un minuto): {e}")
+        except Exception as e:
+            log(f"Error: {e}")
+        time.sleep(60)
+
+
 def main():
     try:
         sys.stdout.reconfigure(line_buffering=True)
@@ -597,4 +668,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if getattr(sys, "frozen", False) and len(sys.argv) == 1:
+        modo_servicio(leer_config())
+    else:
+        main()

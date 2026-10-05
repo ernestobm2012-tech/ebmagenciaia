@@ -365,7 +365,7 @@ td .actions { flex-wrap: wrap; gap: 4px 14px; }
 /* ---------- lector de impresoras ---------- */
 .pr { --pr-bn: #2F6FC7; --pr-color: #D9701F; }
 .pr-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin: 20px 0 8px; }
-.pr-kpi { background: var(--surface); border-radius: 16px; padding: 18px 20px; min-width: 0; }
+.pr-kpi { background: var(--bg); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; min-width: 0; }
 .pr-l { font-size: 15px; color: var(--ink-soft); }
 .pr-v { font-size: 32px; font-weight: 900; line-height: 1.15; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .pr-n { font-size: 13.5px; color: var(--ink-soft); margin-top: 4px; }
@@ -389,3 +389,5 @@ td .actions { flex-wrap: wrap; gap: 4px 14px; }
 .pr-empty { background: var(--surface); border-radius: 16px; padding: 22px; margin-top: 16px; }
 .pr-keys { margin-top: 28px; }
 .pr-token { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface); padding: 12px; border-radius: 10px; }
+.pr-table th { font-family: "Lato", sans-serif; font-size: 13.5px; font-weight: 700; text-transform: none; letter-spacing: 0; }
+.pr-table td:first-child { min-width: 220px; }

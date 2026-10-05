@@ -3,6 +3,7 @@ import { db, session } from './app.js';
 import { activityTabs } from './activity.js';
 import { calendarsTab } from './calendars.js';
 import { socialTab } from './social.js';
+import { printersView } from './printers.js';
 import { h, q, table, kpi, fmtNum, monthStart } from './ui.js';
 
 export const clientNav = [
@@ -10,6 +11,7 @@ export const clientNav = [
   { href: '#/actividad', label: 'Actividad' },
   { href: '#/calendarios', label: 'Calendarios' },
   { href: '#/redes', label: 'Redes sociales' },
+  { href: '#/impresoras', label: 'Impresoras', needs: 'impresoras' },
 ];
 
 export const clientRoutes = [
@@ -17,6 +19,7 @@ export const clientRoutes = [
   [/^\/actividad$/, activityPage],
   [/^\/calendarios$/, calendarsPage],
   [/^\/redes$/, socialPage],
+  [/^\/impresoras$/, printersPage],
 ];
 
 async function overview() {
@@ -94,5 +97,24 @@ async function socialPage() {
   await show(session.client.id);
   return h('div', { class: 'page' }, h('h1', {}, 'Redes sociales'),
     h('p', { class: 'muted' }, 'Conecta tus redes para que el agente conteste por ti.'),
+    picker, holder);
+}
+
+// Impresoras: un partner puede ver todas las de sus clientes o las de uno en concreto.
+async function printersPage() {
+  const names = Object.fromEntries(session.clients.map((c) => [c.id, c.name]));
+  const allIds = session.clients.map((c) => c.id);
+  const holder = h('div', {});
+  const show = async (id) => holder.replaceChildren(id === 'all'
+    ? await printersView(allIds, { clientNames: names })
+    : await printersView([id]));
+  const picker = session.clients.length > 1
+    ? h('select', { class: 'picker', onchange: (e) => show(e.target.value) },
+      h('option', { value: 'all' }, 'Todos mis clientes'),
+      session.clients.map((c) => h('option', { value: c.id }, c.name)))
+    : null;
+  await show(session.clients.length > 1 ? 'all' : session.client.id);
+  return h('div', { class: 'page' }, h('h1', {}, 'Impresoras'),
+    h('p', { class: 'muted' }, 'Cuánto se ha imprimido, cuánto cuesta y cuánto tóner queda en cada impresora.'),
     picker, holder);
 }

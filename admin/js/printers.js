@@ -1,0 +1,267 @@
+// Lector de impresoras: copias mes a mes, coste por copia y tóner de cada impresora.
+// Los datos los manda el lector (agente_lector.py) a la función printer-ingest.
+import { db } from './app.js';
+import { h, q, toast, errorText, fmtNum, fmtEur, fmtDate, modal, field } from './ui.js';
+
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const TONER = [['k', 'Negro'], ['c', 'Cian'], ['m', 'Magenta'], ['y', 'Amarillo']];
+const TONER_NAME = { k: 'negro', c: 'cian', m: 'magenta', y: 'amarillo' };
+const INGEST_URL = 'https://rhjbpkaesobsbnkvioyh.supabase.co/functions/v1/printer-ingest';
+const MONTHS_SHOWN = 7;
+const REFRESH_MS = 20_000;
+
+const madridMonth = (d = new Date()) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit' }).format(d);
+function lastMonths(n) {
+  const [y, m] = madridMonth().split('-').map(Number);
+  return Array.from({ length: n }, (_, i) => {
+    const d = new Date(y, m - 1 - (n - 1 - i), 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+}
+const monthLabel = (k) => `${MESES[Number(k.slice(5)) - 1]} ${k.slice(2, 4)}`;
+const price = (n) => Number(n) || 0;
+
+function since(date) {
+  const min = Math.round((Date.now() - new Date(date)) / 60_000);
+  if (min < 1) return 'ahora mismo';
+  if (min < 60) return `hace ${min} min`;
+  if (min < 48 * 60) return `hace ${Math.round(min / 60)} h`;
+  return `el ${fmtDate(date)}`;
+}
+const ago = (date) => (date ? `Leída ${since(date)}` : 'Sin lecturas todavía');
+
+// Copias de cada mes = último contador del mes menos el último del mes anterior con datos
+// (o el primero del mes si es el primer mes). Si la marca no separa b/n y color, todo cuenta como b/n.
+function monthlyUse(rows) {
+  const out = {};
+  const byPrinter = {};
+  for (const r of rows) (byPrinter[r.printer_id] ||= []).push(r);
+  for (const [id, list] of Object.entries(byPrinter)) {
+    list.sort((a, b) => (a.month < b.month ? -1 : 1));
+    list.forEach((r, i) => {
+      const prev = list[i - 1];
+      const from = prev
+        ? { bn: prev.last_bn, color: prev.last_color, total: prev.last_total }
+        : { bn: r.first_bn, color: r.first_color, total: r.first_total };
+      const split = r.last_bn != null && from.bn != null;
+      const bn = split ? r.last_bn - from.bn : (r.last_total ?? 0) - (from.total ?? 0);
+      const color = split && r.last_color != null && from.color != null ? r.last_color - from.color : 0;
+      if (!prev && bn === 0 && color === 0) return;   // una sola lectura: aún no hay consumo
+      (out[id] ||= {})[r.month.slice(0, 7)] = { bn: Math.max(0, bn), color: Math.max(0, color) };
+    });
+  }
+  return out;
+}
+
+function chart(months, totals) {
+  const W = 640, H = 240, L = 50, R = 8, T = 10, B = 28;
+  const max = Math.max(0, ...months.map((k) => totals[k].bn + totals[k].color));
+  const nice = (v) => {
+    if (v <= 0) return 100;
+    const p = 10 ** Math.floor(Math.log10(v)), f = v / p;
+    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p;
+  };
+  const top = nice(max), pw = W - L - R, ph = H - T - B, slot = pw / months.length, bw = Math.min(52, slot * 0.6);
+  const y = (v) => T + ph - (v / top) * ph;
+  const bar = (x, yy, w, hh, r) => {
+    r = Math.min(r, hh, w / 2);
+    return `M${x},${yy + hh}V${yy + r}Q${x},${yy} ${x + r},${yy}H${x + w - r}Q${x + w},${yy} ${x + w},${yy + r}V${yy + hh}Z`;
+  };
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Copias por mes en blanco y negro y en color">`;
+  for (let i = 0; i <= 4; i++) {
+    const v = (top / 4) * i;
+    svg += `<line class="pr-grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>`
+      + `<text class="pr-axis" x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${fmtNum(v)}</text>`;
+  }
+  months.forEach((k, i) => {
+    const t = totals[k], cx = L + slot * (i + 0.5), x = cx - bw / 2;
+    const hb = (t.bn / top) * ph, hc = (t.color / top) * ph;
+    svg += `<g><title>${monthLabel(k)}: ${fmtNum(t.bn)} en blanco y negro y ${fmtNum(t.color)} en color</title>`;
+    if (t.ok) {
+      if (hb > 0) svg += `<path fill="var(--pr-bn)" d="${bar(x, y(0) - hb, bw, hb, hc > 0 ? 0 : 4)}"/>`;
+      if (hc > 0) svg += `<path fill="var(--pr-color)" d="${bar(x, y(0) - hb - hc - (hb > 0 ? 2 : 0), bw, hc, 4)}"/>`;
+    } else {
+      svg += `<line x1="${cx - 10}" x2="${cx + 10}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line)" stroke-width="2"/>`;
+    }
+    svg += `<text class="pr-axis" x="${cx}" y="${H - 8}" text-anchor="middle">${monthLabel(k)}</text></g>`;
+  });
+  const el = h('div', { class: 'pr-chart' });
+  el.innerHTML = `${svg}</svg>`;   // solo números y nombres de mes: nada que venga de usuarios
+  return el;
+}
+
+function tonerBars(t) {
+  if (!t) return h('span', { class: 'muted small' }, 'Sin datos de tóner');
+  return h('div', { class: 'pr-toner' }, TONER.filter(([k]) => t[k] != null).map(([k, name]) =>
+    h('div', { class: 'pr-tn' }, h('span', {}, name),
+      h('span', { class: 'pr-bar' }, h('span', { class: `pr-fill pr-${k}`, style: `width:${t[k]}%` })),
+      h('span', { class: t[k] <= 15 ? 'warn' : null }, `${t[k]} %`))));
+}
+
+function priceInput(printer, col, onSaved) {
+  return h('input', {
+    type: 'number', min: 0, step: '0.001', class: 'pr-price', value: printer[col],
+    'aria-label': col === 'price_bn_eur' ? 'Precio copia blanco y negro' : 'Precio copia color',
+    onchange: async (e) => {
+      try {
+        const value = Math.max(0, Number(e.target.value) || 0);
+        await q(db.from('printers').update({ [col]: value }).eq('id', printer.id));
+        printer[col] = value;
+        toast('Precio guardado.');
+        onSaved();
+      } catch (err) {
+        toast(errorText(err), 'error');
+      }
+    },
+  });
+}
+
+// Vista de las impresoras de uno o varios clientes. Se refresca sola mientras está en pantalla.
+export async function printersView(clientIds, { clientNames } = {}) {
+  const holder = h('div', { class: 'pr' });
+  const months = lastMonths(MONTHS_SHOWN);
+  const since = `${months[0]}-01T00:00:00+01:00`;
+
+  async function load() {
+    const [printers, rows] = await Promise.all([
+      q(db.from('printers').select('*').in('client_id', clientIds).order('created_at')),
+      q(db.rpc('printer_months', { p_client_ids: clientIds, p_since: since })),
+    ]);
+    return { printers, use: monthlyUse(rows) };
+  }
+
+  function render({ printers, use }) {
+    if (!printers.length) {
+      return holder.replaceChildren(h('div', { class: 'pr-empty' },
+        h('p', {}, h('b', {}, 'Todavía no hay impresoras.')),
+        h('p', { class: 'muted' }, 'En cuanto el lector mande la primera lectura, aparecerán aquí con sus contadores y su tóner.')));
+    }
+    const now = months[months.length - 1];
+    const totals = Object.fromEntries(months.map((k) => [k, { bn: 0, color: 0, cost: 0, ok: false }]));
+    for (const p of printers) {
+      for (const k of months) {
+        const u = use[p.id]?.[k];
+        if (!u) continue;
+        const t = totals[k];
+        t.bn += u.bn; t.color += u.color; t.ok = true;
+        t.cost += u.bn * price(p.price_bn_eur) + u.color * price(p.price_color_eur);
+      }
+    }
+    const cur = totals[now];
+    let low = null;
+    for (const p of printers) for (const [k, v] of Object.entries(p.last_toner || {}))
+      if (low == null || v < low.v) low = { v, k, p };
+    const hasPrices = printers.some((p) => price(p.price_bn_eur) || price(p.price_color_eur));
+    const rerender = () => render({ printers, use });
+
+    holder.replaceChildren(
+      h('div', { class: 'pr-kpis' },
+        h('div', { class: 'pr-kpi' }, h('div', { class: 'pr-l' }, 'Copias este mes'),
+          h('div', { class: 'pr-v' }, cur.ok ? fmtNum(cur.bn + cur.color) : '—'),
+          h('div', { class: 'pr-n' }, cur.ok ? `${fmtNum(cur.bn)} en blanco y negro y ${fmtNum(cur.color)} en color`
+            : 'Ya hay una primera lectura. Las copias salen a partir de la siguiente.')),
+        h('div', { class: 'pr-kpi' }, h('div', { class: 'pr-l' }, 'Coste de este mes'),
+          h('div', { class: 'pr-v' }, cur.ok && hasPrices ? fmtEur(cur.cost) : '—'),
+          h('div', { class: 'pr-n' }, hasPrices ? 'Con el precio por copia de cada impresora' : 'Pon el precio por copia abajo, en cada impresora')),
+        h('div', { class: 'pr-kpi' }, h('div', { class: 'pr-l' }, 'Impresoras'),
+          h('div', { class: 'pr-v' }, String(printers.length)),
+          h('div', { class: 'pr-n' }, [...new Set(printers.map((p) => p.brand).filter(Boolean))].join(', ') || '—')),
+        h('div', { class: 'pr-kpi' }, h('div', { class: 'pr-l' }, 'Lo que menos tóner tiene'),
+          h('div', { class: `pr-v${low && low.v <= 15 ? ' warn' : ''}` }, low ? `${low.v} %` : '—'),
+          h('div', { class: 'pr-n' }, low ? `El ${TONER_NAME[low.k]} de ${low.p.name || low.p.model || 'la impresora'}${low.v <= 15 ? ': queda poco' : ''}` : 'Sin datos todavía'))),
+
+      h('h2', {}, 'Copias mes a mes'),
+      h('p', { class: 'muted small' }, 'Cada mes sale de restar el contador del mes anterior. Pasa el dedo o el ratón por una barra para ver el detalle.'),
+      h('div', { class: 'pr-legend' },
+        h('span', {}, h('i', { class: 'pr-sw pr-swbn' }), 'Blanco y negro'),
+        h('span', {}, h('i', { class: 'pr-sw pr-swcolor' }), 'Color')),
+      chart(months, totals),
+
+      h('h2', {}, 'Cada impresora'),
+      h('div', { class: 'table-wrap' }, h('table', { class: 'pr-table' },
+        h('thead', {}, h('tr', {},
+          h('th', {}, 'Impresora'), h('th', { class: 'num' }, 'Contador b/n'), h('th', { class: 'num' }, 'Contador color'),
+          h('th', { class: 'num' }, 'Este mes'), h('th', { class: 'num' }, 'Precio b/n (€)'), h('th', { class: 'num' }, 'Precio color (€)'),
+          h('th', { class: 'num' }, 'Cuesta este mes'), h('th', {}, 'Tóner'))),
+        h('tbody', {}, printers.map((p) => {
+          const u = use[p.id]?.[now];
+          const live = p.last_read_at && Date.now() - new Date(p.last_read_at) < 15 * 60_000;
+          return h('tr', {},
+            h('td', {},
+              h('div', { class: 'pr-name' }, p.name || p.model || 'Impresora'),
+              h('div', { class: 'muted small' }, [p.name ? p.model : null, p.serial && !p.serial.startsWith('ip-') ? `Serie ${p.serial}` : null, p.ip].filter(Boolean).join(' · ')),
+              clientNames && clientNames[p.client_id] ? h('div', { class: 'muted small' }, clientNames[p.client_id]) : null,
+              h('div', { class: 'muted small' }, live ? h('span', { class: 'pr-live' }) : null, ago(p.last_read_at))),
+            h('td', { class: 'num' }, p.last_bn != null ? fmtNum(p.last_bn) : '—'),
+            h('td', { class: 'num' }, p.last_color != null ? fmtNum(p.last_color) : '—'),
+            h('td', { class: 'num' }, u ? fmtNum(u.bn + u.color) : '—'),
+            h('td', { class: 'num' }, priceInput(p, 'price_bn_eur', rerender)),
+            h('td', { class: 'num' }, priceInput(p, 'price_color_eur', rerender)),
+            h('td', { class: 'num pr-name' }, u ? fmtEur(u.bn * price(p.price_bn_eur) + u.color * price(p.price_color_eur)) : '—'),
+            h('td', {}, tonerBars(p.last_toner)));
+        })))),
+      h('p', { class: 'muted small', style: 'margin-top:16px' },
+        'El lector solo mira los contadores y el tóner, nunca los documentos. Esta página se actualiza sola cada 20 segundos.'));
+  }
+
+  render(await load());
+  const timer = setInterval(async () => {
+    if (!holder.isConnected) return clearInterval(timer);
+    if (document.hidden || holder.contains(document.activeElement)) return;
+    try { render(await load()); } catch { /* se reintenta en la siguiente vuelta */ }
+  }, REFRESH_MS);
+  return holder;
+}
+
+// Solo administración: claves del lector de un cliente.
+export async function printerKeysCard(clientId) {
+  const box = h('div', { class: 'pr-keys' });
+  async function draw() {
+    const keys = await q(db.from('printer_keys').select('*').eq('client_id', clientId).order('created_at'));
+    box.replaceChildren(
+      h('h2', {}, 'Claves del lector'),
+      h('p', { class: 'muted small' }, 'Cada lector instalado en la red del cliente usa una clave para mandar las lecturas a este panel. Si se pierde un ordenador, desactiva su clave.'),
+      keys.length ? h('div', { class: 'table-wrap' }, h('table', {},
+        h('thead', {}, h('tr', {}, h('th', {}, 'Nombre'), h('th', {}, 'Creada'), h('th', {}, 'Último envío'), h('th', {}, ''))),
+        h('tbody', {}, keys.map((k) => h('tr', {},
+          h('td', {}, k.label, k.active ? null : h('span', { class: 'muted small' }, ' (desactivada)')),
+          h('td', {}, fmtDate(k.created_at)),
+          h('td', {}, k.last_used_at ? since(k.last_used_at) : 'Nunca'),
+          h('td', {}, h('button', { class: 'btn link', type: 'button', onclick: () => toggle(k) }, k.active ? 'Desactivar' : 'Activar'))))))) : null,
+      h('button', { class: 'btn primary', type: 'button', onclick: create }, 'Crear clave del lector'));
+  }
+  async function toggle(k) {
+    try {
+      await q(db.from('printer_keys').update({ active: !k.active }).eq('id', k.id));
+      draw();
+    } catch (err) { toast(errorText(err), 'error'); }
+  }
+  function create() {
+    const label = h('input', { name: 'label', required: true, placeholder: 'Oficina principal' });
+    const form = h('form', { class: 'form', onsubmit: async (e) => {
+      e.preventDefault();
+      try {
+        const token = await q(db.rpc('create_printer_key', { p_client_id: clientId, p_label: label.value }));
+        close();
+        showToken(token);
+        draw();
+      } catch (err) { toast(errorText(err), 'error'); }
+    } }, field('Dónde se va a instalar', label), h('div', { class: 'actions' }, h('button', { class: 'btn primary', type: 'submit' }, 'Crear')));
+    const close = modal('Nueva clave del lector', form);
+  }
+  function showToken(token) {
+    const line = `clave=${token}`;
+    const copy = async () => {
+      try { await navigator.clipboard.writeText(line); toast('Copiado.'); } catch { toast('Selecciónalo y cópialo a mano.', 'error'); }
+    };
+    modal('Clave del lector', h('div', {},
+      h('p', {}, 'Guárdala ahora: por seguridad no se vuelve a mostrar.'),
+      h('p', {}, 'En el ordenador del cliente, crea un archivo ', h('b', {}, 'lector.txt'), ' en la misma carpeta que el programa, con esta línea:'),
+      h('pre', { class: 'mono pr-token' }, line),
+      h('button', { class: 'btn', type: 'button', onclick: copy }, 'Copiar'),
+      h('p', { class: 'muted small', style: 'margin-top:14px' }, `El lector manda las lecturas a ${INGEST_URL}`)));
+  }
+  await draw();
+  return box;
+}

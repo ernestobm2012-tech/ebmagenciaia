@@ -30,7 +30,8 @@ export async function elevenUsageCard() {
       kpi('Este mes', fmtUsd(usdMonth), `≈ ${fmtEur(usdMonth * USD_TO_EUR)} · lo que consume tu plan`),
       kpi('Minutos de voz', fmtNum(Math.round(minMonth)), 'este mes'),
       kpi('Por minuto', minMonth > 0 ? fmtUsd(usdOf('Conversational AI') / minMonth + usdOf('Conversational AI - LLM') / minMonth) : '—', 'voz + LLM, sin la telefonía'),
-      ...types.filter((t) => usdOf(t) > 0).map((t) => kpi(label(t), fmtUsd(usdOf(t)), 'este mes'))),
+      ...types.filter((t) => usdOf(t) > 0).map((t) => kpi(label(t), fmtUsd(usdOf(t)), 'este mes')),
+      kpi('Demos de texto de la web', fmtUsd(data.demoText?.usd), `${fmtNum(data.demoText?.turns)} respuestas este mes · Claude API, no ElevenLabs`)),
     table([
       { label: 'Día', cell: (r) => fmtDate(r.t) },
       ...types.map((t) => ({ label: label(t), num: true, cell: (r) => fmtUsd((data.usd[t][r.i] || 0) / 100) })),

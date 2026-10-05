@@ -238,11 +238,18 @@ Deno.serve(async (req) => {
   if ((mine ?? 0) >= MAX_USER_MESSAGES || userCount > MAX_USER_MESSAGES) return json({ error: "limite" }, 429);
   if ((today ?? 0) >= MAX_PER_DAY) return json({ error: "dia" }, 429);
 
-  await db.from("demo_text_turns").insert({ day, token_id: tk.i });
+  const { data: turn } = await db.from("demo_text_turns").insert({ day, token_id: tk.i }).select("id").single();
   try {
     const r = await anthropic.messages.create({
       model: MODEL, max_tokens: 300, temperature: 0.6, system: systemPrompt(business), messages,
     });
+    // Haiku 4.5: 1 $ por millón de tokens de entrada y 5 $ de salida. Se apunta para verlo en el panel.
+    if (turn?.id) {
+      await db.from("demo_text_turns").update({
+        input_tokens: r.usage.input_tokens, output_tokens: r.usage.output_tokens,
+        cost_usd: (r.usage.input_tokens * 1 + r.usage.output_tokens * 5) / 1_000_000,
+      }).eq("id", turn.id);
+    }
     const reply = r.content.map((c) => (c.type === "text" ? c.text : "")).join("").trim();
     return json({ reply: reply || "Perdona, no te he entendido bien. ¿Me lo repites?", left: Math.max(0, MAX_USER_MESSAGES - (mine ?? 0) - 1) });
   } catch (e) {

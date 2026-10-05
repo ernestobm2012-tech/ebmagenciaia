@@ -36,7 +36,8 @@ async function openConversation(conv) {
 }
 
 // clientNames: { id: nombre } para quien ve varios clientes sin ser admin (un partner).
-export function activityTabs({ clientId = null, showClient = false, isAdmin = false, clientNames = null } = {}) {
+// allowed: ids de pestaña que puede ver (null = todas).
+export function activityTabs({ clientId = null, showClient = false, isAdmin = false, clientNames = null, allowed = null, canOpen = true } = {}) {
   const opts = { clientId, showClient };
   const items = [
     {
@@ -50,7 +51,7 @@ export function activityTabs({ clientId = null, showClient = false, isAdmin = fa
         { label: 'Humano', cell: (r) => (r.handed_off ? 'Sí' : '—') },
         { label: 'Estado', cell: (r) => badge(r.status) },
       ], await list('conversations', { ...opts, orderBy: 'started_at' }),
-      { empty: 'Aún no hay conversaciones.', onRow: openConversation }),
+      { empty: 'Aún no hay conversaciones.', onRow: canOpen ? openConversation : null }),
     },
     {
       id: 'leads', label: 'Leads',
@@ -91,8 +92,9 @@ export function activityTabs({ clientId = null, showClient = false, isAdmin = fa
       ], await list('notifications', opts), { empty: 'Aún no se ha enviado ningún aviso.' }),
     },
   ];
+  const visible = allowed ? items.filter((t) => allowed.includes(t.id)) : items;
   if (isAdmin) {
-    items.push({
+    visible.push({
       id: 'errors', label: 'Errores',
       render: async () => table([
         { label: 'Fecha', cell: (r) => fmtDateTime(r.created_at) },
@@ -102,5 +104,6 @@ export function activityTabs({ clientId = null, showClient = false, isAdmin = fa
       ], await list('error_log', opts), { empty: 'Sin errores. Bien.' }),
     });
   }
-  return tabs(items);
+  if (!visible.length) return h('p', { class: 'empty' }, 'No tienes ninguna parte de la actividad activada.');
+  return tabs(visible);
 }

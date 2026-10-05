@@ -205,3 +205,9 @@ async function route() {
 }
 
 export const refresh = route;
+
+// ¿Puede este usuario ver esta parte del panel? Admin y quien no tiene lista (null) lo ven todo.
+export function can(key) {
+  const p = session.profile;
+  return !p || p.role === 'admin' || !p.modules || p.modules.includes(key);
+}

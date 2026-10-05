@@ -4,6 +4,8 @@
 //                                                     -> da de alta y devuelve el enlace de acceso
 //   POST ?action=link   {user_id, send_email}         -> nuevo enlace para fijar la contraseña
 //   POST ?action=set_active {user_id, active}         -> activa o desactiva el acceso
+//   POST ?action=update {user_id, email?, full_name?}  -> cambia correo o nombre
+//   POST ?action=delete {user_id}                     -> borra el usuario (y su perfil)
 // Roles: client (ve su negocio), partner (ve su negocio y los que cuelgan de él), admin (todo).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -141,6 +143,38 @@ Deno.serve(async (req) => {
       if (!UUID.test(String(body.user_id ?? ""))) return json({ error: "Usuario no válido." }, 400);
       if (body.user_id === me.id) return json({ error: "No puedes desactivar tu propio acceso." }, 400);
       const { error } = await db.auth.admin.updateUserById(body.user_id, { ban_duration: body.active ? "none" : "876000h" });
+      if (error) throw error;
+      return json({ ok: true });
+    }
+
+    if (action === "update") {
+      if (!UUID.test(String(body.user_id ?? ""))) return json({ error: "Usuario no válido." }, 400);
+      const user = await findUser(body.user_id);
+      if (!user) return json({ error: "Usuario no encontrado." }, 404);
+      const email = body.email === undefined ? null : String(body.email).trim().toLowerCase();
+      if (email !== null && !EMAIL.test(email)) return json({ error: "El correo no es válido." }, 400);
+      const fullName = body.full_name === undefined ? undefined : (String(body.full_name ?? "").trim().slice(0, 120) || null);
+      if (email && email !== user.email) {
+        const { error } = await db.auth.admin.updateUserById(user.id, { email, email_confirm: true });
+        if (error) {
+          const exists = /already|registered|exists/i.test(error.message);
+          return json({ error: exists ? "Ya hay otro usuario con ese correo." : error.message }, exists ? 409 : 500);
+        }
+      }
+      const changes: Record<string, unknown> = {};
+      if (email) changes.email = email;
+      if (fullName !== undefined) changes.full_name = fullName;
+      if (Object.keys(changes).length) {
+        const { error } = await db.from("profiles").update(changes).eq("id", user.id);
+        if (error) throw error;
+      }
+      return json({ ok: true });
+    }
+
+    if (action === "delete") {
+      if (!UUID.test(String(body.user_id ?? ""))) return json({ error: "Usuario no válido." }, 400);
+      if (body.user_id === me.id) return json({ error: "No puedes borrarte a ti mismo." }, 400);
+      const { error } = await db.auth.admin.deleteUser(body.user_id);
       if (error) throw error;
       return json({ ok: true });
     }

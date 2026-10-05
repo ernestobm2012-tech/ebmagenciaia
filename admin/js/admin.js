@@ -531,21 +531,50 @@ async function costsPage() {
 }
 
 // ---------------------------------------------------------------- usuarios
-// Secciones del panel que puede ver un usuario que no es administrador. Tú eliges cuáles.
+// Lo que puede ver un usuario que no es administrador. Tú eliges cada parte.
+// Cada sección puede tener partes dentro; si quitas la sección, no ve ninguna de sus partes.
 const MODULES = [
-  ['resumen', 'Resumen', 'Las cifras del mes de su agente.'],
-  ['actividad', 'Actividad', 'Conversaciones, contactos y avisos del agente.'],
-  ['calendarios', 'Calendarios', 'Sus agendas, que puede crear y editar.'],
-  ['redes', 'Redes sociales', 'Conectar Instagram para que conteste el agente.'],
-  ['impresoras', 'Impresoras', 'Contadores, copias, tóner y avisos de error.'],
-  ['impresoras_precios', 'Cambiar el precio por copia', 'Si no lo marcas, ve los precios pero no puede tocarlos.'],
+  ['resumen', 'Resumen', 'Las cifras del mes de su agente.', [
+    ['resumen_temas', 'Lo que más preguntan', 'Los temas más repetidos del mes.'],
+    ['resumen_clientes', 'Desglose por cliente', 'Solo partners: las cifras de cada uno de sus clientes.'],
+  ]],
+  ['actividad', 'Actividad', 'Lo que ha hecho el agente.', [
+    ['act_conversaciones', 'Conversaciones', 'La lista, con fecha, canal y resumen.'],
+    ['act_mensajes', 'Leer las conversaciones enteras', 'Abrir una conversación y ver todos los mensajes.'],
+    ['act_leads', 'Contactos (leads)', 'Nombre, teléfono y qué necesita cada persona.'],
+    ['act_derivaciones', 'Pasos a una persona', 'Cuándo y por qué el agente pidió ayuda.'],
+    ['act_citas', 'Citas', 'Las citas que ha dado el agente.'],
+    ['act_avisos', 'Avisos enviados', 'Los correos de aviso y a quién se mandaron.'],
+  ]],
+  ['calendarios', 'Calendarios', 'Sus agendas, que puede crear y editar.', []],
+  ['redes', 'Redes sociales', 'Conectar Instagram para que conteste el agente.', []],
+  ['impresoras', 'Impresoras', 'Contadores, copias, tóner y avisos de error.', [
+    ['impresoras_precios', 'Cambiar el precio por copia', 'Si no lo marcas, ve los precios pero no puede tocarlos.'],
+  ]],
 ];
-const ALL_MODULES = MODULES.map(([v]) => v);
-const moduleChecks = (selected) => h('div', { class: 'module-checks' }, MODULES.map(([v, label, help]) =>
-  h('label', { class: 'check module-check' },
-    h('input', { type: 'checkbox', name: `mod_${v}`, checked: !selected || selected.includes(v) }),
-    h('span', {}, h('b', {}, label), h('small', { class: 'muted' }, ` ${help}`)))));
-const readModules = (form) => ALL_MODULES.filter((v) => form.querySelector(`[name="mod_${v}"]`)?.checked);
+const ALL_MODULES = MODULES.flatMap(([v, , , kids]) => [v, ...kids.map(([k]) => k)]);
+const SECTIONS = MODULES.map(([v]) => v);
+
+function moduleChecks(selected) {
+  const on = (v) => !selected || selected.includes(v);
+  const box = (v, label, help, extra = {}) => h('label', { class: 'check module-check', ...extra },
+    h('input', { type: 'checkbox', name: `mod_${v}`, checked: on(v) }),
+    h('span', {}, h('b', {}, label), h('small', { class: 'muted' }, ` ${help}`)));
+  const wrap = h('div', { class: 'module-checks' }, MODULES.map(([v, label, help, kids]) => {
+    const kidsBox = kids.length ? h('div', { class: 'module-kids', style: 'margin-left:26px' },
+      kids.map(([k, kl, kh]) => box(k, kl, kh))) : null;
+    const parent = box(v, label, help);
+    const sync = () => { if (kidsBox) kidsBox.querySelectorAll('input').forEach((i) => { i.disabled = !parent.querySelector('input').checked; }); };
+    parent.querySelector('input').addEventListener('change', sync);
+    setTimeout(sync);
+    return h('div', { class: 'module-group' }, parent, kidsBox);
+  }));
+  return wrap;
+}
+const readModules = (form) => ALL_MODULES.filter((v) => {
+  const el = form.querySelector(`[name="mod_${v}"]`);
+  return el?.checked && !el.disabled;
+});
 
 const ROLES = {
   client: {
@@ -592,17 +621,6 @@ async function usersPage() {
     q(db.from('clients').select('id, name').order('name')),
     callUsers('list').then((r) => r.users).catch(() => ({})),
   ]);
-
-  const save = async (profile, changes) => {
-    try {
-      await q(db.from('profiles').update(changes).eq('id', profile.id));
-      Object.assign(profile, changes);
-      toast('Usuario actualizado.');
-    } catch (err) {
-      toast(errorText(err), 'error');
-      refresh();
-    }
-  };
 
   const newLink = async (profile) => {
     try {
@@ -665,19 +683,70 @@ async function usersPage() {
     const close = modal('Añadir usuario', form);
   }
 
-  function editModules(profile) {
+  // Editar todo de un usuario: nombre, correo, rol, negocio y qué ve.
+  function editUser(profile) {
+    const me = profile.id === session.user.id;
+    const role = h('select', { name: 'role', disabled: me }, Object.entries(ROLES).map(([v, r]) => h('option', { value: v, selected: profile.role === v }, r.label)));
+    const business = h('select', { name: 'client_id' },
+      h('option', { value: '' }, '— Ninguno —'),
+      clients.map((c) => h('option', { value: c.id, selected: profile.client_id === c.id }, c.name)));
+    const businessField = field('Negocio que ve', business);
+    const modulesField = h('div', { class: 'field' }, h('span', {}, 'Qué puede ver'), moduleChecks(profile.modules),
+      h('small', {}, 'Lo que no marques no le aparece en el menú ni lo puede abrir.'));
+    const help = h('p', { class: 'muted' }, ROLES[profile.role]?.help || '');
+    const sync = () => {
+      help.textContent = ROLES[role.value].help;
+      businessField.hidden = role.value === 'admin';
+      modulesField.hidden = role.value === 'admin';
+    };
+    role.addEventListener('change', sync);
+    sync();
+
     const form = h('form', { class: 'form', onsubmit: async (e) => {
       e.preventDefault();
-      await save(profile, { modules: readModules(form) });
-      close();
-      refresh();
+      const d = formData(form);
+      const submit = form.querySelector('button[type=submit]');
+      submit.disabled = true;
+      try {
+        const email = (d.email || '').toLowerCase();
+        if (email !== profile.email || (d.full_name || null) !== (profile.full_name || null)) {
+          await callUsers('update', { user_id: profile.id, email, full_name: d.full_name || null });
+        }
+        const isAdminRole = (me ? profile.role : d.role) === 'admin';
+        await q(db.from('profiles').update({
+          ...(me ? {} : { role: d.role }),
+          client_id: isAdminRole ? null : d.client_id || null,
+          modules: isAdminRole ? null : readModules(form),
+        }).eq('id', profile.id));
+        close();
+        toast('Usuario guardado.');
+        refresh();
+      } catch (err) {
+        toast(errorText(err), 'error');
+        submit.disabled = false;
+      }
     } },
-      h('p', { class: 'muted' }, `Marca lo que puede ver ${profile.full_name || profile.email}. Lo que no marques no le aparece en el menú ni puede abrirlo.`),
-      moduleChecks(profile.modules),
+      field('Correo', h('input', { type: 'email', name: 'email', required: true, value: profile.email || '' }),
+        'Si lo cambias, entrará con el correo nuevo y la misma contraseña.'),
+      field('Nombre', h('input', { type: 'text', name: 'full_name', maxlength: 120, value: profile.full_name || '' })),
+      field('Rol', role), me ? h('small', { class: 'muted' }, 'No puedes cambiar tu propio rol.') : null,
+      help, businessField, modulesField,
       h('div', { class: 'actions' },
         h('button', { class: 'btn primary', type: 'submit' }, 'Guardar'),
-        h('button', { class: 'btn', type: 'button', onclick: () => close() }, 'Cancelar')));
-    const close = modal('Qué puede ver', form);
+        h('button', { class: 'btn', type: 'button', onclick: () => close() }, 'Cancelar'),
+        me ? null : h('span', { class: 'spacer' }),
+        me ? null : h('button', { class: 'btn danger', type: 'button', onclick: () => remove(profile, close) }, 'Borrar usuario')));
+    const close = modal(`Editar ${profile.full_name || profile.email}`, form, { wide: true });
+  }
+
+  async function remove(profile, closeModal) {
+    if (!confirm(`¿Borrar a ${profile.email}? Perderá el acceso para siempre. Si solo quieres quitárselo un tiempo, usa «Desactivar».`)) return;
+    try {
+      await callUsers('delete', { user_id: profile.id });
+      closeModal?.();
+      toast('Usuario borrado.');
+      refresh();
+    } catch (err) { toast(errorText(err), 'error'); }
   }
 
   const stateCell = (r) => {
@@ -688,37 +757,36 @@ async function usersPage() {
     return h('span', {}, h('span', { class: 'badge active' }, 'Activo'), ' ',
       h('small', { class: 'muted' }, a.last_sign_in_at ? `visto ${fmtDate(a.last_sign_in_at)}` : ''));
   };
+  const clientName = Object.fromEntries(clients.map((c) => [c.id, c.name]));
+  const seesText = (r) => {
+    if (r.role === 'admin') return 'Todo';
+    if (!r.modules) return 'Todo (sin limitar)';
+    const names = MODULES.filter(([v]) => r.modules.includes(v)).map(([, l]) => l);
+    return names.length ? names.join(', ') : 'Nada';
+  };
 
   return page('Usuarios',
     h('div', { class: 'toolbar' }, h('button', { class: 'btn primary', type: 'button', onclick: addUser }, 'Añadir usuario')),
-    h('p', { class: 'muted' }, 'Al crear un usuario le llega un enlace para elegir su contraseña. Hasta que le asignas un negocio no ve nada (salvo los administradores).'),
+    h('p', { class: 'muted' }, 'Al crear un usuario le llega un enlace para elegir su contraseña. Pulsa en un usuario (o en «Editar») para cambiar sus datos, lo que ve o borrarlo.'),
     h('div', { class: 'roles' }, Object.values(ROLES).map((r) => h('div', { class: 'role-card' }, h('strong', {}, r.label), h('p', { class: 'muted' }, r.help)))),
     table([
       { label: 'Correo', cell: (r) => h('span', {}, r.email, r.full_name ? h('small', { class: 'muted' }, ` · ${r.full_name}`) : null) },
-      { label: 'Rol', cell: (r) => {
-        const me = r.id === session.user.id;
-        return h('select', {
-          disabled: me, title: me ? 'No puedes cambiar tu propio rol.' : null,
-          onchange: (e) => save(r, { role: e.target.value, ...(e.target.value === 'admin' ? { client_id: null } : {}) }),
-        }, Object.entries(ROLES).map(([v, x]) => h('option', { value: v, selected: r.role === v }, x.label)));
-      } },
-      { label: 'Negocio que ve', cell: (r) => h('select', { onchange: (e) => save(r, { client_id: e.target.value || null }) },
-        h('option', { value: '' }, '— Ninguno —'),
-        clients.map((c) => h('option', { value: c.id, selected: r.client_id === c.id }, c.name))) },
-      { label: 'Qué ve', cell: (r) => (r.role === 'admin' ? h('span', { class: 'muted' }, 'Todo')
-        : h('button', { class: 'btn link', type: 'button', onclick: () => editModules(r) },
-          !r.modules ? 'Todo (elegir)' : `${r.modules.filter((m) => m !== 'impresoras_precios').length} secciones · cambiar`)) },
+      { label: 'Rol', cell: (r) => ROLES[r.role]?.label || r.role },
+      { label: 'Negocio que ve', cell: (r) => (r.role === 'admin' ? h('span', { class: 'muted' }, 'Todos') : clientName[r.client_id] || h('span', { class: 'muted' }, 'Ninguno')) },
+      { label: 'Qué ve', cell: (r) => h('small', {}, seesText(r)) },
       { label: 'Acceso', cell: stateCell },
       { label: '', cell: (r) => {
-        if (r.id === session.user.id) return '';
         const a = access[r.id];
-        return h('span', { class: 'actions' },
-          h('button', { class: 'btn link', type: 'button', onclick: () => newLink(r) }, 'Enlace de acceso'),
-          a?.disabled
+        const me = r.id === session.user.id;
+        return h('span', { class: 'actions', onclick: (e) => e.stopPropagation() },
+          h('button', { class: 'btn link', type: 'button', onclick: () => editUser(r) }, 'Editar'),
+          me ? null : h('button', { class: 'btn link', type: 'button', onclick: () => newLink(r) }, 'Enlace de acceso'),
+          me ? null : a?.disabled
             ? h('button', { class: 'btn link', type: 'button', onclick: () => toggle(r, true) }, 'Activar')
-            : h('button', { class: 'btn link danger', type: 'button', onclick: () => toggle(r, false) }, 'Desactivar'));
+            : h('button', { class: 'btn link danger', type: 'button', onclick: () => toggle(r, false) }, 'Desactivar'),
+          me ? null : h('button', { class: 'btn link danger', type: 'button', onclick: () => remove(r) }, 'Borrar'));
       } },
-    ], profiles));
+    ], profiles, { onRow: (r) => editUser(r) }));
 }
 
 // ---------------------------------------------------------------- impresoras

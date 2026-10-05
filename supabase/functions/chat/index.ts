@@ -155,7 +155,11 @@ async function callConnection(c: Connection, input: Record<string, string>, clie
   return text || "Sin datos.";
 }
 
-type Calendar = { id: string; name: string };
+type Calendar = {
+  id: string; name: string;
+  booking_enabled: boolean; booking_minutes: number; booking_notice_minutes: number;
+  booking_hours: Record<string, string[]>;
+};
 const MAX_AGENDA_DAYS = 31;
 
 // Si el cliente tiene calendarios, el agente puede ver cuándo está ocupado.
@@ -167,7 +171,8 @@ function agendaTool(calendars: Calendar[]): Anthropic.Tool {
     description:
       `Consulta qué horas están ocupadas en la agenda del negocio entre dos fechas (máximo ${MAX_AGENDA_DAYS} días). ` +
       "Úsala antes de proponer o confirmar un día u hora. Lo que no aparece como ocupado está libre, " +
-      "siempre dentro del horario del negocio. Nunca digas qué hay en las horas ocupadas: solo que no están disponibles.",
+      "siempre dentro del horario del negocio. Si la agenda acepta reservas, también te da los huecos libres para citas: " +
+      "propón solo esos. Nunca digas qué hay en las horas ocupadas: solo que no están disponibles.",
     input_schema: {
       type: "object",
       properties: {
@@ -211,7 +216,131 @@ async function checkAgenda(input: Record<string, string>, clientId: string, cale
     .lt("starts_at", to.toISOString()).gt("ends_at", from.toISOString()).order("starts_at").limit(500);
   if (error) throw error;
 
-  return formatAgenda(data ?? [], input.desde, input.hasta, chosen.length > 1 ? calendars : null);
+  const text = formatAgenda(data ?? [], input.desde, input.hasta, chosen.length > 1 ? calendars : null);
+  const slots = chosen.filter((c) => c.booking_enabled).map((c) => {
+    const busy = (data ?? []).filter((e) => e.calendar_id === c.id);
+    const days: string[] = [];
+    for (const iso of daysBetween(input.desde, input.hasta)) {
+      const free = freeSlots(c, iso, busy);
+      if (free.length) days.push(`${iso}: ${free.join(", ")}`);
+    }
+    return `Huecos libres para reservar en "${c.name}" (citas de ${c.booking_minutes} min):\n` +
+      (days.length ? days.join("\n") : "ninguno en estas fechas");
+  });
+  return [text, ...slots].join("\n\n");
+}
+
+function daysBetween(desde: string, hasta: string) {
+  const [y, m, d] = desde.split("-").map(Number);
+  const out: string[] = [];
+  for (let i = 0; i < 62; i++) {
+    const iso = new Date(Date.UTC(y, m - 1, d + i)).toISOString().slice(0, 10);
+    if (iso > hasta) break;
+    out.push(iso);
+  }
+  return out;
+}
+
+// Instante UTC de una hora de reloj de Madrid (AAAA-MM-DD, HH:MM), con el cambio de hora bien.
+function madridAt(day: string, hhmm: string) {
+  const [y, m, d] = day.split("-").map(Number);
+  const [h, mi] = hhmm.split(":").map(Number);
+  const wall = Date.UTC(y, m - 1, d, h, mi);
+  const fmt = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  });
+  const offset = (t: number) => {
+    const p = Object.fromEntries(fmt.formatToParts(new Date(t)).map((x) => [x.type, x.value]));
+    return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute) - t;
+  };
+  let t = wall - offset(wall);
+  t = wall - offset(t);
+  return new Date(t);
+}
+
+// Horas de inicio libres de un día según el horario del calendario, sus citas y la antelación mínima.
+function freeSlots(cal: Calendar, day: string, busy: Busy[]) {
+  const [y, m, d] = day.split("-").map(Number);
+  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay() || 7;
+  const earliest = Date.now() + cal.booking_notice_minutes * 60_000;
+  const out: string[] = [];
+  for (const range of cal.booking_hours?.[String(weekday)] ?? []) {
+    const match = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/.exec(range.replace(/\s/g, ""));
+    if (!match) continue;
+    const open = +match[1] * 60 + +match[2];
+    const close = +match[3] * 60 + +match[4];
+    for (let t = open; t + cal.booking_minutes <= close; t += cal.booking_minutes) {
+      const hhmm = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+      const start = madridAt(day, hhmm);
+      const end = new Date(start.getTime() + cal.booking_minutes * 60_000);
+      if (start.getTime() < earliest) continue;
+      if (busy.some((e) => new Date(e.starts_at) < end && new Date(e.ends_at) > start)) continue;
+      out.push(hhmm);
+    }
+  }
+  return out;
+}
+
+// Reserva de citas: solo en calendarios que la aceptan y solo en huecos libres.
+function bookingTool(calendars: Calendar[]): Anthropic.Tool {
+  const names = calendars.map((c) => c.name);
+  return {
+    name: "reservar_cita",
+    description:
+      "Reserva una cita en la agenda. Antes usa consultar_agenda y propón solo huecos libres para reservar. " +
+      "Pide nombre y teléfono, repite a la persona el día y la hora y resérvala solo cuando lo confirme. " +
+      "Si falla porque el hueco ya no está libre, vuelve a consultar la agenda y ofrece otro.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...(names.length > 1 ? { calendario: { type: "string", enum: names, description: "Agenda donde reservar" } } : {}),
+        fecha: { type: "string", description: "Día, formato AAAA-MM-DD" },
+        hora: { type: "string", description: "Hora de inicio, formato HH:MM (hora de España)" },
+        nombre: { type: "string", description: "Nombre de la persona" },
+        telefono: { type: "string", description: "Teléfono de la persona" },
+        motivo: { type: "string", description: "Para qué es la cita, en una frase" },
+      },
+      required: [...(names.length > 1 ? ["calendario"] : []), "fecha", "hora", "nombre", "telefono", "motivo"],
+      additionalProperties: false,
+    },
+  };
+}
+
+async function bookAppointment(input: Record<string, string>, clientId: string, conversationId: string, calendars: Calendar[]) {
+  const bookable = calendars.filter((c) => c.booking_enabled);
+  const cal = input.calendario ? bookable.find((c) => c.name === input.calendario) : bookable[0];
+  if (!cal) throw new Error("Esa agenda no acepta reservas");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.fecha ?? "") || !/^\d{1,2}:\d{2}$/.test(input.hora ?? "")) {
+    throw new Error("Fecha AAAA-MM-DD y hora HH:MM");
+  }
+  const hora = input.hora.padStart(5, "0");
+  const start = madridAt(input.fecha, hora);
+  const end = new Date(start.getTime() + cal.booking_minutes * 60_000);
+  const dayStart = madridMidnight(input.fecha);
+  const { data: busy, error } = await db.from("calendar_events").select("calendar_id, starts_at, ends_at, all_day")
+    .eq("calendar_id", cal.id).lt("starts_at", new Date(dayStart.getTime() + 26 * 3_600_000).toISOString())
+    .gt("ends_at", dayStart.toISOString()).limit(500);
+  if (error) throw error;
+  if (!freeSlots(cal, input.fecha, busy ?? []).includes(hora)) {
+    throw new Error("Esa hora no es un hueco libre para reservar. Consulta la agenda y ofrece otra.");
+  }
+  const description = `Teléfono: ${input.telefono}\nMotivo: ${input.motivo}\nReservada por el agente de chat.`;
+  const { data: id, error: e2 } = await db.rpc("book_appointment", {
+    p_calendar: cal.id, p_start: start.toISOString(), p_end: end.toISOString(),
+    p_title: `Cita: ${input.nombre}`.slice(0, 200), p_description: description, p_conversation: conversationId,
+  });
+  if (e2) throw e2;
+  if (!id) throw new Error("Ese hueco se acaba de ocupar. Consulta la agenda y ofrece otro.");
+  const when = new Intl.DateTimeFormat("es-ES", {
+    timeZone: "Europe/Madrid", weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
+  }).format(start);
+  // Aviso al negocio por el mismo camino que un contacto nuevo.
+  await db.from("leads").insert({
+    client_id: clientId, conversation_id: conversationId, name: input.nombre, contact: input.telefono,
+    reason: `Cita reservada (${cal.name}) el ${when}: ${input.motivo}`,
+  });
+  return `Cita reservada en "${cal.name}" el ${when} (${cal.booking_minutes} min). Confírmaselo a la persona.`;
 }
 
 type Busy = { calendar_id: string; starts_at: string; ends_at: string; all_day: boolean };
@@ -245,6 +374,9 @@ async function runTool(
   connections: Connection[], contacts: Contact[], calendars: Calendar[],
 ) {
   if (name === "consultar_agenda" && calendars.length) return await checkAgenda(input, clientId, calendars);
+  if (name === "reservar_cita" && calendars.some((c) => c.booking_enabled)) {
+    return await bookAppointment(input, clientId, conversationId, calendars);
+  }
   const wanted = (input.departamento ?? "").toLowerCase();
   const notify_contact_id = wanted
     ? contacts.find((c) => (c.department ?? "").toLowerCase() === wanted)?.id ?? null
@@ -351,7 +483,7 @@ Deno.serve(async (req) => {
       db.from("api_connections").select("*").eq("client_id", client.id).eq("active", true).order("created_at"),
       db.from("notify_contacts").select("id, name, department, notify_when")
         .eq("client_id", client.id).eq("active", true).order("created_at"),
-      db.from("calendars").select("id, name").eq("client_id", client.id).eq("active", true).order("created_at"),
+      db.from("calendars").select("id, name, booking_enabled, booking_minutes, booking_hours, booking_notice_minutes").eq("client_id", client.id).eq("active", true).order("created_at"),
     ]);
     const connections = (conns ?? []) as Connection[];
     const contacts = (people ?? []) as Contact[];
@@ -359,7 +491,8 @@ Deno.serve(async (req) => {
     const tools = [
       ...baseTools(contacts),
       ...(calendars.length ? [agendaTool(calendars)] : []),
-      ...connections.filter((c) => c.tool_name !== "consultar_agenda").map(connectionTool),
+      ...(calendars.some((c) => c.booking_enabled) ? [bookingTool(calendars.filter((c) => c.booking_enabled))] : []),
+      ...connections.filter((c) => !["consultar_agenda", "reservar_cita"].includes(c.tool_name)).map(connectionTool),
     ];
 
     const messages: Anthropic.MessageParam[] = (history ?? []).reverse()

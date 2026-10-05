@@ -10,6 +10,17 @@ const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/calendar`;
 const COLORS = ['#1483DC', '#7C9A44', '#E07A1F', '#C24545', '#8E5CC9', '#17A2B8', '#5E6C7A'];
 
 const feedUrl = (cal) => `${FUNCTION_URL}?feed=${cal.feed_token}`;
+const WEEKDAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const RANGE = /^([01]?\d|2[0-3]):[0-5]\d-([01]?\d|2[0-4]):[0-5]\d$/;
+
+// "09:00-14:00, 16:30-21:30" -> ["09:00-14:00", "16:30-21:30"]; null si algún tramo está mal.
+function parseRanges(text) {
+  const parts = (text || '').split(/[,;]/).map((t) => t.replace(/\s/g, '')).filter(Boolean);
+  if (parts.some((t) => !RANGE.test(t))) return null;
+  const mins = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+  if (parts.some((t) => { const [a, b] = t.split('-'); return mins(b) <= mins(a); })) return null;
+  return parts;
+}
 
 // Vuelta de Google tras conectar una cuenta: se avisa y se limpia la dirección.
 const GOOGLE_RESULT = {
@@ -138,6 +149,7 @@ export async function calendarsTab(clientId) {
         } }),
         h('span', { class: 'dot', style: `background:${cal.color}` }),
         h('strong', {}, cal.name), cal.active ? null : h('span', { class: 'muted small' }, ' (apagado)')),
+      cal.booking_enabled ? h('div', { class: 'small muted' }, `El agente reserva citas de ${cal.booking_minutes} min`) : null,
       h('div', { class: `small ${cal.sync_error ? 'error' : 'muted'}` }, status),
       h('div', { class: 'cal-actions' },
         cal.google_account ? [
@@ -265,6 +277,15 @@ export async function calendarsTab(clientId) {
       field('Color', h('input', { name: 'color', type: 'color', value: color })),
       cal ? h('label', { class: 'check' }, h('input', { name: 'active', type: 'checkbox', checked: cal.active }),
         ' Activo (apagado deja de sincronizarse y de verse en Google/Outlook)') : null,
+      h('h3', {}, 'Citas que reserva el agente'),
+      h('label', { class: 'check' }, h('input', { name: 'booking_enabled', type: 'checkbox', checked: !!cal?.booking_enabled }),
+        ' El agente puede reservar citas en este calendario'),
+      h('div', { class: 'grid2' },
+        field('Duración de cada cita (min)', h('input', { name: 'booking_minutes', type: 'number', min: 10, max: 240, step: 5, value: cal?.booking_minutes ?? 30 })),
+        field('Antelación mínima (horas)', h('input', { name: 'booking_notice_hours', type: 'number', min: 0, max: 168, step: 1, value: Math.round((cal?.booking_notice_minutes ?? 120) / 60) }))),
+      h('p', { class: 'muted small' }, 'Horario en el que se pueden reservar citas. Ej.: 16:30-21:30. Dos tramos: 09:00-14:00, 16:30-21:30. Vacío = ese día no.'),
+      h('div', { class: 'grid2' }, WEEKDAYS.map((name, i) =>
+        field(name, h('input', { name: `hours_${i + 1}`, placeholder: 'cerrado', value: (cal?.booking_hours?.[String(i + 1)] || []).join(', ') })))),
       h('div', { class: 'actions' },
         h('button', { class: 'btn primary', type: 'submit' }, cal ? 'Guardar' : 'Crear calendario'),
         cal ? h('span', { class: 'spacer' }) : null,
@@ -273,7 +294,21 @@ export async function calendarsTab(clientId) {
 
     async function save(e) {
       e.preventDefault();
-      const data = formData(form);
+      const f = formData(form);
+      const hours = {};
+      for (let i = 1; i <= 7; i++) {
+        const ranges = parseRanges(f[`hours_${i}`]);
+        if (!ranges) return (note.textContent = `Revisa el horario del ${WEEKDAYS[i - 1].toLowerCase()}: escribe tramos como 16:30-21:30.`);
+        if (ranges.length) hours[i] = ranges;
+        delete f[`hours_${i}`];
+      }
+      if (f.booking_enabled && !Object.keys(hours).length) return (note.textContent = 'Para reservar citas, pon el horario de al menos un día.');
+      const data = {
+        ...f, booking_hours: hours,
+        booking_minutes: Math.min(240, Math.max(10, f.booking_minutes || 30)),
+        booking_notice_minutes: Math.min(168, Math.max(0, f.booking_notice_hours || 0)) * 60,
+      };
+      delete data.booking_notice_hours;
       try {
         if (cal) await q(db.from('calendars').update(data).eq('id', cal.id));
         else await q(db.from('calendars').insert({ ...data, client_id: clientId }));

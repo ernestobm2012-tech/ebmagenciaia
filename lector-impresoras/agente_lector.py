@@ -272,7 +272,13 @@ def leer_toner(ip, com):
         pct = None
         if isinstance(nv, int) and isinstance(mx, int) and mx > 0 and nv >= 0:
             pct = 100 * nv // mx
-        out.append({"nombre": desc.split(",")[0].split(";")[0].strip(), "nivel": pct})
+        # clase 3 = se gasta (tóner, tambor); 4 = se llena (bote residual). Para los que se
+        # llenan, el nivel es el hueco que queda. crudo/max van tal cual: -3 = «queda algo»,
+        # -2 = desconocido, 0 = nada (lleno, si es un bote).
+        out.append({"nombre": desc.split(",")[0].split(";")[0].strip(), "nivel": pct,
+                    "clase": c.get("4") if isinstance(c.get("4"), int) else None,
+                    "crudo": nv if isinstance(nv, int) else None,
+                    "max": mx if isinstance(mx, int) else None})
     return out
 
 

@@ -398,3 +398,7 @@ td .actions { flex-wrap: wrap; gap: 4px 14px; }
 .module-checks { display: grid; gap: 10px; margin: 6px 0; }
 .module-check { display: flex; gap: 10px; align-items: flex-start; line-height: 1.4; }
 .module-check input { margin-top: 3px; }
+.pr-sub { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; }
+.pr-drum { opacity: .55; }
+.pr-waste { background: #6B5B4B; }
+.pr-waste-txt { font-size: 13.5px; }

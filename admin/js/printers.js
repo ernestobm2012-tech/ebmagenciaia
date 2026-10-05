@@ -117,12 +117,30 @@ function chart(months, totals) {
   return el;
 }
 
-function tonerBars(t) {
-  if (!t) return h('span', { class: 'muted small' }, 'Sin datos de tóner');
-  return h('div', { class: 'pr-toner' }, TONER.filter(([k]) => t[k] != null).map(([k, name]) =>
-    h('div', { class: 'pr-tn' }, h('span', {}, name),
-      h('span', { class: 'pr-bar' }, h('span', { class: `pr-fill pr-${k}`, style: `width:${t[k]}%` })),
-      h('span', { class: t[k] <= 15 ? 'warn' : null }, `${t[k]} %`))));
+const WASTE_TEXT = { bien: 'Bien', casi_lleno: 'Casi lleno', lleno: 'Lleno: hay que cambiarlo', desconocido: 'Sin dato' };
+
+function bar(label, pct, kind, warn) {
+  return h('div', { class: 'pr-tn' }, h('span', {}, label),
+    h('span', { class: 'pr-bar' }, h('span', { class: `pr-fill ${kind}`, style: `width:${pct}%` })),
+    h('span', { class: warn ? 'warn' : null }, `${pct} %`));
+}
+
+// Tóner, tambores y bote residual de una impresora.
+function tonerBars(p) {
+  const t = p.last_toner, drums = p.last_supplies?.tambores, waste = p.last_supplies?.residuo;
+  if (!t && !drums && !waste) return h('span', { class: 'muted small' }, 'Sin datos de tóner');
+  return h('div', { class: 'pr-toner' },
+    t ? TONER.filter(([k]) => t[k] != null).map(([k, name]) => bar(name, t[k], `pr-${k}`, t[k] <= 15)) : null,
+    drums ? [h('div', { class: 'pr-sub' }, 'Tambores'),
+      TONER.filter(([k]) => drums[k] != null).map(([k, name]) => bar(name, drums[k], `pr-${k} pr-drum`, drums[k] <= 10))] : null,
+    waste ? [h('div', { class: 'pr-sub' }, 'Bote residual'),
+      waste.lleno != null
+        ? h('div', { class: 'pr-tn' }, h('span', {}, 'Lleno'),
+          h('span', { class: 'pr-bar' }, h('span', { class: 'pr-fill pr-waste', style: `width:${waste.lleno}%` })),
+          h('span', { class: waste.lleno >= 85 ? 'warn' : null }, `${waste.lleno} %`))
+        : h('div', { class: `pr-waste-txt${waste.estado === 'lleno' || waste.estado === 'casi_lleno' ? ' warn' : ''}` },
+          WASTE_TEXT[waste.estado] || 'Sin dato',
+          waste.estado === 'bien' ? h('span', { class: 'muted small' }, ' · esta impresora no da el porcentaje') : null)] : null);
 }
 
 function priceInput(printer, col, onSaved, editable = true) {
@@ -213,7 +231,7 @@ export async function printersView(clientIds, { clientNames, canEditPrices = tru
         h('thead', {}, h('tr', {},
           h('th', {}, 'Impresora'), h('th', { class: 'num' }, 'Contador b/n'), h('th', { class: 'num' }, 'Contador color'),
           h('th', { class: 'num' }, 'Este mes'), h('th', { class: 'num' }, 'Precio b/n (€)'), h('th', { class: 'num' }, 'Precio color (€)'),
-          h('th', { class: 'num' }, 'Cuesta este mes'), h('th', {}, 'Tóner'))),
+          h('th', { class: 'num' }, 'Cuesta este mes'), h('th', {}, 'Tóner y consumibles'))),
         h('tbody', {}, printers.map((p) => {
           const u = use[p.id]?.[now];
           const live = p.last_read_at && Date.now() - new Date(p.last_read_at) < 15 * 60_000;
@@ -232,7 +250,7 @@ export async function printersView(clientIds, { clientNames, canEditPrices = tru
             h('td', { class: 'num' }, priceInput(p, 'price_bn_eur', rerender, canEditPrices)),
             h('td', { class: 'num' }, priceInput(p, 'price_color_eur', rerender, canEditPrices)),
             h('td', { class: 'num pr-name' }, u ? fmtEur(u.bn * price(p.price_bn_eur) + u.color * price(p.price_color_eur)) : '—'),
-            h('td', {}, tonerBars(p.last_toner)));
+            h('td', {}, tonerBars(p)));
         })))),
       h('h2', {}, 'Avisos y errores'),
       h('p', { class: 'muted small' }, 'Lo que han avisado las impresoras, con la hora en que empezó y en que se resolvió.'),

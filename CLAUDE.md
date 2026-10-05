@@ -106,6 +106,7 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 - Panel: menú Impresoras (admin: todos; cliente/partner: solo si tiene el servicio) y pestaña Impresoras en la ficha del cliente con las claves. Se refresca cada 20 s.
 - La Xerox WorkCentre 6515 de Ernesto (serie 3942800095, IP fija 192.168.0.5 en su casa) está en el cliente `ebm` con la lectura real del 04/10/2026. Queda una clave `[prueba-interna] test` desactivada en `printer_keys` (borrar cuando se pueda).
 - Avisos y errores (migración 0026): el lector lee `prtAlertTable` (1.3.6.1.2.1.43.18.1.1) y `hrDeviceStatus`; `printer-ingest` guarda `printers.last_alerts`/`last_status` y abre/cierra filas en `printer_events` (fecha de inicio y de fin). Se ignoran los códigos que solo dicen que todo va bien (QUIET). El panel traduce los códigos estándar (objeto ALERTS en `printers.js`) y enseña el historial «Avisos y errores».
+- Bote residual y tambores (migración 0028): el lector manda `clase`, `crudo` y `max` de cada consumible; `printer-ingest` guarda `printers.last_supplies` = {residuo: {lleno %, estado}, tambores: {k,c,m,y}}. Para botes (clase 4) el nivel del Printer MIB es el hueco que queda; la Xerox 6515 da -3 (= «queda sitio», sin porcentaje).
 - Windows Defender borró el instalador de Descargas tras instalarlo (05/10/2026): el programa instalado siguió enviando. Sin firma de código seguirá pasando.
 - Ernesto quiere un aspecto natural, «hecho con mimo»: frases normales, nada de etiquetas en mayúsculas con letra de máquina ni avisos tipo «datos de ejemplo».
 

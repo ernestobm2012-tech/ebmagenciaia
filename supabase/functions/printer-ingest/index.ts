@@ -74,6 +74,35 @@ function tonerMap(list: unknown) {
   return Object.keys(out).length ? out : null;
 }
 
+// Bote residual y tambores. En el Printer MIB, para un bote (clase 4, «se llena») el nivel es el
+// hueco que queda: lleno % = 100 - nivel/máximo. -3 = «queda sitio» sin porcentaje; 0 = lleno.
+function supplyMap(list: unknown) {
+  if (!Array.isArray(list)) return null;
+  const color = (n: string) => /black|negro|bk/.test(n) ? "k" : /cyan|cian/.test(n) ? "c"
+    : /magenta/.test(n) ? "m" : /yellow|amarillo/.test(n) ? "y" : null;
+  const drums: Record<string, number> = {};
+  let waste: { lleno: number | null; estado: string } | null = null;
+  for (const t of list.slice(0, 20)) {
+    const name = String(t?.nombre ?? "").toLowerCase();
+    const raw = Number.isInteger(t?.crudo) ? t.crudo as number : null;
+    const max = Number.isInteger(t?.max) ? t.max as number : null;
+    if (/waste|residu|recogid|collection/.test(name) || t?.clase === 4) {
+      let lleno: number | null = null, estado = "desconocido";
+      if (raw != null && max != null && max > 0 && raw >= 0) {
+        lleno = Math.max(0, Math.min(100, Math.round(100 - (raw / max) * 100)));
+        estado = lleno >= 100 ? "lleno" : lleno >= 85 ? "casi_lleno" : "bien";
+      } else if (raw === -3) estado = "bien";
+      else if (raw === 0) estado = "lleno";
+      waste = { lleno, estado };
+    } else if (/drum|tambor|imaging unit|photoconductor|opc/.test(name)) {
+      const k = color(name), level = t?.nivel;
+      if (k && typeof level === "number" && level >= 0 && level <= 100 && !(k in drums)) drums[k] = Math.round(level);
+    }
+  }
+  if (!waste && !Object.keys(drums).length) return null;
+  return { residuo: waste, tambores: Object.keys(drums).length ? drums : null };
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Usa POST" }, 405);
   const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
@@ -96,6 +125,7 @@ Deno.serve(async (req) => {
     const total = count(l.total), bn = count(l.bn), color = count(l.color);
     if (total == null && bn == null && color == null) continue;
     const toner = tonerMap(l.toner);
+    const supplies = supplyMap(l.toner);
     const alerts = alertList(l.alertas);
     const status = Number.isInteger(l.estado) && (l.estado as number) >= 1 && (l.estado as number) <= 5 ? l.estado : null;
 
@@ -104,6 +134,7 @@ Deno.serve(async (req) => {
       model: text(l.modelo), brand: text(l.marca, 40), ip,
       last_read_at: now.toISOString(), last_total: total, last_bn: bn, last_color: color,
       ...(toner ? { last_toner: toner } : {}),
+      ...(supplies ? { last_supplies: supplies } : {}),
       ...(alerts ? { last_alerts: alerts, last_status: status } : {}),
     }, { onConflict: "client_id,serial" }).select("id").single();
     if (error || !printer) continue;

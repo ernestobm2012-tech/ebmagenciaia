@@ -7,9 +7,9 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const PANEL_URL = Deno.env.get("PANEL_URL") ?? "https://ebmagenciaia.es/admin/";
-// Remitente provisional: gestionmypadel.com es el dominio verificado en Resend
-// hasta que la agencia tenga el suyo (entonces basta con definir NOTIFY_FROM).
-const FROM = Deno.env.get("NOTIFY_FROM") ?? "EBM Agencia IA <avisos@gestionmypadel.com>";
+// Remitente: info@ebmagenciaia.es (dominio verificado en Resend). Se puede cambiar con
+// el secreto NOTIFY_FROM.
+const FROM = Deno.env.get("NOTIFY_FROM") ?? "EBM Agencia IA <info@ebmagenciaia.es>";
 
 const TABLES: Record<string, string> = { lead: "leads", handoff: "handoffs", contact: "contact_messages" };
 const CHANNELS: Record<string, string> = { web: "chat web", phone: "teléfono", whatsapp: "WhatsApp", instagram: "Instagram", email: "correo" };

@@ -9,6 +9,7 @@ import { socialTab } from './social.js';
 import { statsPage } from './stats.js';
 import { printersView, printerKeysCard } from './printers.js';
 import { expensesPage, expensesTab, fetchExpenses, monthlyEur } from './expenses.js';
+import { documentsTab } from './documents.js';
 import {
   h, q, table, tabs, badge, kpi, field, modal, toast, formData, errorText, slugify,
   fmtDate, fmtNum, fmtEur, fmtUsd, monthStart,
@@ -258,6 +259,7 @@ async function clientPage(id) {
       ...((client.services || []).includes('impresoras') ? [{ id: 'printers', label: 'Impresoras', render: async () =>
         h('div', {}, await printersView([id]), await printerKeysCard(id)) }] : []),
       { id: 'expenses', label: 'Gastos', render: () => expensesTab(id) },
+      { id: 'documents', label: 'Documentos', render: () => documentsTab(id) },
       ...(hasAgents ? [{ id: 'activity', label: 'Actividad', render: async () => activityTabs({ clientId: id, isAdmin: true }) }] : []),
     ]));
 }

@@ -402,3 +402,7 @@ td .actions { flex-wrap: wrap; gap: 4px 14px; }
 .pr-drum { opacity: .55; }
 .pr-waste { background: #6B5B4B; }
 .pr-waste-txt { font-size: 13.5px; }
+
+/* Documentos de cada cliente */
+.doc-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-top: 20px; }
+.doc-card h3 { margin: 0; font-size: 16px; }

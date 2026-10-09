@@ -283,7 +283,9 @@ tr.clickable:hover td { background: var(--blue-wash); }
   .toolbar > * { flex: 1 1 100%; }
   /* En el móvil la ventana sube desde abajo y se desplaza ella sola: si se
      desplazara el fondo, lo que sobresale por arriba quedaría inalcanzable. */
-  .overlay { padding: 0; place-items: end center; overflow: hidden; }
+  .overlay { padding: 0; place-items: end center; overflow: hidden; overscroll-behavior: none; }
+  /* Con una ventana abierta, deslizar el dedo no recarga la página. */
+  html:has(.overlay), body:has(.overlay) { overflow: hidden; overscroll-behavior-y: none; }
   .modal, .modal.wide {
     max-width: none; border-radius: 18px 18px 0 0; min-height: 60vh;
     max-height: 92vh; max-height: 92dvh; overflow-y: auto;

@@ -1,5 +1,5 @@
 // Service worker del panel: avisos push y funcionamiento básico sin conexión.
-const CACHE = 'ebm-panel-v1';
+const CACHE = 'ebm-panel-v2';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => {
@@ -18,7 +18,8 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
   event.respondWith((async () => {
     try {
-      const fresh = await fetch(request);
+      // no-cache: se salta la caché del navegador para no servir CSS/JS viejos.
+      const fresh = await fetch(request.url, { cache: 'no-cache', credentials: 'same-origin' });
       if (fresh.ok) (await caches.open(CACHE)).put(request, fresh.clone());
       return fresh;
     } catch (err) {

@@ -24,6 +24,14 @@ function collected(results: Record<string, { value?: unknown }> | undefined, key
   return value && !/^(null|none|n\/a|desconocido)$/i.test(value) ? value : null;
 }
 
+// Número desde el que llaman; null si viene oculto.
+function callerNumber(raw: unknown) {
+  const value = String(raw ?? "").trim();
+  return value.replace(/\D/g, "").length >= 9 ? value : null;
+}
+
+const hasPhoneOrEmail = (text: string) => text.includes("@") || text.replace(/\D/g, "").length >= 9;
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
   const key = Deno.env.get("ELEVENLABS_API_KEY");
@@ -87,11 +95,18 @@ Deno.serve(async (req) => {
         });
 
         const results = call.analysis?.data_collection_results;
-        const contact = collected(results, "contacto");
+        const name = collected(results, "nombre");
+        let contact = collected(results, "contacto");
+        // Si pidió que le llamen "a este número" (o dio el nombre sin otro
+        // contacto), se apunta el número desde el que llamó.
+        const caller = callerNumber(meta.phone_call?.external_number);
+        if (caller && (contact ? !hasPhoneOrEmail(contact) : name)) {
+          contact = `${caller} (el número desde el que llamó)`;
+        }
         if (contact) {
           await db.from("leads").insert({
             client_id: agent.client_id, conversation_id: conversation.id,
-            name: collected(results, "nombre"), contact,
+            name, contact,
             reason: collected(results, "motivo") ?? summary,
           });
           leads++;

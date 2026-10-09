@@ -136,5 +136,5 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 
 ### Número de quien llama (Laura)
 - ElevenLabs da el número entrante en `{{system__caller_id}}` (prompt) y en `metadata.phone_call.external_number` (API).
-- Laura pregunta «¿Te llaman a este mismo número?» en vez de pedirlo; solo lo pide si viene oculto o prefiere otro.
-- `sync-voice` (v7): si el lead no trae teléfono/correo (o solo trae el nombre), guarda el número desde el que llamó con la nota «(el número desde el que llamó)».
+- Laura pide el teléfono como siempre; si dicen «al mismo desde el que llamo», lee en voz alta el número entrante para que lo validen.
+- `sync-voice` (v8): si el contacto recogido no trae cifras ni correo (p. ej. «el mismo»), guarda el número entrante con la nota «(el número desde el que llamó)».

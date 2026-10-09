@@ -97,10 +97,10 @@ Deno.serve(async (req) => {
         const results = call.analysis?.data_collection_results;
         const name = collected(results, "nombre");
         let contact = collected(results, "contacto");
-        // Si pidió que le llamen "a este número" (o dio el nombre sin otro
-        // contacto), se apunta el número desde el que llamó.
+        // Si pidió que le llamen "al mismo desde el que llamo", el análisis
+        // apunta eso en vez de cifras: se guarda el número entrante.
         const caller = callerNumber(meta.phone_call?.external_number);
-        if (caller && (contact ? !hasPhoneOrEmail(contact) : name)) {
+        if (caller && contact && !hasPhoneOrEmail(contact)) {
           contact = `${caller} (el número desde el que llamó)`;
         }
         if (contact) {

@@ -281,8 +281,14 @@ tr.clickable:hover td { background: var(--blue-wash); }
   .tabs { margin: 0 -16px 16px; padding: 0 16px; }
   .toolbar { gap: 8px; }
   .toolbar > * { flex: 1 1 100%; }
-  .overlay { padding: 0; place-items: end center; }
-  .modal, .modal.wide { max-width: none; border-radius: 18px 18px 0 0; min-height: 60vh; }
+  /* En el móvil la ventana sube desde abajo y se desplaza ella sola: si se
+     desplazara el fondo, lo que sobresale por arriba quedaría inalcanzable. */
+  .overlay { padding: 0; place-items: end center; overflow: hidden; }
+  .modal, .modal.wide {
+    max-width: none; border-radius: 18px 18px 0 0; min-height: 60vh;
+    max-height: 92vh; max-height: 92dvh; overflow-y: auto;
+    overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  }
   .modal header { padding: 16px 18px; position: sticky; top: 0; background: var(--bg); border-radius: 18px 18px 0 0; }
   .modal-body { padding: 18px; }
   .toast { left: 12px; right: 12px; bottom: 12px; max-width: none; }

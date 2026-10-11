@@ -138,3 +138,8 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 - ElevenLabs da el número entrante en `{{system__caller_id}}` (prompt) y en `metadata.phone_call.external_number` (API).
 - Laura pide el teléfono como siempre; si dicen «al mismo desde el que llamo», lee en voz alta el número entrante para que lo validen.
 - `sync-voice` (v8): si el contacto recogido no trae cifras ni correo (p. ej. «el mismo»), guarda el número entrante con la nota «(el número desde el que llamó)».
+
+### Claudia (Mi Pequeño Rincón): invitaciones personalizadas (11/10/2026)
+- La web de Mi Pequeño Rincón (repo mi-peque-o-rincon, `invitacion.html`, https://mipequenorincon.es/invitacion.html) deja crear gratis la invitación de la celebración en PDF: se busca la reserva por teléfono (`?telefono=` lo rellena solo; el WhatsApp de confirmación ya lo incluye). Diseños según el tipo de evento: baby shower 5 (Elegante, Niño, Niña, Revelación de sexo, Osito); cumpleaños, comunión/bautizo y resto, 1 (Clásico).
+- Claudia lo sabe por la fuente de conocimiento «Invitaciones personalizadas» (`knowledge_sources`) y por una sección nueva al final de su `system_prompt`. Si cambian los diseños o los datos que pide la página, hay que actualizar esa fuente.
+- Probado con 6 conversaciones por `net.http_post` a la función `chat` (visitor_id 0000…00a1-a6, ya borradas).

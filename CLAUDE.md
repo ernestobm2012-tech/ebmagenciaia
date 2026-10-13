@@ -143,3 +143,7 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 - La web de Mi Pequeño Rincón (repo mi-peque-o-rincon, `invitacion.html`, https://mipequenorincon.es/invitacion.html) deja crear gratis la invitación de la celebración en PDF: se busca la reserva por teléfono (`?telefono=` lo rellena solo; el WhatsApp de confirmación ya lo incluye). Diseños según el tipo de evento: baby shower 5 (Elegante, Niño, Niña, Revelación de sexo, Osito); cumpleaños, comunión/bautizo y resto, 1 (Clásico).
 - Claudia lo sabe por la fuente de conocimiento «Invitaciones personalizadas» (`knowledge_sources`) y por una sección nueva al final de su `system_prompt`. Si cambian los diseños o los datos que pide la página, hay que actualizar esa fuente.
 - Probado con 6 conversaciones por `net.http_post` a la función `chat` (visitor_id 0000…00a1-a6, ya borradas).
+
+### sync-voice más tolerante (13/10/2026)
+- Alerta «Algo falla: sync-voice · TimeoutError»: ElevenLabs tardaba más de 15 s en alguna de las 4 consultas (una por agente de voz) y fallaba toda la importación, con un aviso al móvil en cada intento (cada 5 min).
+- v9: espera 25 s y reintenta una vez, cada agente se importa por separado y solo se avisa (`error_log`) si lleva más de 30 min sin una importación correcta (`sync_state` fila `voice_ok`). Lista de 30 llamadas por agente en vez de 50.

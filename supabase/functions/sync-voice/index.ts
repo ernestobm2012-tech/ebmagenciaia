@@ -9,6 +9,7 @@ const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SE
 const API = "https://api.elevenlabs.io/v1/convai";
 const MIN_SECONDS_BETWEEN_RUNS = 30;
 const MAX_NEW_PER_RUN = 20;
+const STALE_AFTER_MINUTES = 30;
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -43,20 +44,30 @@ Deno.serve(async (req) => {
   }
   await db.from("sync_state").upsert({ name: "voice", last_run: new Date().toISOString() });
 
+  // ElevenLabs a veces tarda más de la cuenta: se espera más y se reintenta una vez.
   const get = async (path: string) => {
-    const res = await fetch(API + path, { headers: { "xi-api-key": key }, signal: AbortSignal.timeout(15_000) });
-    if (!res.ok) throw new Error(`ElevenLabs respondió ${res.status}`);
-    return await res.json();
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const res = await fetch(API + path, { headers: { "xi-api-key": key }, signal: AbortSignal.timeout(25_000) });
+        if (!res.ok) throw new Error(`ElevenLabs respondió ${res.status}`);
+        return await res.json();
+      } catch (err) {
+        if (attempt >= 2) throw err;
+        await new Promise((r) => setTimeout(r, 1_500));
+      }
+    }
   };
 
   const { data: agents } = await db.from("agents").select("id, client_id, voice_agent_id")
     .not("voice_agent_id", "is", null);
   let imported = 0;
   let leads = 0;
+  const failures: string[] = [];
 
-  try {
-    for (const agent of agents ?? []) {
-      const list = await get(`/conversations?agent_id=${encodeURIComponent(agent.voice_agent_id)}&page_size=50`);
+  // Cada agente va por separado: si uno falla, los demás se importan igual.
+  for (const agent of agents ?? []) {
+    try {
+      const list = await get(`/conversations?agent_id=${encodeURIComponent(agent.voice_agent_id)}&page_size=30`);
       const ids: string[] = (list.conversations ?? [])
         .filter((c: { status: string }) => c.status === "done")
         .map((c: { conversation_id: string }) => c.conversation_id);
@@ -113,10 +124,21 @@ Deno.serve(async (req) => {
         }
         imported++;
       }
+    } catch (err) {
+      failures.push(String(err));
     }
-  } catch (err) {
-    await db.from("error_log").insert({ source: "sync-voice", message: String(err).slice(0, 1000) });
-    return json({ error: String(err), imported, leads }, 502);
   }
-  return json({ imported, leads });
+
+  if (!failures.length) {
+    await db.from("sync_state").upsert({ name: "voice_ok", last_run: new Date().toISOString() });
+    return json({ imported, leads });
+  }
+  // Un fallo suelto se arregla solo en el siguiente intento (cada 5 minutos).
+  // Solo se avisa si lleva más de media hora sin importar nada bien.
+  const { data: ok } = await db.from("sync_state").select("last_run").eq("name", "voice_ok").maybeSingle();
+  const stale = !ok || Date.now() - new Date(ok.last_run).getTime() > STALE_AFTER_MINUTES * 60_000;
+  if (stale) {
+    await db.from("error_log").insert({ source: "sync-voice", message: failures.join(" | ").slice(0, 1000) });
+  }
+  return json({ error: failures.join(" | "), imported, leads, alerted: stale }, stale ? 502 : 200);
 });

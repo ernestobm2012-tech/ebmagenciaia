@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "git pull --ff-only -q 2>/dev/null || true; printf '%s\\n' 'EBM · REGLAS DE ESTA SESIÓN (automáticas, no hace falta que Ernesto las pida):' '1) Al empezar, lee en Google Drive el documento «Memoria de trabajo EBM» (carpeta _Memoria, id 1SBlvvLEqEmgxa_G5bPih7yV940sdtUNh; usa la herramienta de Drive, cárgala con ToolSearch si hace falta) y sigue desde lo pendiente. Lee también CLAUDE.md.' '2) Después de cada tarea terminada o decisión nueva, actualiza ese documento sin que Ernesto lo pida: añade una línea con fecha en lo que toque (estado de clientes, decisiones, pendientes).' '3) Cliente o propuesta nueva: crea su carpeta en Drive (Propuestas, Facturas, Información) y guarda ahí lo generado, según CLAUDE.md.' '4) Responde en español, tuteando, directo. Dilo en una línea cuando hayas actualizado la memoria.'"
+          }
+        ]
+      }
+    ]
+  }
+}

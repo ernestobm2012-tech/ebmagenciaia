@@ -2,6 +2,13 @@
 
 Dueño: Ernesto. Habla en español (tuteo), quiere respuestas directas y prácticas. Suele trabajar desde el móvil, así que conviene usar sesiones en la nube y no depender de su ordenador.
 
+## Reglas de inicio y cierre de sesión (automáticas)
+
+Un hook de `.claude/settings.json` hace `git pull` al abrir la sesión y recuerda estas reglas. Aunque el hook no se ejecute, se siguen igual:
+1. Al empezar: leer en Drive «Memoria de trabajo EBM» (carpeta `_Memoria`, id `1SBlvvLEqEmgxa_G5bPih7yV940sdtUNh`) y seguir desde lo pendiente.
+2. Después de cada tarea terminada o decisión nueva: actualizar esa memoria sin que Ernesto lo pida (una línea con fecha). Es la única forma de que otra sesión sepa qué se hizo.
+3. Cliente o propuesta nueva: carpeta en Drive y resumen, como se explica más abajo.
+
 ## Qué hay aquí
 
 - Web pública de la agencia en GitHub Pages: https://ebmagenciaia.es/ (dominio propio con el archivo `CNAME`; también sigue en https://ernestobm2012-tech.github.io/ebmagenciaia/). HTML/CSS/JS sin build, supabase-js por CDN.

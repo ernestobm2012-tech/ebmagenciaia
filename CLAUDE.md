@@ -164,3 +164,10 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 - Al empezar una sesión nueva de EBM, leer en Drive el documento «Memoria de trabajo EBM» (carpeta `_Memoria`, id `1SBlvvLEqEmgxa_G5bPih7yV940sdtUNh`): estado de clientes, decisiones, pendientes y reglas de trabajo. Contiene precios y estrategia, por eso NO está en este repositorio (es público).
 - Al terminar un trabajo importante o una decisión nueva, actualizar ese documento (y este CLAUDE.md si es técnico).
 - Las sesiones de EBM se abren en la nube con el repositorio ebmagenciaia, una por tema (p. ej. «DZZERO · WhatsApp», «Instagram · posts», «Panel · mejoras»). Las de Mi-peque-o-rincon son solo para la web de ese cliente.
+
+### Correos desde los buzones de DonDominio (18/10/2026, migración 0031)
+- No hay conector de Outlook que valga: los buzones son de DonDominio (IMAP) y el conector de Microsoft 365 solo es para cuentas de empresa y solo lee. Tampoco hay salida desde la sandbox a imap.dondominio.com.
+- Función `mail` (verify_jwt false) + tabla `outgoing_mail` (solo admin). Se inserta una fila por SQL y el trigger llama a la función, que la procesa una vez: `mode = 'draft'` deja el correo en Borradores por IMAP (993) y Ernesto lo ve en Outlook; `mode = 'send'` lo envía por SMTP 465 (Supabase no deja salir por 587) y guarda la copia en Enviados. Resultado en `status`/`error`.
+- Cuentas: `ebermejo` (por defecto, propuestas en firme) e `info` (solo responder y recoger). Firma HTML igual que `firma/index.html` (si cambia una, cambiar la otra). Secretos que pone Ernesto: `MAIL_EBERMEJO_PASSWORD` y `MAIL_INFO_PASSWORD`.
+- Adjuntos: `document_ids` = ids de `client_documents` (PDF subidos en la pestaña Documentos del panel).
+- Regla: por defecto borrador; enviar directamente solo si Ernesto dice expresamente «envíalo».

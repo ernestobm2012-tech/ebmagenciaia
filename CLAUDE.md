@@ -170,7 +170,7 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 - Función `mail` (verify_jwt false) + tabla `outgoing_mail` (solo admin). Se inserta una fila por SQL y el trigger llama a la función, que la procesa una vez: `mode = 'draft'` deja el correo en Borradores por IMAP (993) y Ernesto lo ve en Outlook; `mode = 'send'` lo envía por SMTP 465 (Supabase no deja salir por 587) y guarda la copia en Enviados. Resultado en `status`/`error`.
 - Cuentas: `ebermejo` (por defecto, propuestas en firme) e `info` (solo responder y recoger). Firma HTML igual que `firma/index.html` (si cambia una, cambiar la otra). Secretos que pone Ernesto: `MAIL_EBERMEJO_PASSWORD` y `MAIL_INFO_PASSWORD`.
 - Adjuntos: `document_ids` = ids de `client_documents` (PDF subidos en la pestaña Documentos del panel).
-- Regla: por defecto borrador; enviar directamente solo si Ernesto dice expresamente «envíalo» o «mándaselo a…».
+- Regla (18/10/2026, noche): mientras Ernesto no diga lo contrario, cada correo para un cliente se manda PRIMERO a ernestobm2012@gmail.com tal cual lo recibiría el cliente; solo cuando Ernesto lo acepta se envía al cliente. Cuando dé por buenos los correos, se enviarán directamente.
 - Probado el 18/10/2026: envío real desde ebermejo@ a ernestobm2012@gmail.com (llegó a la bandeja principal, no a spam). Los textos van en SQL con `$body$…$body$`.
 
 ### PDF de clientes al panel desde la nube (18/10/2026, migración 0032)

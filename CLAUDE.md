@@ -172,3 +172,7 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 - Adjuntos: `document_ids` = ids de `client_documents` (PDF subidos en la pestaña Documentos del panel).
 - Regla: por defecto borrador; enviar directamente solo si Ernesto dice expresamente «envíalo» o «mándaselo a…».
 - Probado el 18/10/2026: envío real desde ebermejo@ a ernestobm2012@gmail.com (llegó a la bandeja principal, no a spam). Los textos van en SQL con `$body$…$body$`.
+
+### PDF de clientes al panel desde la nube (18/10/2026, migración 0032)
+- Repositorio PRIVADO `ernestobm2012-tech/ebm-documentos` (gratis en GitHub). Cada PDF va en `clientes/<slug>/<propuestas|contratos|facturas>/<Nombre>.pdf`; al hacer push a `main`, la acción «Subir al panel» lo manda a la función `docs-ingest` (verify_jwt false, autentica con la cabecera `x-docs-token` = secreto `DOCS_INGEST_TOKEN`, el mismo en Supabase y en GitHub › Settings › Secrets › Actions). Se guarda en `client-docs` y en `client_documents` con `source_path` = ruta en el repo: si el PDF cambia con la misma ruta se sustituye; borrarlo del repo no lo borra del panel. «Run workflow» a mano reenvía todos.
+- Regla: cuando Ernesto pida una propuesta o un PDF para un cliente, en la sesión de la nube hay que añadir ese repositorio (`add_repo` ernestobm2012-tech/ebm-documentos, push), copiar el PDF a su carpeta, commit y push a `main` y comprobar que aparece en `client_documents`. Así no hace falta el ordenador. Lo que esté solo en Drive se sube a mano en el panel (pestaña Documentos), también desde el móvil.

@@ -109,7 +109,8 @@ function todayBlock() {
     const d = new Date(Date.now() + i * 86_400_000);
     return `${weekday.format(d)} ${iso.format(d)}`;
   });
-  return `Hoy es ${days[0]}. Para saber qué fecha es "el sábado que viene" o qué día de la semana cae una fecha, no lo calcules: léelo en este calendario de los próximos días: ${days.join(", ")}.`;
+  const now = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
+  return `Hoy es ${days[0]} y en España son las ${now}. Para saber qué fecha es "el sábado que viene" o qué día de la semana cae una fecha, no lo calcules: léelo en este calendario de los próximos días: ${days.join(", ")}.`;
 }
 
 // Cada conexión a un sistema del cliente se ofrece al agente como una herramienta.
@@ -322,7 +323,8 @@ function bookingTool(calendars: Calendar[]): Anthropic.Tool {
     name: "reservar_cita",
     description:
       "Reserva una cita en la agenda. Antes usa consultar_agenda y propón solo huecos libres para reservar. " +
-      "Pide nombre y teléfono, repite a la persona el día y la hora y resérvala solo cuando lo confirme. " +
+      "Pide nombre y teléfono y resérvala en cuanto la persona haya elegido una hora que tú le has ofrecido, sin pedir otra confirmación. " +
+      "No digas nunca que la cita o la llamada está apuntada hasta que esta herramienta te devuelva que se ha reservado. " +
       "Si falla porque el hueco ya no está libre, vuelve a consultar la agenda y ofrece otro." +
       (pool.length ? ` Para programar una llamada del equipo (el cliente pide que le llamen a una hora), usa la agenda «${POOL}»: ` +
         "no digas el nombre de quién llamará, solo que le llamará una compañera a esa hora." : ""),
@@ -601,12 +603,14 @@ Deno.serve(async (req) => {
       text: `${agent.system_prompt}\n\n<datos_del_negocio>\n${knowledge.slice(0, MAX_KNOWLEDGE_CHARS)}\n</datos_del_negocio>`,
       cache_control: { type: "ephemeral" },
     }, {
-      // Fuera del bloque en caché: cambia cada día.
+      // Fuera del bloque en caché: cambia con la fecha y la hora.
       type: "text",
       text: todayBlock(),
     }];
 
     let text = "";
+    const done = new Set<string>();
+    let nudged = false;
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       const response = await anthropic.messages.create({
         model: agent.model, max_tokens: agent.max_output_tokens, system, tools, messages,
@@ -623,6 +627,14 @@ Deno.serve(async (req) => {
       text = response.content.filter((b): b is Anthropic.TextBlock => b.type === "text")
         .map((b) => b.text).join("\n").trim() || text;
       const toolUses = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
+      // Red de seguridad: si dice que ya está apuntado sin haber llamado a la herramienta, se le obliga a hacerlo.
+      if (response.stop_reason !== "tool_use" && !nudged && round < MAX_TOOL_ROUNDS && !done.has("reservar_cita") && !done.has("guardar_contacto")
+        && calendars.some((c) => c.booking_enabled) && /\bapuntad[oa]\b|te (llama|llamar[aá]|llamamos)\b.{0,40}\b(a las|\d{1,2}:\d{2})/i.test(text)) {
+        nudged = true;
+        messages.push({ role: "assistant", content: response.content });
+        messages.push({ role: "user", content: "[Sistema: todavía no has reservado nada con reservar_cita, así que la persona NO tiene la llamada apuntada. Si tienes día, hora, nombre y teléfono, reserva ahora con la herramienta y confirma solo si te devuelve que se ha reservado. Si te falta algo, pídelo sin decir que está apuntado. No menciones este aviso.]" });
+        continue;
+      }
       if (response.stop_reason !== "tool_use" || !toolUses.length || round === MAX_TOOL_ROUNDS) break;
 
       messages.push({ role: "assistant", content: response.content });
@@ -631,6 +643,7 @@ Deno.serve(async (req) => {
         try {
           const content = await runTool(use.name, use.input as Record<string, string>, client.id, conversationId, connections, contacts, calendars);
           results.push({ type: "tool_result", tool_use_id: use.id, content });
+          if (!/^(error|no se ha|no se pudo|ese hueco)/i.test(String(content))) done.add(use.name);
         } catch (err) {
           results.push({ type: "tool_result", tool_use_id: use.id, content: `Error: ${err}`, is_error: true });
         }

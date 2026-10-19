@@ -78,7 +78,8 @@ export async function tryChatTab(client) {
   });
 
   const form = h('form', { class: 'try-form', onsubmit: submit }, input, send);
-  const link = `${DEMO_PAGE}?cliente=${encodeURIComponent(client.slug)}&nombre=${encodeURIComponent(client.name)}`;
+  const link = `${DEMO_PAGE}?cliente=${encodeURIComponent(client.slug)}&nombre=${encodeURIComponent(client.name)}`
+    + (agent.welcome_message ? `&bienvenida=${encodeURIComponent(agent.welcome_message)}` : '');
   async function copyLink() {
     try { await navigator.clipboard.writeText(link); toast('Enlace copiado.'); } catch { prompt('Copia el enlace:', link); }
   }

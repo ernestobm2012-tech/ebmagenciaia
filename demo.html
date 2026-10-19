@@ -24,16 +24,19 @@
   </main>
   <script>
     // Página para enseñar el agente de cualquier cliente: demo.html?cliente=identificador&nombre=Nombre
+    // (opcional &bienvenida=Texto del primer mensaje; el enlace que copia el panel ya lo lleva).
     const params = new URLSearchParams(location.search);
     const client = (params.get('cliente') || '').replace(/[^a-z0-9-]/g, '');
     const name = (params.get('nombre') || '').slice(0, 60);
+    const welcome = (params.get('bienvenida') || '').slice(0, 300);
     if (client) {
       document.getElementById('title').textContent = name ? `Asistente de ${name}` : 'Demo de agente';
-      document.getElementById('text').textContent = 'Pulsa el botón azul de abajo a la derecha y pregúntale lo que quieras.';
+      document.getElementById('text').textContent = 'Pulsa el botón azul de abajo a la derecha y pregúntale lo que quieras. Con «Nueva», arriba en el chat, empiezas otra conversación.';
       const script = document.createElement('script');
-      script.src = 'js/chat.js';
+      script.src = 'js/chat.js?v=3';
       script.dataset.client = client;
       script.dataset.title = name || 'Asistente';
+      if (welcome) script.dataset.welcome = welcome;
       document.body.append(script);
     }
   </script>

@@ -5,7 +5,8 @@
 // foto, se muestra redonda) y data-position="left" si la web ya tiene otro botón
 // flotante a la derecha, o data-bottom="90" para subirlo (en píxeles) por encima
 // de él. data-privacy="dirección" añade un enlace a la política de privacidad.
-// Cualquier enlace con el atributo data-open-chat abre el chat.
+// Cualquier enlace con el atributo data-open-chat abre el chat. En la cabecera, el botón
+// «Nueva» empieza otra conversación desde cero (sale cuando ya se ha escrito algo).
 (() => {
   const script = document.currentScript;
   const ENDPOINT = 'https://rhjbpkaesobsbnkvioyh.supabase.co/functions/v1/chat';
@@ -38,7 +39,7 @@
     visitorId = newId();
     store.set('localStorage', `${KEY}-visitor`, visitorId);
   }
-  const state = store.get('sessionStorage', KEY) || { conversationId: null, messages: [] };
+  let state = store.get('sessionStorage', KEY) || { conversationId: null, messages: [] };
   const save = () => store.set('sessionStorage', KEY, state);
 
   const style = document.createElement('style');
@@ -60,6 +61,9 @@
     .ebm-chat-who img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; flex: none; }
     .ebm-chat-head strong { font-size: 15px; font-weight: 900; }
     .ebm-chat-head small { display: block; font-size: 12px; color: rgba(255,255,255,.78); font-weight: 400; }
+    .ebm-chat-tools { display: flex; align-items: center; gap: 4px; }
+    .ebm-chat-head .ebm-chat-new { font-size: 13px; font-weight: 700; padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,.16); }
+    .ebm-chat-head .ebm-chat-new[hidden] { display: none; }
     .ebm-chat-head button { border: 0; background: none; color: #fff; font-size: 24px; line-height: 1; cursor: pointer; padding: 2px 8px; }
     .ebm-chat-log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; background: #F3F6FA; }
     .ebm-chat-msg { max-width: 86%; padding: 10px 14px; border-radius: 14px; font-size: 15px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -90,12 +94,14 @@
   const form = el('form', {}, input, send);
   const close = el('button', { type: 'button', textContent: '×' });
   close.setAttribute('aria-label', 'Cerrar chat');
+  const restart = el('button', { type: 'button', className: 'ebm-chat-new', textContent: 'Nueva', title: 'Empezar una conversación nueva' });
+  restart.setAttribute('aria-label', 'Empezar una conversación nueva');
   const panel = el('div', { className: 'ebm-chat' },
     el('div', { className: 'ebm-chat-head' },
       el('div', { className: 'ebm-chat-who' },
         ...(AVATAR ? [el('img', { src: AVATAR, alt: '' })] : []),
         el('div', {}, el('strong', { textContent: TITLE }), el('small', { textContent: 'Asistente de IA' }))),
-      close),
+      el('div', { className: 'ebm-chat-tools' }, restart, close)),
     log, form,
     el('div', { className: 'ebm-chat-note' }, 'Guardamos la conversación para poder atenderte.',
       ...(PRIVACY ? [' ', el('a', { href: PRIVACY, target: '_blank', rel: 'noopener', textContent: 'Privacidad' })] : [])));
@@ -122,8 +128,25 @@
     }
   }
 
-  bubble('assistant', WELCOME);
-  state.messages.forEach((m) => bubble(m.role, m.text));
+  function render() {
+    log.replaceChildren();
+    bubble('assistant', WELCOME);
+    state.messages.forEach((m) => bubble(m.role, m.text));
+    restart.hidden = !state.messages.length;
+  }
+  render();
+
+  // Conversación nueva: otro visitante, para que no arrastre nada de la anterior.
+  restart.addEventListener('click', () => {
+    if (send.disabled) return;
+    visitorId = newId();
+    store.set('localStorage', `${KEY}-visitor`, visitorId);
+    state = { conversationId: null, messages: [] };
+    save();
+    render();
+    input.value = '';
+    input.focus();
+  });
 
   button.addEventListener('click', () => toggle(!panel.classList.contains('open')));
   close.addEventListener('click', () => toggle(false));
@@ -144,6 +167,7 @@
     send.disabled = true;
     bubble('user', text);
     state.messages.push({ role: 'user', text });
+    restart.hidden = false;
     const typing = bubble('assistant typing', 'Escribiendo…');
     let reply;
     try {

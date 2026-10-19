@@ -138,6 +138,7 @@ export async function calendarsTab(clientId) {
   let view = readView();
   let calendars = [];
   let types = [];
+  let members = [];
   const hidden = new Set();
   const hiddenTypes = new Set();
 
@@ -146,6 +147,8 @@ export async function calendarsTab(clientId) {
       q(db.from('calendars').select('*').eq('client_id', clientId).order('created_at')),
       q(db.from('appointment_types').select('*').eq('client_id', clientId).order('sort')).catch(() => []),
     ]);
+    // Personas del equipo, para decir de quién es cada agenda (solo si se pueden ver).
+    members = await q(db.from('team_members').select('id, name, job_title, active').eq('client_id', clientId).order('name')).catch(() => []);
     // La primera vez, los tipos de cita de ejemplo (luego cada negocio los cambia).
     if (!types.length && calendars.length) {
       try {
@@ -188,7 +191,10 @@ export async function calendarsTab(clientId) {
         } }),
         h('span', { class: 'dot', style: `background:${cal.color}` }),
         h('strong', {}, cal.name), cal.active ? null : h('span', { class: 'muted small' }, ' (apagado)')),
-      cal.booking_enabled ? h('div', { class: 'small muted' }, `El agente reserva citas de ${cal.booking_minutes} min`) : null,
+      cal.member_id ? h('div', { class: 'small muted' }, `De ${members.find((m) => m.id === cal.member_id)?.name || 'una persona del equipo'}`) : null,
+      cal.booking_enabled ? h('div', { class: 'small cal-booking' }, cal.booking_kind === 'llamada'
+        ? `El asistente programa aquí llamadas del equipo (${cal.booking_minutes} min), repartidas con las demás agendas de llamadas`
+        : `El asistente reserva aquí citas de ${cal.booking_minutes} min`) : null,
       h('div', { class: `small ${cal.sync_error ? 'error' : 'muted'}` }, status),
       h('div', { class: 'cal-actions' },
         cal.google_account ? [
@@ -559,13 +565,25 @@ export async function calendarsTab(clientId) {
       field('Color', h('input', { name: 'color', type: 'color', value: color })),
       cal ? h('label', { class: 'check' }, h('input', { name: 'active', type: 'checkbox', checked: cal.active }),
         ' Activo (apagado deja de sincronizarse y de verse en Google/Outlook)') : null,
-      h('h3', {}, 'Citas que reserva el agente'),
-      h('label', { class: 'check' }, h('input', { name: 'booking_enabled', type: 'checkbox', checked: !!cal?.booking_enabled }),
-        ' El agente puede reservar citas en este calendario'),
+      members.length ? field('De quién es esta agenda', h('select', { name: 'member_id' },
+        h('option', { value: '' }, 'De nadie en concreto'),
+        members.filter((m) => m.active || m.id === cal?.member_id).map((m) =>
+          h('option', { value: m.id, selected: cal?.member_id === m.id }, `${m.name}${m.job_title ? ` · ${m.job_title}` : ''}`))),
+        'Las llamadas que se le pongan aquí quedan a su nombre en los contactos.') : null,
+      h('h3', {}, 'Qué agenda aquí el asistente'),
+      field('', h('select', { name: 'booking_mode' },
+        h('option', { value: '', selected: !cal?.booking_enabled }, 'Nada: esta agenda la lleva el equipo a mano'),
+        h('option', { value: 'cita', selected: cal?.booking_enabled && cal?.booking_kind !== 'llamada' }, 'Citas con clientes en esta agenda'),
+        h('option', { value: 'llamada', selected: cal?.booking_enabled && cal?.booking_kind === 'llamada' }, 'Llamadas del equipo (repartidas)')),
+        'Llamadas del equipo: si un cliente pide que le llamen a una hora, el asistente se la pone a la persona libre que menos tenga ese día, sin repetir hora.'),
+      types.length ? field('Se apunta como', h('select', { name: 'booking_type_id' },
+        h('option', { value: '' }, 'Tipo por defecto del asistente'),
+        types.map((t) => h('option', { value: t.id, selected: cal?.booking_type_id === t.id }, t.name))),
+        'El tipo (y el color) con el que sale en la agenda lo que reserva el asistente aquí.') : null,
       h('div', { class: 'grid2' },
-        field('Duración de cada cita (min)', h('input', { name: 'booking_minutes', type: 'number', min: 10, max: 240, step: 5, value: cal?.booking_minutes ?? 30 })),
+        field('Duración (min)', h('input', { name: 'booking_minutes', type: 'number', min: 10, max: 240, step: 5, value: cal?.booking_minutes ?? 30 })),
         field('Antelación mínima (horas)', h('input', { name: 'booking_notice_hours', type: 'number', min: 0, max: 168, step: 1, value: Math.round((cal?.booking_notice_minutes ?? 120) / 60) }))),
-      h('p', { class: 'muted small' }, 'Horario en el que se pueden reservar citas. Ej.: 16:30-21:30. Dos tramos: 09:00-14:00, 16:30-21:30. Vacío = ese día no.'),
+      h('p', { class: 'muted small' }, 'Horario en el que el asistente puede agendar aquí. Ej.: 16:30-21:30. Dos tramos: 09:00-14:00, 16:30-21:30. Vacío = ese día no.'),
       h('div', { class: 'grid2' }, WEEKDAYS.map((name, i) =>
         field(name, h('input', { name: `hours_${i + 1}`, placeholder: 'cerrado', value: (cal?.booking_hours?.[String(i + 1)] || []).join(', ') })))),
       h('div', { class: 'actions' },
@@ -584,7 +602,11 @@ export async function calendarsTab(clientId) {
         if (ranges.length) hours[i] = ranges;
         delete f[`hours_${i}`];
       }
-      if (f.booking_enabled && !Object.keys(hours).length) return (note.textContent = 'Para reservar citas, pon el horario de al menos un día.');
+      const mode = f.booking_mode;
+      delete f.booking_mode;
+      f.booking_enabled = !!mode;
+      f.booking_kind = mode === 'llamada' ? 'llamada' : 'cita';
+      if (f.booking_enabled && !Object.keys(hours).length) return (note.textContent = 'Para que el asistente agende aquí, pon el horario de al menos un día.');
       const data = {
         ...f, booking_hours: hours,
         booking_minutes: Math.min(240, Math.max(10, f.booking_minutes || 30)),

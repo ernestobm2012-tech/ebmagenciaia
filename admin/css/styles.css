@@ -543,3 +543,4 @@ td .actions { flex-wrap: wrap; gap: 4px 14px; }
 .swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
 .tg-ev-cal i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; vertical-align: 1px; }
 @media (max-width: 520px) { .type-row { grid-template-columns: 44px minmax(0, 1fr); } }
+.cal-booking { color: #1F7A4D; font-weight: 700; }

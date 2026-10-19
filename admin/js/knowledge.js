@@ -135,7 +135,7 @@ export async function knowledgeTab(clientId) {
       ], rows, { empty: 'Aún no hay fuentes. Empieza por la web del cliente.', onRow: editText }),
       rows.length ? h('p', { class: `small ${total > 200000 ? 'warn' : 'muted'}` },
         `Total activo: ${fmtNum(total)} caracteres, unos ${fmtNum(tokens(total))} tokens que se envían en cada mensaje. `,
-        total > 200000 ? 'Es mucho: encarece cada respuesta. Desactiva lo que el agente no necesite.' : 'Cuanto más grande, más cuesta cada respuesta.') : null);
+        total > 200000 ? 'Es mucho: encarece cada respuesta. Desactiva lo que el agente no necesite.' : 'Cuanto más grande, más cuesta cada respuesta.') : '');
   }
   await load();
   return wrap;

@@ -291,7 +291,7 @@ export async function printerKeysCard(clientId) {
           h('td', {}, k.label, k.active ? null : h('span', { class: 'muted small' }, ' (desactivada)')),
           h('td', {}, fmtDate(k.created_at)),
           h('td', {}, k.last_used_at ? since(k.last_used_at) : 'Nunca'),
-          h('td', {}, h('button', { class: 'btn link', type: 'button', onclick: () => toggle(k) }, k.active ? 'Desactivar' : 'Activar'))))))) : null,
+          h('td', {}, h('button', { class: 'btn link', type: 'button', onclick: () => toggle(k) }, k.active ? 'Desactivar' : 'Activar'))))))) : '',
       h('button', { class: 'btn primary', type: 'button', onclick: create }, 'Crear clave del lector'));
   }
   async function toggle(k) {

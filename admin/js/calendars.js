@@ -130,7 +130,7 @@ export async function calendarsTab(clientId) {
       calendars.length
         ? h('div', { class: 'cal-list' }, calendars.map(calendarCard))
         : h('p', { class: 'empty' }, 'Todavía no hay calendarios. Crea uno por cada persona, sala o servicio que tenga agenda propia.'),
-      calendars.length ? agenda(events, to) : null);
+      ...(calendars.length ? [agenda(events, to)] : []));
   }
 
   function calendarCard(cal) {

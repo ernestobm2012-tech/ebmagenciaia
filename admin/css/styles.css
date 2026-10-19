@@ -433,3 +433,4 @@ td .actions { flex-wrap: wrap; gap: 4px 14px; }
 .lead-note { border-left: 3px solid var(--blue); background: var(--surface); border-radius: 0 8px 8px 0; padding: 8px 12px; }
 .lead-note.agent { border-left-color: var(--cyan); }
 .lead-note-meta { font-family: var(--mono); font-size: 10.5px; color: var(--ink-soft); margin-bottom: 3px; }
+.sign-link { word-break: break-all; }

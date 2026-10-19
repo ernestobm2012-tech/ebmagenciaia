@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Firmar la propuesta · EBM Agencia IA</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" type="image/png" href="/assets/favicon-192.png" sizes="192x192">
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/fonts.css">
+  <link rel="stylesheet" href="css/site.css">
+  <style>
+    .sign { max-width: 760px; padding-top: 40px; padding-bottom: 64px; }
+    .sign h1 { margin-bottom: 6px; }
+    .sign .lead { color: var(--ink-soft); margin-top: 0; }
+    .doc { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+      border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; background: var(--surface); margin: 24px 0; }
+    .doc b { display: block; font-size: 17px; }
+    .doc span { color: var(--ink-soft); font-size: 14.5px; }
+    .sig-wrap { position: relative; }
+    #sig { width: 100%; height: 180px; border: 1px dashed var(--ink-soft); border-radius: 12px; background: #fff; touch-action: none; display: block; }
+    .sig-actions { display: flex; justify-content: space-between; align-items: center; font-size: 14px; color: var(--ink-soft); margin-top: 6px; }
+    .link { background: none; border: 0; padding: 0; font: inherit; color: var(--blue-strong); cursor: pointer; text-decoration: underline; }
+    .state { border: 1px solid var(--line); border-radius: 16px; padding: 28px; box-shadow: var(--shadow); }
+    .state h2 { margin-top: 0; }
+    [hidden] { display: none !important; }
+    .fine { font-size: 13.5px; color: var(--ink-soft); }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap navrow">
+      <a class="brand" href="./" aria-label="EBM, inicio"><img src="assets/logo-ebm.png" alt="EBM"></a>
+    </div>
+  </header>
+
+  <main class="wrap sign">
+    <section id="loading" class="state"><p>Cargando la propuesta…</p></section>
+
+    <section id="invalid" class="state" hidden>
+      <h2>No podemos abrir este enlace</h2>
+      <p id="invalidText">Puede que haya caducado o que ya no sea válido. Escríbenos a <a href="mailto:ebermejo@ebmagenciaia.es">ebermejo@ebmagenciaia.es</a> y te mandamos uno nuevo.</p>
+    </section>
+
+    <section id="signed" class="state" hidden>
+      <h2>Propuesta firmada</h2>
+      <p id="signedText">Muchas gracias. Hemos recibido tu firma y te llegará una copia por correo.</p>
+    </section>
+
+    <section id="formState" hidden>
+      <h1>Aceptar la propuesta</h1>
+      <p class="lead">Revisa la propuesta y, si estás de acuerdo, rellena tus datos y firma con el dedo o el ratón.</p>
+
+      <div class="doc">
+        <div><b id="docName">Propuesta</b><span id="clientName"></span></div>
+        <a id="pdfLink" class="btn small" href="#" target="_blank" rel="noopener">Ver la propuesta (PDF)</a>
+      </div>
+
+      <form id="form" class="form" novalidate>
+        <div class="grid2">
+          <label class="field"><span>Empresa</span><input id="f_company" autocomplete="organization"></label>
+          <label class="field"><span>CIF</span><input id="f_cif" autocapitalize="characters"></label>
+          <label class="field"><span>Tu nombre y apellidos</span><input id="f_name" required autocomplete="name"></label>
+          <label class="field"><span>Tu DNI o NIE</span><input id="f_nif" required autocapitalize="characters"></label>
+          <label class="field"><span>Cargo</span><input id="f_role" placeholder="Gerente, administrador…"></label>
+          <label class="field"><span>Teléfono</span><input id="f_phone" type="tel" autocomplete="tel"></label>
+        </div>
+        <label class="field"><span>Correo</span><input id="f_email" type="email" autocomplete="email"><small>Te mandamos aquí la propuesta firmada.</small></label>
+
+        <div class="field">
+          <span>Firma</span>
+          <div class="sig-wrap"><canvas id="sig" aria-label="Recuadro para firmar"></canvas></div>
+          <div class="sig-actions"><span>Firma dentro del recuadro.</span><button type="button" class="link" id="clear">Borrar y repetir</button></div>
+        </div>
+        <label class="field"><span>Nombre bajo la firma</span><input id="f_typed" required></label>
+
+        <label class="check"><input type="checkbox" id="f_accept"><span>He leído la propuesta y acepto sus condiciones, precios y servicios tal y como figuran en ella.</span></label>
+        <p class="fine">Al firmar guardamos tus datos, la firma, la fecha y hora, tu IP y tu navegador como prueba de la aceptación, y añadimos una hoja final a la propuesta con todo ello. Más información en la <a href="privacidad.html" target="_blank" rel="noopener">política de privacidad</a>.</p>
+        <button class="btn primary" id="submit" type="submit">Firmar y aceptar</button>
+        <p class="form-note" id="note" role="status"></p>
+      </form>
+    </section>
+  </main>
+
+  <script type="module">
+    import { SUPABASE_URL, SUPABASE_KEY } from './admin/js/config.js';
+    const API = `${SUPABASE_URL}/functions/v1/firma`;
+    const $ = (id) => document.getElementById(id);
+    const token = new URLSearchParams(location.search).get('t') || '';
+
+    function show(id) {
+      for (const s of ['loading', 'invalid', 'signed', 'formState']) $(s).hidden = s !== id;
+    }
+    async function call(body) {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY },
+        body: JSON.stringify({ token, ...body }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'No se ha podido conectar. Inténtalo otra vez.');
+      return data;
+    }
+    const fmt = (iso) => new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso));
+
+    // Recuadro de firma (como el contrato de Mi Pequeño Rincón).
+    let pad;
+    function setupPad() {
+      const canvas = $('sig');
+      const ratio = window.devicePixelRatio || 1;
+      canvas.width = canvas.clientWidth * ratio;
+      canvas.height = canvas.clientHeight * ratio;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(ratio, ratio);
+      ctx.strokeStyle = '#12294A';
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      let drawing = false, drawn = false;
+      const pos = (e) => {
+        const r = canvas.getBoundingClientRect();
+        const p = e.touches ? e.touches[0] : e;
+        return { x: p.clientX - r.left, y: p.clientY - r.top };
+      };
+      const start = (e) => { drawing = true; drawn = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); e.preventDefault(); };
+      const move = (e) => { if (!drawing) return; const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); e.preventDefault(); };
+      const end = () => { drawing = false; };
+      canvas.addEventListener('mousedown', start);
+      canvas.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', end);
+      canvas.addEventListener('touchstart', start, { passive: false });
+      canvas.addEventListener('touchmove', move, { passive: false });
+      canvas.addEventListener('touchend', end);
+      $('clear').addEventListener('click', () => { ctx.clearRect(0, 0, canvas.width, canvas.height); drawn = false; });
+      pad = { isEmpty: () => !drawn, toDataURL: () => canvas.toDataURL('image/png') };
+    }
+
+    async function init() {
+      if (!token) return show('invalid');
+      try {
+        const d = await call({ action: 'get' });
+        if (d.status === 'signed') {
+          $('signedText').textContent = `${d.signer_name || 'Ya'} firmó «${d.document}» el ${fmt(d.signed_at)}. Muchas gracias.`;
+          return show('signed');
+        }
+        $('docName').textContent = d.document;
+        $('clientName').textContent = d.client;
+        $('pdfLink').href = d.pdf_url || '#';
+        const p = d.prefill || {};
+        $('f_company').value = p.company_name || '';
+        $('f_name').value = p.signer_name || '';
+        $('f_typed').value = p.signer_name || '';
+        $('f_email').value = p.signer_email || '';
+        $('f_phone').value = p.signer_phone || '';
+        $('f_name').addEventListener('input', () => { if (!$('f_typed').dataset.touched) $('f_typed').value = $('f_name').value; });
+        $('f_typed').addEventListener('input', () => { $('f_typed').dataset.touched = '1'; });
+        // El recuadro tiene que estar visible antes de medirlo.
+        show('formState');
+        setupPad();
+      } catch (err) {
+        $('invalidText').textContent = err.message;
+        show('invalid');
+      }
+    }
+
+    $('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const note = $('note');
+      note.className = 'form-note error';
+      if (!$('f_name').value.trim() || !$('f_nif').value.trim()) return (note.textContent = 'Pon tu nombre y tu DNI o NIE.');
+      if (pad.isEmpty()) return (note.textContent = 'Dibuja tu firma en el recuadro.');
+      if (!$('f_typed').value.trim()) return (note.textContent = 'Escribe tu nombre bajo la firma.');
+      if (!$('f_accept').checked) return (note.textContent = 'Marca la casilla para aceptar la propuesta.');
+      note.className = 'form-note';
+      note.textContent = 'Guardando la firma…';
+      $('submit').disabled = true;
+      try {
+        await call({
+          action: 'sign', accept: true,
+          company_name: $('f_company').value, company_cif: $('f_cif').value,
+          signer_name: $('f_name').value, signer_nif: $('f_nif').value, signer_role: $('f_role').value,
+          signer_email: $('f_email').value, signer_phone: $('f_phone').value,
+          typed_name: $('f_typed').value, signature_png: pad.toDataURL(), user_agent: navigator.userAgent,
+        });
+        $('signedText').textContent = $('f_email').value.trim()
+          ? 'Muchas gracias. Hemos recibido tu firma y te acabamos de mandar la propuesta firmada por correo.'
+          : 'Muchas gracias. Hemos recibido tu firma.';
+        show('signed');
+        window.scrollTo(0, 0);
+      } catch (err) {
+        note.className = 'form-note error';
+        note.textContent = err.message;
+        $('submit').disabled = false;
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>

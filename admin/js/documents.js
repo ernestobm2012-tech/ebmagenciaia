@@ -1,7 +1,8 @@
 // Documentos de cada cliente: propuestas, contratos y facturas en PDF.
 // Se guardan en el almacén privado `client-docs` y solo los ve la administración.
 // Cada documento se puede enviar por correo (función `mail`, desde ebermejo@ o info@)
-// o por WhatsApp (en el móvil se comparte el PDF; en el ordenador, un enlace de 30 días).
+// o por WhatsApp (en el móvil se comparte el PDF; en el ordenador, un enlace de 30 días),
+// y las propuestas se pueden mandar a firmar (ver «firma de propuestas» más abajo).
 import { db } from './app.js';
 import { h, q, table, field, toast, errorText, fmtDate, modal } from './ui.js';
 
@@ -161,6 +162,178 @@ function emailDialog(doc, client) {
     h('div', { class: 'actions' }, send)));
 }
 
+
+// ------------------------------------------------------------ firma de propuestas
+// El cliente firma en ebmagenciaia.es/firmar.html con un enlace secreto. La función
+// `firma` añade la hoja de aceptación, guarda el PDF firmado aquí (tipo contrato),
+// lo sube a Google Drive (carpeta del cliente › Contratos) y avisa por correo.
+const SIGN_PAGE = 'https://ebmagenciaia.es/firmar.html';
+const signLink = (r) => `${SIGN_PAGE}?t=${r.token}`;
+const SIGN_STATUS = { pending: 'Pendiente de firmar', signed: 'Firmada', cancelled: 'Anulada' };
+
+async function callDrive(action, body = {}) {
+  const { data, error } = await db.functions.invoke(`google-drive?action=${action}`, { body });
+  if (error) {
+    const detail = await error.context?.json?.().catch(() => null);
+    throw new Error(detail?.error || error.message);
+  }
+  return data;
+}
+
+const DRIVE_RESULT = {
+  ok: ['Google Drive conectado.', 'ok'],
+  cancelado: ['No se ha conectado Google Drive.', 'error'],
+  'sin-permiso': ['Google no ha dado permiso para Drive. Vuelve a conectar y marca la casilla de Drive.', 'error'],
+  error: ['No se pudo conectar Google Drive. Mira el registro de errores.', 'error'],
+};
+const driveResult = new URLSearchParams(location.search).get('drive');
+if (driveResult) {
+  const url = new URL(location.href);
+  url.searchParams.delete('drive');
+  history.replaceState(null, '', url);
+  const [text, kind] = DRIVE_RESULT[driveResult] || DRIVE_RESULT.error;
+  setTimeout(() => toast(text, kind), 800);
+}
+
+async function copy(text) {
+  try { await navigator.clipboard.writeText(text); toast('Enlace copiado.'); } catch { prompt('Copia el enlace:', text); }
+}
+
+// Solicitud pendiente para este documento, o una nueva.
+async function signatureRequest(doc) {
+  const [open] = await q(db.from('signature_requests').select('*').eq('document_id', doc.id).eq('status', 'pending')
+    .gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }).limit(1));
+  if (open) return open;
+  const [made] = await q(db.from('signature_requests').insert({ client_id: doc.client_id, document_id: doc.id }).select('*'));
+  return made;
+}
+
+async function signDialog(doc, client, onChange) {
+  let req;
+  try {
+    req = await signatureRequest(doc);
+  } catch (err) {
+    toast(errorText(err), 'error');
+    return;
+  }
+  onChange();
+  const link = signLink(req);
+  const hello = firstName(client?.contact_name);
+  const label = docLabel(doc).toLowerCase().startsWith('propuesta') ? 'la propuesta' : `«${docLabel(doc)}»`;
+  const text = h('textarea', { rows: 7 },
+    `Hola${hello ? `, ${hello}` : ''}. Si te parece bien ${label}, puedes aceptarla y firmarla aquí, desde el móvil o el ordenador:\n\n${link}\n\nEn cuanto la firmes te llega una copia por correo y nos ponemos en marcha.\n\nUn saludo,\nErnesto`);
+  const phone = h('input', { type: 'tel', placeholder: '6XX XXX XXX', value: client?.contact_phone || '' });
+  const to = h('input', { type: 'text', value: [client?.contact_email, client?.contact_email_alt].filter(Boolean).join(', ') });
+  const error = h('p', { class: 'error' });
+  const sendMail = h('button', { class: 'btn', type: 'button', onclick: () => email() }, 'Enviar por correo');
+
+  function whatsapp() {
+    window.open(`https://wa.me/${waNumber(phone.value)}?text=${encodeURIComponent(text.value)}`, '_blank', 'noopener');
+  }
+  async function email() {
+    error.textContent = '';
+    const addrs = to.value.split(/[,;\s]+/).filter(Boolean);
+    if (!addrs.length) { error.textContent = 'Pon al menos un correo.'; return; }
+    sendMail.disabled = true;
+    try {
+      const body = text.value.replace(/\n*Un saludo,\nErnesto\s*$/, '\n\nUn saludo,');
+      const html = toHtml(body).replace(esc(link), `<a href="${esc(link)}" style="color:#1483DC;font-weight:bold">Ver y firmar ${esc(label.replace(/[«»]/g, ''))}</a>`);
+      const [row] = await q(db.from('outgoing_mail').insert({
+        account: 'ebermejo', mode: 'send', to_addr: addrs, subject: `Firma de ${label.replace(/[«»]/g, '')} · EBM Agencia IA`,
+        body_html: html, document_ids: [doc.id], client_id: client?.id ?? null,
+      }).select('id'));
+      for (let i = 0; i < 10; i++) {
+        await new Promise((r) => setTimeout(r, 1500));
+        const [st] = await q(db.from('outgoing_mail').select('status, error').eq('id', row.id));
+        if (st?.status === 'done') { toast('Correo enviado.'); sendMail.disabled = false; return; }
+        if (st?.status === 'error') throw new Error(st.error || 'No se pudo enviar.');
+      }
+      toast('El correo está saliendo. Lo verás en Enviados.');
+    } catch (err) {
+      error.textContent = errorText(err);
+    }
+    sendMail.disabled = false;
+  }
+
+  modal(`Pedir firma · ${doc.name}`, h('div', { class: 'form' },
+    h('p', { class: 'muted' }, 'El cliente abre el enlace, ve la propuesta, rellena sus datos y firma. El PDF firmado se guarda en Documentos y en tu Google Drive. El enlace dura 60 días.'),
+    h('p', {}, h('code', { class: 'small sign-link' }, link), ' ', h('button', { class: 'btn link', type: 'button', onclick: () => copy(link) }, 'Copiar')),
+    field('Mensaje', text),
+    h('div', { class: 'grid2' },
+      field('Teléfono (WhatsApp)', phone, 'Vacío: WhatsApp te deja elegir el contacto.'),
+      field('Correo', to, 'Varios, separados por comas. Sale de ebermejo@ con la propuesta adjunta.')),
+    error,
+    h('div', { class: 'actions' },
+      h('button', { class: 'btn primary', type: 'button', onclick: whatsapp }, 'Enviar por WhatsApp'), ' ', sendMail)));
+}
+
+async function signaturesBlock(clientId, client, docsById, reload) {
+  const box = h('div', { class: 'doc-card' });
+  const drive = h('p', { class: 'muted small' }, 'Comprobando Google Drive…');
+  callDrive('status').then((st) => {
+    drive.replaceChildren(st.connected
+      ? `Los contratos firmados se copian en Google Drive (${st.email || 'conectado'}), carpeta del cliente › Contratos. `
+      : 'Google Drive no está conectado: los firmados solo se guardan aquí. ',
+    h('button', { class: 'btn link', type: 'button', onclick: connect }, st.connected ? 'Volver a conectar' : 'Conectar Google Drive'));
+  }).catch((err) => drive.replaceChildren(errorText(err)));
+
+  async function connect() {
+    toast('Abriendo Google…');
+    try {
+      const { url } = await callDrive('connect', { return_url: location.href });
+      location.href = url;
+    } catch (err) {
+      toast(errorText(err), 'error');
+    }
+  }
+  async function retryDrive(r) {
+    try {
+      const out = await callDrive('upload', { document_id: r.signed_document_id, folder: 'Contratos' });
+      await q(db.from('signature_requests').update({ drive_file_id: out.id, drive_error: null }).eq('id', r.id));
+      toast('Subido a Google Drive.');
+      reload();
+    } catch (err) {
+      await db.from('signature_requests').update({ drive_error: errorText(err) }).eq('id', r.id);
+      toast(errorText(err), 'error');
+    }
+  }
+  async function cancel(r) {
+    if (!confirm('¿Anular este enlace de firma? El cliente ya no podrá usarlo.')) return;
+    try {
+      await q(db.from('signature_requests').update({ status: 'cancelled' }).eq('id', r.id));
+      reload();
+    } catch (err) {
+      toast(errorText(err), 'error');
+    }
+  }
+
+  const rows = await q(db.from('signature_requests')
+    .select('id, token, status, created_at, expires_at, signed_at, signer_name, signer_role, document_id, signed_document_id, drive_file_id, drive_error')
+    .eq('client_id', clientId).neq('status', 'cancelled').order('created_at', { ascending: false }));
+  const driveCell = (r) => {
+    if (r.status !== 'signed') return '—';
+    if (r.drive_file_id) return h('a', { href: `https://drive.google.com/file/d/${r.drive_file_id}/view`, target: '_blank', rel: 'noopener' }, 'Ver en Drive');
+    return h('span', {}, h('span', { class: 'muted small', title: r.drive_error || '' }, 'No subido · '),
+      h('button', { class: 'btn link', type: 'button', onclick: () => retryDrive(r) }, 'Reintentar'));
+  };
+  box.append(
+    h('h3', {}, 'Firmas'),
+    drive,
+    rows.length ? table([
+      { label: 'Documento', cell: (r) => docsById.get(r.document_id)?.name || '—' },
+      { label: 'Pedida', cell: (r) => fmtDate(r.created_at) },
+      { label: 'Estado', cell: (r) => r.status === 'signed'
+        ? h('span', {}, h('b', {}, 'Firmada'), ` el ${fmtDate(r.signed_at)} por ${r.signer_name || '—'}`)
+        : new Date(r.expires_at) < new Date() ? 'Caducada' : SIGN_STATUS[r.status] },
+      { label: 'Drive', cell: driveCell },
+      { label: '', cell: (r) => r.status === 'pending'
+        ? h('span', {}, h('button', { class: 'btn link', type: 'button', onclick: () => copy(signLink(r)) }, 'Copiar enlace'), ' · ',
+          h('button', { class: 'btn link danger', type: 'button', onclick: () => cancel(r) }, 'Anular'))
+        : '' },
+    ], rows) : h('p', { class: 'muted' }, 'Todavía no has pedido ninguna firma. Pulsa «Pedir firma» en una propuesta.'));
+  return box;
+}
+
 export async function documentsTab(clientId) {
   const [client] = await q(db.from('clients').select('id, name, contact_name, contact_email, contact_email_alt, contact_phone').eq('id', clientId));
   const wrap = h('div', {});
@@ -238,8 +411,10 @@ export async function documentsTab(clientId) {
   }
 
   const list = h('div', {});
+  const signs = h('div', {});
   async function load() {
     const docs = await q(db.from('client_documents').select('*').eq('client_id', clientId).order('created_at', { ascending: false }));
+    signs.replaceChildren(await signaturesBlock(clientId, client, new Map(docs.map((d) => [d.id, d])), load));
     list.replaceChildren(table([
       { label: 'Documento', cell: (d) => h('button', { class: 'btn link', type: 'button', onclick: () => open(d, false) }, d.name) },
       { label: 'Tipo', cell: (d) => KINDS[d.kind] || d.kind },
@@ -249,13 +424,14 @@ export async function documentsTab(clientId) {
         h('button', { class: 'btn link', type: 'button', onclick: () => open(d, true) }, 'Descargar'), ' · ',
         h('button', { class: 'btn link', type: 'button', onclick: () => whatsappDialog(d, client) }, 'WhatsApp'), ' · ',
         h('button', { class: 'btn link', type: 'button', onclick: () => emailDialog(d, client) }, 'Correo'), ' · ',
+        d.kind === 'propuesta' ? [h('button', { class: 'btn link', type: 'button', onclick: () => signDialog(d, client, load) }, 'Pedir firma'), ' · '] : null,
         h('button', { class: 'btn link danger', type: 'button', onclick: () => remove(d) }, 'Borrar')) },
     ], docs, { empty: 'Todavía no hay documentos de este cliente.' }));
   }
   await load();
 
   wrap.append(
-    h('p', { class: 'muted' }, 'Propuestas, contratos y facturas de este cliente. Solo los ve la administración. Desde aquí puedes enviar cada uno por WhatsApp o por correo.'),
-    list, form);
+    h('p', { class: 'muted' }, 'Propuestas, contratos y facturas de este cliente. Solo los ve la administración. Desde aquí puedes enviar cada uno por WhatsApp o por correo, y pedir la firma de una propuesta.'),
+    list, signs, form);
   return wrap;
 }

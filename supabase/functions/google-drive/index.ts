@@ -92,9 +92,12 @@ async function callback(url: URL) {
   return back(pending.return_url, "ok");
 }
 
+// Sin conexión no es un fallo: queda apuntado en la firma y no se avisa al móvil.
+class NotConnected extends Error {}
+
 async function accessToken() {
   const { data: conn } = await db.from("drive_google").select("refresh_token, root_folder_id").eq("id", 1).maybeSingle();
-  if (!conn) throw new Error("Google Drive no está conectado (Documentos › Conectar Google Drive).");
+  if (!conn) throw new NotConnected("Falta conectar Google Drive: en Documentos de cualquier cliente, bloque Firmas, pulsa «Conectar Google Drive».");
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -181,7 +184,9 @@ Deno.serve(async (req) => {
     return json({ error: "Acción desconocida" }, 400);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await db.from("error_log").insert({ source: "google-drive", message: `${action}: ${message}`.slice(0, 1000) });
+    if (!(err instanceof NotConnected)) {
+      await db.from("error_log").insert({ source: "google-drive", message: `${action}: ${message}`.slice(0, 1000) });
+    }
     return json({ error: message }, 500);
   }
 });

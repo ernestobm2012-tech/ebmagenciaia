@@ -198,6 +198,7 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
   - Avisos: trigger `leads_assigned` → `push?action=assigned` (push v9) cuando cambia el comercial o quien lo gestiona: correo (Resend) a esa persona y push si tiene usuario. «Volver a llamar» avisa a quien lo gestiona. En clientes demo, todo solo a administración (con «[DEMO · para <nombre>]»).
   - Estadísticas (por periodo y negocio): generados, en curso, pasados al comercial, cerrados, no interesados, tasa de cierre, importe, tiempo hasta la primera llamada y hasta cerrar; tablas por estado, por comercial, por quien llama, por origen (canal de la conversación) y por día/semana.
   - DZZERO: dados de alta Óscar López (comercial, o.lopez@dzzero.com) y Juan Antonio (comercial, sin correo).
+  - Puestos (20/10/2026, migración 0038): `team_members.job_title` libre (Teleoperadora, Comercial, Instalador, Fontanero…, con sugerencias) y `role` = qué hace con los contactos: `llamadas`, `comercial` u `otro` (instaladores y técnicos: no salen al repartir contactos). Al escribir el puesto se propone el rol.
 
 ### Enviar documentos por WhatsApp o correo desde el panel (19/10/2026)
 - Pestaña Documentos del cliente: cada PDF tiene «WhatsApp» y «Correo» (`admin/js/documents.js`).

@@ -18,7 +18,10 @@ export const LEAD_STATUS = {
   lost: 'Cerrado: no interesa',
 };
 const CLOSED = ['won', 'lost'];
-const ROLES = { llamadas: 'Llama a los contactos', comercial: 'Comercial' };
+// Qué hace cada persona con los contactos; el puesto (job_title) lo escribe cada negocio.
+const ROLES = { llamadas: 'Llama a los contactos', comercial: 'Comercial: se le pasan para cerrar', otro: 'No lleva contactos' };
+const JOB_SUGGESTIONS = ['Teleoperadora', 'Comercial', 'Instalador', 'Fontanero', 'Técnico', 'Jefe de equipo'];
+const jobOf = (m) => m.job_title || { llamadas: 'Llama a los contactos', comercial: 'Comercial', otro: '—' }[m.role];
 const CHANNELS = { phone: 'Teléfono', web: 'Chat de la web', whatsapp: 'WhatsApp', instagram: 'Instagram' };
 
 const statusBadge = (s) => h('span', { class: `badge lead-${s}` }, LEAD_STATUS[s] || s);
@@ -143,8 +146,9 @@ function listView(ctx) {
 
 function openLead(lead, ctx, onSaved) {
   const history = h('div', { class: 'lead-history' }, h('p', { class: 'empty' }, 'Cargando…'));
-  const team = ctx.members.filter((m) => m.client_id === lead.client_id && (m.active || m.id === lead.caller_id || m.id === lead.seller_id));
-  const option = (m, selected) => h('option', { value: m.id, selected }, `${m.name}${m.active ? '' : ' (de baja)'}`);
+  const team = ctx.members.filter((m) => m.client_id === lead.client_id
+    && ((m.active && m.role !== 'otro') || m.id === lead.caller_id || m.id === lead.seller_id));
+  const option = (m, selected) => h('option', { value: m.id, selected }, `${m.name}${m.job_title ? ` · ${m.job_title}` : ''}${m.active ? '' : ' (de baja)'}`);
 
   const status = h('select', { name: 'status' },
     Object.entries(LEAD_STATUS).map(([v, l]) => h('option', { value: v, selected: lead.status === v }, l)));
@@ -433,21 +437,33 @@ async function teamView(ctx) {
     list.replaceChildren(
       table([
         { label: 'Nombre', cell: (m) => h('b', {}, m.name) },
-        { label: 'Qué hace', cell: (m) => ROLES[m.role] },
+        { label: 'Puesto', cell: (m) => jobOf(m) },
+        { label: 'Con los contactos', cell: (m) => ({ llamadas: 'Los llama', comercial: 'Se los pasan', otro: '—' }[m.role]) },
         { label: 'Correo', cell: (m) => m.email || '—' },
         { label: 'Teléfono', cell: (m) => m.phone || '—' },
         { label: 'Usuario del panel', cell: (m) => userName.get(m.profile_id) || '—' },
         { label: 'Estado', cell: (m) => (m.active ? 'Activo' : 'De baja') },
       ], team, {
         empty: 'Todavía no hay nadie. Añade a quien llama a los contactos y a los comerciales.',
-        onRow: (m) => memberDialog(m, users),
+        onRow: (m) => memberDialog(m, users, team),
       }),
-      h('div', { class: 'actions', style: 'margin-top:12px' }, h('button', { class: 'btn primary', type: 'button', onclick: () => memberDialog(null, users) }, 'Añadir persona')));
+      h('div', { class: 'actions', style: 'margin-top:12px' }, h('button', { class: 'btn primary', type: 'button', onclick: () => memberDialog(null, users, team) }, 'Añadir persona')));
   }
 
-  function memberDialog(m, users) {
+  function memberDialog(m, users, team) {
     const name = h('input', { required: true, value: m?.name || '', placeholder: 'Nombre y apellido' });
+    // Puesto libre con sugerencias (los que ya usa el negocio y los típicos).
+    const listId = `jobs-${Math.random().toString(36).slice(2)}`;
+    const jobs = [...new Set([...team.map((t) => t.job_title).filter(Boolean), ...JOB_SUGGESTIONS])];
+    const job = h('input', { list: listId, value: m?.job_title || '', placeholder: 'Teleoperadora, Comercial, Fontanero…' });
     const role = h('select', {}, Object.entries(ROLES).map(([v, l]) => h('option', { value: v, selected: (m?.role || 'llamadas') === v }, l)));
+    // Al escribir el puesto se propone qué hace con los contactos (se puede cambiar).
+    job.addEventListener('change', () => {
+      const t = job.value.toLowerCase();
+      if (/comercial|ventas|vendedor/.test(t)) role.value = 'comercial';
+      else if (/teleoperador|llama|atenci|recepci/.test(t)) role.value = 'llamadas';
+      else if (/instalad|fontaner|t[eé]cnic|montador|electricista/.test(t)) role.value = 'otro';
+    });
     const email = h('input', { type: 'email', value: m?.email || '', placeholder: 'nombre@empresa.com' });
     const phone = h('input', { type: 'tel', value: m?.phone || '' });
     const user = h('select', {}, h('option', { value: '' }, 'No tiene'), users.map((u) => h('option', { value: u.id, selected: m?.profile_id === u.id }, u.name)));
@@ -459,7 +475,7 @@ async function teamView(ctx) {
       e.preventDefault();
       error.textContent = '';
       const row = {
-        client_id: clientId, name: name.value.trim(), role: role.value,
+        client_id: clientId, name: name.value.trim(), role: role.value, job_title: job.value.trim() || null,
         email: email.value.trim() || null, phone: phone.value.trim() || null,
         profile_id: user.value || null, active: active.checked,
       };
@@ -489,7 +505,8 @@ async function teamView(ctx) {
     close = modal(m ? m.name : 'Añadir persona al equipo', h('form', { class: 'form', onsubmit: submit },
       h('div', { class: 'grid2' },
         field('Nombre', name),
-        field('Qué hace', role, 'Quien llama gestiona los contactos; al comercial se le pasan para cerrar.'),
+        field('Puesto', h('div', {}, job, h('datalist', { id: listId }, jobs.map((j) => h('option', { value: j })))), 'Escríbelo como lo llaméis vosotros.'),
+        field('Con los contactos', role, 'Quien llama los gestiona; al comercial se le pasan para cerrar. Instaladores y técnicos: «No lleva contactos».'),
         field('Correo', email, 'Le llega un aviso cuando le pasen un contacto o toque volver a llamar.'),
         field('Teléfono', phone),
         field('Usuario del panel', user, 'Opcional. Si tiene usuario, ve sus contactos en «Míos» y recibe los avisos en el móvil.')),
@@ -501,7 +518,7 @@ async function teamView(ctx) {
   }
 
   wrap.append(
-    h('p', { class: 'muted' }, 'Las personas que llaman a los contactos y los comerciales. No hace falta que tengan usuario del panel: con su correo ya reciben los avisos.'),
+    h('p', { class: 'muted' }, 'Todo el equipo: quien llama a los contactos, comerciales, instaladores, técnicos… Cada uno con su puesto. No hace falta que tengan usuario del panel: con su correo ya reciben los avisos.'),
     ...(picker ? [picker] : []), list);
   await render();
   return wrap;

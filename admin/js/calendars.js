@@ -83,6 +83,43 @@ const fromInputs = (date, time = '00:00') => {
 };
 
 const dayFmt = new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+const wdFmt = new Intl.DateTimeFormat('es-ES', { weekday: 'short' });
+const monthFmt = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' });
+const shortFmt = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' });
+const HOUR_PX = 60;
+const VIEW_KEY = 'ebm-cal-view';
+const VIEWS = [['day', 'Día'], ['week', 'Semana'], ['month', 'Mes'], ['list', 'Lista']];
+const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+const toMinutes = (hhmm) => { const [hh, mm] = hhmm.split(':').map(Number); return hh * 60 + mm; };
+const mondayOf = (d) => addDays(startOfDay(d), -((d.getDay() + 6) % 7));
+const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+
+// En el móvil se empieza por el día; en el ordenador, por la semana.
+function readView() {
+  let saved = null;
+  try { saved = localStorage.getItem(VIEW_KEY); } catch { /* sin almacenamiento */ }
+  if (VIEWS.some(([v]) => v === saved)) return saved;
+  return window.matchMedia?.('(max-width: 700px)').matches ? 'day' : 'week';
+}
+
+// Días que abarca cada vista: [desde, hasta).
+function rangeOf(view, anchor) {
+  if (view === 'day') return [anchor, addDays(anchor, 1)];
+  if (view === 'week') { const s = mondayOf(anchor); return [s, addDays(s, 7)]; }
+  if (view === 'month') {
+    const s = mondayOf(new Date(anchor.getFullYear(), anchor.getMonth(), 1));
+    const e = addDays(mondayOf(new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0)), 7);
+    return [s, e];
+  }
+  return [anchor, addDays(anchor, DAYS_SHOWN)];
+}
+
+function titleOf(view, anchor, from, to) {
+  if (view === 'day') return cap(dayFmt.format(anchor));
+  if (view === 'month') return cap(monthFmt.format(anchor));
+  const last = addDays(to, -1);
+  return `${shortFmt.format(from)} – ${shortFmt.format(last)} ${last.getFullYear()}`;
+}
 const timeFmt = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' });
 const agoFmt = new Intl.RelativeTimeFormat('es-ES', { numeric: 'auto' });
 
@@ -106,7 +143,9 @@ async function copy(text) {
 // clientId: el cliente cuyos calendarios se gestionan.
 export async function calendarsTab(clientId) {
   const wrap = h('div', { class: 'calendars' });
-  let from = startOfDay(new Date());
+  // Día de referencia de la vista y vista elegida (se recuerda en este navegador).
+  let anchor = startOfDay(new Date());
+  let view = readView();
   let calendars = [];
   const hidden = new Set();
 
@@ -116,21 +155,21 @@ export async function calendarsTab(clientId) {
   }
 
   async function render() {
-    const to = addDays(from, DAYS_SHOWN);
+    const [from, to] = rangeOf(view, anchor);
     const visible = calendars.filter((c) => !hidden.has(c.id)).map((c) => c.id);
     const events = visible.length
       ? await q(db.from('calendar_events').select('*').in('calendar_id', visible)
-        .lt('starts_at', to.toISOString()).gt('ends_at', from.toISOString()).order('starts_at').limit(1000))
+        .lt('starts_at', to.toISOString()).gt('ends_at', from.toISOString()).order('starts_at').limit(2000))
       : [];
 
     wrap.replaceChildren(
       h('div', { class: 'toolbar' },
         h('button', { class: 'btn primary', type: 'button', onclick: () => editCalendar() }, 'Nuevo calendario'),
-        calendars.length ? h('button', { class: 'btn', type: 'button', onclick: () => editEvent() }, 'Nueva cita') : null),
+        ...(calendars.length ? [h('button', { class: 'btn', type: 'button', onclick: () => editEvent() }, 'Nueva cita')] : [])),
       calendars.length
         ? h('div', { class: 'cal-list' }, calendars.map(calendarCard))
         : h('p', { class: 'empty' }, 'Todavía no hay calendarios. Crea uno por cada persona, sala o servicio que tenga agenda propia.'),
-      ...(calendars.length ? [agenda(events, to)] : []));
+      ...(calendars.length ? [agenda(events, from, to)] : []));
   }
 
   function calendarCard(cal) {
@@ -233,8 +272,190 @@ export async function calendarsTab(clientId) {
     load();
   }
 
-  function agenda(events, to) {
+  // ------------------------------------------------------------ agenda: día, semana, mes y lista
+  function go(dir) {
+    if (view === 'day') anchor = addDays(anchor, dir);
+    else if (view === 'week') anchor = addDays(anchor, 7 * dir);
+    else if (view === 'month') anchor = new Date(anchor.getFullYear(), anchor.getMonth() + dir, 1);
+    else anchor = addDays(anchor, DAYS_SHOWN * dir);
+    render();
+  }
+  function setView(v, day = null) {
+    view = v;
+    if (day) anchor = startOfDay(day);
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* sin almacenamiento: da igual */ }
+    render();
+  }
+
+  function agenda(events, from, to) {
     const byCal = Object.fromEntries(calendars.map((c) => [c.id, c]));
+    const shown = calendars.filter((c) => !hidden.has(c.id));
+    const body = view === 'month' ? monthGrid(events, byCal, from, to)
+      : view === 'list' ? listView(events, byCal, from, to)
+      : timeGrid(events, byCal, shown, view === 'day' ? [from] : Array.from({ length: 7 }, (_, i) => addDays(from, i)));
+    const hasHours = shown.some((c) => c.booking_enabled && Object.keys(c.booking_hours || {}).length);
+    return h('div', { class: 'agenda-wrap' },
+      h('div', { class: 'agenda-nav' },
+        h('div', { class: 'agenda-move' },
+          h('button', { class: 'btn', type: 'button', 'aria-label': 'Anterior', onclick: () => go(-1) }, '‹'),
+          h('button', { class: 'btn', type: 'button', onclick: () => { anchor = startOfDay(new Date()); render(); } }, 'Hoy'),
+          h('button', { class: 'btn', type: 'button', 'aria-label': 'Siguiente', onclick: () => go(1) }, '›')),
+        h('strong', { class: 'agenda-title' }, titleOf(view, anchor, from, to)),
+        h('div', { class: 'agenda-views' }, VIEWS.map(([v, label]) =>
+          h('button', { type: 'button', class: `seg${v === view ? ' on' : ''}`, onclick: () => setView(v) }, label)))),
+      hasHours && (view === 'day' || view === 'week')
+        ? h('p', { class: 'muted small agenda-legend' }, h('span', { class: 'swatch-avail' }), 'Horario en el que se pueden dar citas. Toca un hueco para crear una cita a esa hora.')
+        : h('p', { class: 'muted small agenda-legend' }, view === 'month' ? 'Toca un día para verlo por horas.' : view === 'list' ? '' : 'Toca un hueco para crear una cita a esa hora.'),
+      body);
+  }
+
+  // Cuadrícula por horas (Día y Semana).
+  function timeGrid(events, byCal, shown, days) {
+    const timed = events.filter((e) => !e.all_day);
+    const allDay = events.filter((e) => e.all_day);
+    // Horas visibles: de 8 a 21 como mínimo, ampliadas al horario de citas y a las citas que haya.
+    let first = 8;
+    let last = 21;
+    for (const c of shown) {
+      if (!c.booking_enabled) continue;
+      for (const ranges of Object.values(c.booking_hours || {})) {
+        for (const r of ranges) {
+          const [a, b] = r.split('-').map(toMinutes);
+          first = Math.min(first, Math.floor(a / 60));
+          last = Math.max(last, Math.ceil(b / 60));
+        }
+      }
+    }
+    for (const e of timed) {
+      const st = new Date(e.starts_at);
+      const en = new Date(e.ends_at);
+      if (days.some((d) => sameDay(d, st))) first = Math.min(first, st.getHours());
+      if (days.some((d) => sameDay(d, en))) last = Math.max(last, en.getHours() + (en.getMinutes() ? 1 : 0));
+    }
+    first = Math.max(0, first);
+    last = Math.min(24, Math.max(last, first + 1));
+    const height = (last - first) * HOUR_PX;
+    const today = startOfDay(new Date());
+
+    const head = h('div', { class: 'tg-row tg-head' }, h('div', { class: 'tg-corner' }),
+      days.map((d) => h('button', {
+        type: 'button', class: `tg-day${sameDay(d, today) ? ' today' : ''}`, title: 'Ver este día',
+        onclick: () => setView('day', d),
+      }, h('span', { class: 'tg-wd' }, wdFmt.format(d)), h('span', { class: 'tg-num' }, d.getDate()))));
+
+    const allRow = allDay.length ? h('div', { class: 'tg-row tg-all' }, h('div', { class: 'tg-corner tg-allday small muted' }, 'Todo el día'),
+      days.map((d) => h('div', { class: 'tg-allcell' },
+        allDay.filter((e) => new Date(e.starts_at) < addDays(d, 1) && new Date(e.ends_at) > d)
+          .map((e) => chip(e, byCal[e.calendar_id]))))) : '';
+
+    const hours = h('div', { class: 'tg-hours', style: `height:${height}px` },
+      Array.from({ length: last - first }, (_, i) => h('span', { style: `top:${i * HOUR_PX}px` }, `${pad(first + i)}:00`)));
+
+    const cols = days.map((d) => {
+      const col = h('div', { class: `tg-col${sameDay(d, today) ? ' today' : ''}`, style: `height:${height}px;--hour:${HOUR_PX}px` });
+      // Horario de citas de los calendarios que se ven.
+      const dow = String(((d.getDay() + 6) % 7) + 1);
+      for (const c of shown) {
+        if (!c.booking_enabled) continue;
+        for (const r of c.booking_hours?.[dow] || []) {
+          const [a, b] = r.split('-').map(toMinutes);
+          const top = ((a - first * 60) / 60) * HOUR_PX;
+          col.append(h('div', { class: 'tg-avail', style: `top:${top}px;height:${((b - a) / 60) * HOUR_PX}px` }));
+        }
+      }
+      // Tocar un hueco: cita nueva a esa hora (en tramos de 30 minutos).
+      col.addEventListener('click', (ev) => {
+        if (ev.target !== col && !ev.target.classList.contains('tg-avail')) return;
+        const y = ev.clientY - col.getBoundingClientRect().top;
+        const mins = first * 60 + Math.floor((y / HOUR_PX) * 2) * 30;
+        editEvent(null, new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(mins / 60), mins % 60));
+      });
+      // Citas del día, en columnas si se pisan.
+      const next = addDays(d, 1);
+      const items = timed.filter((e) => new Date(e.starts_at) < next && new Date(e.ends_at) > d)
+        .map((e) => ({ e, s: Math.max(+new Date(e.starts_at), +d), en: Math.min(+new Date(e.ends_at), +next) }))
+        .sort((a, b) => a.s - b.s || b.en - a.en);
+      const lanes = [];
+      for (const it of items) {
+        let lane = lanes.findIndex((end) => end <= it.s);
+        if (lane === -1) { lane = lanes.length; lanes.push(0); }
+        lanes[lane] = it.en;
+        it.lane = lane;
+      }
+      for (const it of items) {
+        const overlap = items.filter((o) => o.s < it.en && o.en > it.s);
+        it.cols = Math.max(...overlap.map((o) => o.lane)) + 1;
+      }
+      for (const it of items) {
+        const startMin = (it.s - +d) / 60_000;
+        const endMin = (it.en - +d) / 60_000;
+        const top = Math.max(0, ((startMin - first * 60) / 60) * HOUR_PX);
+        const bottom = Math.min(height, ((endMin - first * 60) / 60) * HOUR_PX);
+        const cal = byCal[it.e.calendar_id];
+        const short = bottom - top < 40;
+        const roomy = bottom - top >= 72;
+        col.append(h('button', {
+          type: 'button', class: `tg-event${short ? ' short' : ''}`,
+          style: `top:${top}px;height:${Math.max(18, bottom - top - 2)}px;left:calc(${(it.lane / it.cols) * 100}% + 2px);width:calc(${100 / it.cols}% - 4px);--c:${cal?.color || '#5E6C7A'}`,
+          title: `${timeFmt.format(new Date(it.e.starts_at))} – ${timeFmt.format(new Date(it.e.ends_at))} · ${it.e.title}${cal ? ` · ${cal.name}` : ''}`,
+          onclick: () => editEvent(it.e),
+        },
+        h('span', { class: 'tg-ev-time' }, timeFmt.format(new Date(it.e.starts_at))),
+        h('span', { class: 'tg-ev-title' }, it.e.title),
+        roomy ? h('span', { class: 'tg-ev-cal' }, cal?.name || '') : ''));
+      }
+      // Línea de la hora actual.
+      if (sameDay(d, today)) {
+        const now = new Date();
+        const m = now.getHours() * 60 + now.getMinutes();
+        if (m >= first * 60 && m <= last * 60) col.append(h('div', { class: 'tg-now', style: `top:${((m - first * 60) / 60) * HOUR_PX}px` }));
+      }
+      return col;
+    });
+
+    const grid = h('div', { class: `tg${days.length === 1 ? ' tg-single' : ''}`, style: `--days:${days.length}` },
+      h('div', { class: 'tg-top' }, head, allRow), h('div', { class: 'tg-row tg-body' }, hours, cols));
+    const scroller = h('div', { class: 'tg-scroll' }, grid);
+    // Al abrir, se baja hasta la hora actual o la primera cita.
+    requestAnimationFrame(() => {
+      const ref = days.some((d) => sameDay(d, today)) ? new Date().getHours() - 1 : first;
+      scroller.scrollTop = Math.max(0, (ref - first) * HOUR_PX);
+    });
+    return scroller;
+  }
+
+  function chip(e, cal) {
+    return h('button', { type: 'button', class: 'mg-chip', style: `--c:${cal?.color || '#5E6C7A'}`, title: `${e.title}${cal ? ` · ${cal.name}` : ''}`, onclick: (ev) => { ev.stopPropagation(); editEvent(e); } },
+      e.all_day ? '' : h('span', { class: 'mg-time' }, timeFmt.format(new Date(e.starts_at))),
+      h('span', { class: 'mg-title' }, e.title));
+  }
+
+  // Mes completo.
+  function monthGrid(events, byCal, from, to) {
+    const month = anchor.getMonth();
+    const today = startOfDay(new Date());
+    const cells = [];
+    for (let d = from; d < to; d = addDays(d, 1)) {
+      const next = addDays(d, 1);
+      const items = events.filter((e) => new Date(e.starts_at) < next && new Date(e.ends_at) > d)
+        .sort((a, b) => (b.all_day - a.all_day) || (new Date(a.starts_at) - new Date(b.starts_at)));
+      const day = d;
+      cells.push(h('div', {
+        class: `mg-cell${d.getMonth() !== month ? ' out' : ''}${sameDay(d, today) ? ' today' : ''}`,
+        onclick: () => setView('day', day),
+      },
+      h('span', { class: 'mg-num' }, d.getDate()),
+      h('div', { class: 'mg-items' }, items.slice(0, 3).map((e) => chip(e, byCal[e.calendar_id]))),
+      items.length > 3 ? h('span', { class: 'mg-more' }, `+${items.length - 3} más`) : '',
+      items.length ? h('span', { class: 'mg-dots' }, items.slice(0, 4).map((e) => h('i', { style: `background:${byCal[e.calendar_id]?.color || '#5E6C7A'}` }))) : ''));
+    }
+    return h('div', { class: 'mg' },
+      ['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((x) => h('div', { class: 'mg-wd' }, x)),
+      cells);
+  }
+
+  // Lista de días (la vista de antes).
+  function listView(events, byCal, from, to) {
     const days = [];
     for (let d = from; d < to; d = addDays(d, 1)) {
       const next = addDays(d, 1);
@@ -246,14 +467,7 @@ export async function calendarsTab(clientId) {
           ? items.map((e) => eventRow(e, byCal[e.calendar_id], d))
           : h('div', { class: 'muted small day-empty' }, 'Libre')));
     }
-    const last = addDays(to, -1);
-    return h('div', {},
-      h('div', { class: 'agenda-nav' },
-        h('button', { class: 'btn', type: 'button', onclick: () => { from = addDays(from, -DAYS_SHOWN); render(); } }, '←'),
-        h('button', { class: 'btn', type: 'button', onclick: () => { from = startOfDay(new Date()); render(); } }, 'Hoy'),
-        h('button', { class: 'btn', type: 'button', onclick: () => { from = addDays(from, DAYS_SHOWN); render(); } }, '→'),
-        h('span', { class: 'muted small' }, `${dayFmt.format(from)} – ${dayFmt.format(last)}`)),
-      h('div', { class: 'agenda' }, days));
+    return h('div', { class: 'agenda' }, days);
   }
 
   function eventRow(e, cal, day) {
@@ -410,7 +624,9 @@ export async function calendarsTab(clientId) {
   function editEvent(ev = null, day = null) {
     if (ev?.source === 'import') return showImported(ev);
     const note = h('p', { class: 'error' });
-    const start = ev ? new Date(ev.starts_at) : day ? new Date(day.getFullYear(), day.getMonth(), day.getDate(), 10) : new Date(new Date().setMinutes(0, 0, 0) + 3_600_000);
+    const start = ev ? new Date(ev.starts_at)
+      : day ? (day.getHours() || day.getMinutes() ? new Date(day) : new Date(day.getFullYear(), day.getMonth(), day.getDate(), 10))
+      : new Date(new Date().setMinutes(0, 0, 0) + 3_600_000);
     const end = ev ? new Date(ev.ends_at) : new Date(start.getTime() + 3_600_000);
     const lastDay = ev?.all_day ? addDays(new Date(ev.ends_at), -1) : start;
 

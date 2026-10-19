@@ -582,7 +582,8 @@ export async function calendarsTab(clientId) {
         'El tipo (y el color) con el que sale en la agenda lo que reserva el asistente aquí.') : null,
       h('div', { class: 'grid2' },
         field('Duración (min)', h('input', { name: 'booking_minutes', type: 'number', min: 10, max: 240, step: 5, value: cal?.booking_minutes ?? 30 })),
-        field('Antelación mínima (horas)', h('input', { name: 'booking_notice_hours', type: 'number', min: 0, max: 168, step: 1, value: Math.round((cal?.booking_notice_minutes ?? 120) / 60) }))),
+        field('Antelación mínima (minutos)', h('input', { name: 'booking_notice_minutes', type: 'number', min: 0, max: 10080, step: 15, value: cal?.booking_notice_minutes ?? 120 }),
+          'Lo mínimo que tiene que faltar para la cita. 30 = se puede dar para dentro de media hora.')),
       h('p', { class: 'muted small' }, 'Horario en el que el asistente puede agendar aquí. Ej.: 16:30-21:30. Dos tramos: 09:00-14:00, 16:30-21:30. Vacío = ese día no.'),
       h('div', { class: 'grid2' }, WEEKDAYS.map((name, i) =>
         field(name, h('input', { name: `hours_${i + 1}`, placeholder: 'cerrado', value: (cal?.booking_hours?.[String(i + 1)] || []).join(', ') })))),
@@ -610,9 +611,8 @@ export async function calendarsTab(clientId) {
       const data = {
         ...f, booking_hours: hours,
         booking_minutes: Math.min(240, Math.max(10, f.booking_minutes || 30)),
-        booking_notice_minutes: Math.min(168, Math.max(0, f.booking_notice_hours || 0)) * 60,
+        booking_notice_minutes: Math.min(10080, Math.max(0, f.booking_notice_minutes || 0)),
       };
-      delete data.booking_notice_hours;
       try {
         if (cal) await q(db.from('calendars').update(data).eq('id', cal.id));
         else await q(db.from('calendars').insert({ ...data, client_id: clientId }));

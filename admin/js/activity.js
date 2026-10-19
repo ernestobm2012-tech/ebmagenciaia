@@ -2,6 +2,7 @@
 // Los usan el panel de admin y el del cliente; RLS decide qué filas llegan.
 import { db } from './app.js';
 import { h, q, table, tabs, badge, modal, fmtDateTime, errorText } from './ui.js';
+import { leadsView } from './leads.js';
 
 const CHANNELS = { web: 'Web', whatsapp: 'WhatsApp', instagram: 'Instagram', email: 'Correo', phone: 'Teléfono' };
 const LIMIT = 200;
@@ -55,14 +56,7 @@ export function activityTabs({ clientId = null, showClient = false, isAdmin = fa
     },
     {
       id: 'leads', label: 'Leads',
-      render: async () => table([
-        { label: 'Fecha', cell: (r) => fmtDateTime(r.created_at) },
-        ...clientCol(showClient, clientNames),
-        { label: 'Nombre', cell: (r) => r.name || '—' },
-        { label: 'Contacto', cell: (r) => r.contact || '—' },
-        { label: 'Motivo', cell: (r) => r.reason || '—' },
-        { label: 'Estado', cell: (r) => badge(r.status) },
-      ], await list('leads', opts), { empty: 'Aún no hay leads.' }),
+      render: () => leadsView({ clientId, clientCol: clientCol(showClient, clientNames), openConversation: canOpen ? openConversation : null }),
     },
     {
       id: 'handoffs', label: 'Pasos a humano',

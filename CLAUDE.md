@@ -181,3 +181,11 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 - Repositorio privado `ernestobm2012-tech/ebm-documentos`: cada PDF en `clientes/<slug>/<propuestas|contratos|facturas>/<Nombre>.pdf` se sube solo a la pestaña Documentos del cliente (acción «Subir al panel» → función `docs-ingest`, secreto `DOCS_INGEST_TOKEN`). Queda en `client_documents.source_path`.
 - Regla de Ernesto: TODO PDF que se genere para un cliente (propuestas, ideas, cuestionarios…) se copia ahí, commit y push a `main` (autorizado), y se comprueba en `client_documents` que ha llegado. Así se puede adjuntar a los correos con la función `mail`.
 - Para entregarle documentos para imprimir: además de SendUserFile, mandarlos a su Gmail con la función `mail` y los `document_ids`.
+
+### Gestión de leads en el panel (19/10/2026, migración 0033)
+- Actividad › Leads ya no es solo lectura: filtros Hoy (nuevos + los que toca llamar hoy o atrasados), Pendientes, Míos y Todos, y ficha de cada lead (`admin/js/leads.js`) con estado, «volver a llamar el», quién lo lleva, nueva nota, historial y enlace a la conversación.
+- Estados (`leads.status`): new, to_call, called, waiting, callback, won, lost. Columnas nuevas `assigned_to`, `follow_up_at`, `followup_notified_at`, `updated_at`. Notas en `lead_notes` (solo lectura por RLS).
+- Los cambios pasan SOLO por la RPC `update_lead` (SECURITY DEFINER: admin, o usuario del cliente/partner con permiso `act_leads`). `lead_team(client)` da a quién se puede asignar (usuarios client del negocio y partners de los que cuelga).
+- Avisos: cron `lead-followups` cada 10 min → `push?action=followups` (push v8): push y correo (Resend) a quien lo lleva, o a todo el equipo del cliente si no lo lleva nadie; en clientes demo solo a administración. Un aviso por fecha (`followup_notified_at`).
+- Va incluido en la cuota de DZZERO (decisión de Ernesto) y sale en la propuesta (página 3 con imágenes).
+- OJO: `apply_migration` con DROP CONSTRAINT/UPDATE se quedaba esperando aprobación (timeout). Con `execute_sql` en trozos funcionó.

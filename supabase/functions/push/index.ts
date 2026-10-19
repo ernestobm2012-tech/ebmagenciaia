@@ -7,6 +7,8 @@
 //                               a humano, un mensaje de la web o un error
 //   POST ?action=digest        (cron, cada tarde) -> resumen del día a los administradores
 //   POST ?action=digest-test   (usuario del panel) -> manda el resumen de hoy solo a sus móviles
+//   POST ?action=followups     (cron, cada 10 min) -> «toca volver a llamar»: push y correo a quien
+//                               lleva el lead (o a todo el equipo del cliente si no lo lleva nadie)
 // Esta función nunca escribe en error_log: un fallo aquí no debe provocar más avisos.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -18,6 +20,7 @@ const PANEL_URL = Deno.env.get("PANEL_URL") ?? "https://ebmagenciaia.es/admin/";
 const CONTACT = "mailto:ernestobm2012@gmail.com";
 const MAX_SUBSCRIPTIONS_PER_USER = 10;
 const ERROR_COOLDOWN_MS = 30 * 60_000;
+const FROM = Deno.env.get("NOTIFY_FROM") ?? "EBM Agencia IA <info@ebmagenciaia.es>";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -178,6 +181,62 @@ async function digestPayload(): Promise<Payload> {
   };
 }
 
+// ---- Volver a llamar: cuando llega la fecha que el equipo puso en el lead.
+const esc = (s: unknown) =>
+  String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+const timeFmt = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+async function followups() {
+  const { data } = await db.from("leads")
+    .select("id, client_id, name, contact, reason, follow_up_at, followup_notified_at, assigned_to")
+    .lte("follow_up_at", new Date().toISOString())
+    .not("status", "in", "(won,lost)")
+    .limit(200);
+  const due = (data ?? []).filter((r) => !r.followup_notified_at || Date.parse(r.followup_notified_at) < Date.parse(r.follow_up_at));
+  let sent = 0, mailed = 0;
+  for (const lead of due) {
+    // Se marca antes de avisar: si algo falla, mejor un aviso de menos que repetirlo cada 10 minutos.
+    await db.from("leads").update({ followup_notified_at: new Date().toISOString() }).eq("id", lead.id);
+    const { data: client } = await db.from("clients").select("id, name, status, parent_client_id").eq("id", lead.client_id).maybeSingle();
+    let ids: string[];
+    if (client?.status === "demo") ids = await adminIds();
+    else if (lead.assigned_to) ids = [lead.assigned_to];
+    else {
+      const owners = [client?.id, client?.parent_client_id].filter(Boolean) as string[];
+      const { data: team } = await db.from("profiles").select("id, role, client_id").in("role", ["client", "partner"]).in("client_id", owners);
+      ids = (team ?? []).filter((p) => p.client_id === client?.id || p.role === "partner").map((p) => p.id);
+      if (!ids.length) ids = await adminIds();
+    }
+    const demo = client?.status === "demo" ? "[DEMO] " : "";
+    const who = lead.name || lead.contact || "un contacto";
+    const { data: subs } = await db.from("push_subscriptions").select("id, user_id, endpoint, p256dh, auth").in("user_id", ids);
+    sent += await deliver((subs ?? []) as Sub[], {
+      title: `${demo}Toca volver a llamar${client?.name ? ` · ${client.name}` : ""}`,
+      body: short(`${who}${lead.contact && lead.name ? ` (${lead.contact})` : ""}${lead.reason ? `: ${lead.reason}` : ""}`, 140),
+      url: `${PANEL_URL}#/actividad`, tag: `followup:${lead.id}`,
+    });
+
+    const key = Deno.env.get("RESEND_API_KEY");
+    const { data: people } = await db.from("profiles").select("email").in("id", ids);
+    const to = (people ?? []).map((p) => p.email).filter(Boolean);
+    if (key && to.length) {
+      const html = `<div style="font-family:Lato,Arial,sans-serif;font-size:15px;line-height:1.5;color:#242F3D;max-width:560px">
+<h2 style="font-size:19px;margin:0 0 12px">Toca volver a llamar a ${esc(who)}</h2>
+<p style="margin:0 0 6px"><b>Contacto:</b> ${esc(lead.contact || "—")}</p>
+<p style="margin:0 0 6px"><b>Motivo:</b> ${esc(lead.reason || "—")}</p>
+<p style="margin:0 0 6px"><b>Quedasteis en llamar:</b> ${esc(timeFmt.format(new Date(lead.follow_up_at)))}</p>
+<p style="margin:18px 0 0"><a href="${PANEL_URL}#/actividad" style="color:#1483DC">Abrir el contacto en el panel</a></p></div>`;
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ from: FROM, to, subject: `${demo}Toca volver a llamar: ${who}`, html }),
+      });
+      if (res.ok) mailed++;
+    }
+  }
+  return { due: due.length, sent, mailed };
+}
+
 async function currentUser(req: Request) {
   const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!jwt) return null;
@@ -194,6 +253,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({})) as Record<string, any>;
 
     if (action === "send") return json(await send(body.kind, body.id));
+    if (action === "followups") return json(await followups());
     if (action === "digest") {
       // Solo por la tarde-noche (para que el resumen sea del día completo) y uno al día,
       // aunque el cron se dispare dos veces o alguien llame a la dirección.

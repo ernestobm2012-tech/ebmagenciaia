@@ -414,3 +414,22 @@ td .actions { flex-wrap: wrap; gap: 4px 14px; }
 /* Documentos de cada cliente */
 .doc-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-top: 20px; }
 .doc-card h3 { margin: 0; font-size: 16px; }
+
+/* Gestión de leads */
+.lead-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.chip { border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.chip.on { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 700; }
+.small { font-size: 12.5px; }
+.lead-late { color: var(--red); font-weight: 700; }
+.badge.lead-new { background: var(--blue-wash); color: var(--blue-strong); }
+.badge.lead-to_call { background: #FDF3DF; color: var(--amber); }
+.badge.lead-called { background: #EDF1F5; color: #4A5867; }
+.badge.lead-waiting { background: #EEE9FB; color: #5B3FB8; }
+.badge.lead-callback { background: #FBEAEA; color: var(--red); }
+.badge.lead-won { background: #E2F6EC; color: #16794A; }
+.badge.lead-lost { background: #EDF1F5; color: #4A5867; }
+.lead-card h3 { margin: 22px 0 10px; font-size: 15px; }
+.lead-history { display: flex; flex-direction: column; gap: 8px; }
+.lead-note { border-left: 3px solid var(--blue); background: var(--surface); border-radius: 0 8px 8px 0; padding: 8px 12px; }
+.lead-note.agent { border-left-color: var(--cyan); }
+.lead-note-meta { font-family: var(--mono); font-size: 10.5px; color: var(--ink-soft); margin-bottom: 3px; }

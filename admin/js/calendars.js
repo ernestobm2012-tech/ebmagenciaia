@@ -1,12 +1,10 @@
 // Calendarios de cada cliente: los que necesite (uno por persona, sala,
-// servicio…), su agenda y el enlace con Google/Outlook en los dos sentidos.
+// servicio…), su agenda y la conexión con Google u Outlook en los dos sentidos.
 // Lo usan el admin (pestaña del cliente) y el propio cliente (su menú).
 import { db } from './app.js';
-import { SUPABASE_URL } from './config.js';
 import { h, q, field, modal, toast, formData, errorText } from './ui.js';
 
 const DAYS_SHOWN = 14;
-const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/calendar`;
 const COLORS = ['#1483DC', '#7C9A44', '#E07A1F', '#C24545', '#8E5CC9', '#17A2B8', '#5E6C7A'];
 // Tipos de cita con los que empieza cada negocio (colores comprobados para que se
 // distingan también con daltonismo). Cada negocio los cambia en «Tipos y colores».
@@ -20,7 +18,6 @@ const DEFAULT_TYPES = [
 ];
 const TYPE_COLORS = ['#1483DC', '#D9A400', '#8E5CC9', '#2FA36B', '#E07A1F', '#B8325A', '#17A2B8', '#5E6C7A'];
 
-const feedUrl = (cal) => `${FUNCTION_URL}?feed=${cal.feed_token}`;
 const WEEKDAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 const RANGE = /^([01]?\d|2[0-3]):[0-5]\d-([01]?\d|2[0-4]):[0-5]\d$/;
 
@@ -132,24 +129,6 @@ function titleOf(view, anchor, from, to) {
   return `${shortFmt.format(from)} – ${shortFmt.format(last)} ${last.getFullYear()}`;
 }
 const timeFmt = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' });
-const agoFmt = new Intl.RelativeTimeFormat('es-ES', { numeric: 'auto' });
-
-function ago(when) {
-  if (!when) return 'nunca';
-  const min = Math.round((new Date(when) - Date.now()) / 60_000);
-  if (Math.abs(min) < 60) return agoFmt.format(min, 'minute');
-  if (Math.abs(min) < 1440) return agoFmt.format(Math.round(min / 60), 'hour');
-  return agoFmt.format(Math.round(min / 1440), 'day');
-}
-
-async function copy(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-    toast('Enlace copiado.');
-  } catch {
-    toast('No he podido copiarlo. Mantén pulsado el texto para copiarlo.', 'error');
-  }
-}
 
 // clientId: el cliente cuyos calendarios se gestionan.
 export async function calendarsTab(clientId) {
@@ -200,9 +179,7 @@ export async function calendarsTab(clientId) {
       ? (cal.sync_error ? `Google: ${cal.sync_error}` : `Conectado con Google (${cal.google_account}) · al momento`)
       : cal.microsoft_account
       ? (cal.sync_error ? `Outlook: ${cal.sync_error}` : `Conectado con Outlook (${cal.microsoft_account}) · al momento`)
-      : !cal.ics_import_url
-        ? 'Sin enlazar con Google/Outlook'
-        : cal.sync_error ? `Error al traerlo: ${cal.sync_error}` : `Traído de Google/Outlook ${ago(cal.last_synced_at)}`;
+      : 'Sin conectar: conéctalo con Google o con Outlook para verlo todo en los dos sitios';
     return h('div', { class: `cal-card${cal.active ? '' : ' off'}` },
       h('label', { class: 'cal-name' },
         h('input', { type: 'checkbox', checked: !hidden.has(cal.id), onchange: (e) => {
@@ -223,8 +200,6 @@ export async function calendarsTab(clientId) {
         ] : [
           h('button', { class: 'btn small-primary', type: 'button', onclick: () => googleConnect(cal) }, 'Conectar con Google'),
           h('button', { class: 'btn small-primary', type: 'button', onclick: () => outlookConnect(cal) }, 'Conectar con Outlook'),
-          h('button', { class: 'btn link', type: 'button', onclick: () => linkCalendar(cal) }, 'iPhone u otro (enlace)'),
-          cal.ics_import_url ? h('button', { class: 'btn link', type: 'button', onclick: () => syncNow(cal) }, 'Traer ahora') : null,
         ],
         h('button', { class: 'btn link', type: 'button', onclick: () => editCalendar(cal) }, 'Editar')));
   }
@@ -640,77 +615,6 @@ export async function calendarsTab(clientId) {
     }
 
     const close = modal(cal ? 'Editar calendario' : 'Nuevo calendario', form);
-  }
-
-  function linkCalendar(cal) {
-    const note = h('p', { class: 'error' });
-    const out = h('input', { readonly: true, value: feedUrl(cal), class: 'mono', onclick: (e) => e.target.select() });
-    const input = h('input', { type: 'url', value: cal.ics_import_url || '', placeholder: 'https://calendar.google.com/calendar/ical/…/basic.ics' });
-
-    const saveImport = async () => {
-      const value = input.value.trim() || null;
-      if (value && !/^(https|webcal):\/\//i.test(value)) return (note.textContent = 'Tiene que empezar por https:// o webcal://');
-      try {
-        await q(db.from('calendars').update({ ics_import_url: value }).eq('id', cal.id));
-        cal.ics_import_url = value;
-        close();
-        if (value) await syncNow(cal);
-        else { toast('Enlace quitado.'); load(); }
-      } catch (err) {
-        note.textContent = errorText(err);
-      }
-    };
-
-    const newToken = async () => {
-      if (!confirm('El enlace actual dejará de funcionar y habrá que volver a añadir el nuevo en Google/Outlook. ¿Seguir?')) return;
-      try {
-        cal.feed_token = await q(db.rpc('new_calendar_feed_token', { p_calendar: cal.id }));
-        out.value = feedUrl(cal);
-        toast('Enlace nuevo creado.');
-      } catch (err) {
-        note.textContent = errorText(err);
-      }
-    };
-
-    const close = modal(`Enlazar "${cal.name}"`, h('div', { class: 'form' },
-      h('h3', {}, '1. Ver estas citas en Google u Outlook'),
-      h('p', { class: 'muted small' }, 'Copia este enlace y añádelo como calendario por URL. Es privado: quien lo tenga ve las citas, no lo publiques.'),
-      out,
-      h('div', { class: 'actions' },
-        h('button', { class: 'btn primary', type: 'button', onclick: () => copy(out.value) }, 'Copiar enlace'),
-        h('button', { class: 'btn link danger', type: 'button', onclick: newToken }, 'Cambiar enlace')),
-      h('ul', { class: 'steps small' },
-        h('li', {}, h('strong', {}, 'Google Calendar: '), 'en calendar.google.com (en el móvil, en el navegador con "versión de ordenador"), a la izquierda en "Otros calendarios" pulsa + → "Desde URL", pega el enlace y "Añadir calendario".'),
-        h('li', {}, h('strong', {}, 'Outlook: '), 'en outlook.com o Outlook, "Agregar calendario" → "Suscribirse desde la Web", pega el enlace e "Importar".'),
-        h('li', {}, h('strong', {}, 'iPhone: '), 'Ajustes → Calendario → Cuentas → Añadir cuenta → Otra → "Añadir calendario suscrito".'),
-        h('li', { class: 'muted' }, 'Google y Outlook actualizan estos calendarios cada pocas horas (Google puede tardar hasta un día). Para ver un cambio al momento, mira esta agenda.')),
-      h('h3', {}, '2. Traer aquí las citas de Google u Outlook'),
-      h('p', { class: 'muted small' }, 'Así el agente sabe cuándo está ocupado. Se trae cada 15 minutos.'),
-      field('Dirección iCal secreta', input),
-      h('ul', { class: 'steps small' },
-        h('li', {}, h('strong', {}, 'Google Calendar: '), 'en calendar.google.com, en el calendario → ⋮ → "Configuración y uso compartido" → "Integrar el calendario" → copia la "Dirección secreta en formato iCal".'),
-        h('li', {}, h('strong', {}, 'Outlook: '), 'Configuración → Calendario → Calendarios compartidos → "Publicar un calendario" → elige el calendario y "Puede ver todos los detalles" → Publicar → copia el enlace ICS.')),
-      h('div', { class: 'actions' },
-        h('button', { class: 'btn primary', type: 'button', onclick: saveImport }, 'Guardar y traer'),
-        cal.ics_import_url ? h('button', { class: 'btn danger', type: 'button', onclick: () => { input.value = ''; saveImport(); } }, 'Quitar') : null),
-      note), { wide: true });
-  }
-
-  async function syncNow(cal) {
-    toast('Trayendo el calendario…');
-    try {
-      const { data, error } = await db.functions.invoke('calendar', { body: { calendar_id: cal.id } });
-      if (error) {
-        const body = await error.context?.json?.().catch(() => null);
-        throw new Error(body?.error || error.message);
-      }
-      const result = data?.synced?.[0];
-      if (result?.error) toast(result.error, 'error');
-      else toast(`Listo: ${result?.events ?? 0} citas traídas.`);
-    } catch (err) {
-      toast(errorText(err), 'error');
-    }
-    load();
   }
 
   // ------------------------------------------------------------ citas

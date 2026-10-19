@@ -434,3 +434,5 @@ td .actions { flex-wrap: wrap; gap: 4px 14px; }
 .lead-note.agent { border-left-color: var(--cyan); }
 .lead-note-meta { font-family: var(--mono); font-size: 10.5px; color: var(--ink-soft); margin-bottom: 3px; }
 .sign-link { word-break: break-all; }
+.drive-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 16px; background: var(--surface, #F3F6FA); }

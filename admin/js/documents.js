@@ -195,6 +195,16 @@ if (driveResult) {
   setTimeout(() => toast(text, kind), 800);
 }
 
+async function connectDrive() {
+  toast('Abriendo Google…');
+  try {
+    const { url } = await callDrive('connect', { return_url: location.href });
+    location.href = url;
+  } catch (err) {
+    toast(errorText(err), 'error');
+  }
+}
+
 async function copy(text) {
   try { await navigator.clipboard.writeText(text); toast('Enlace copiado.'); } catch { prompt('Copia el enlace:', text); }
 }
@@ -277,15 +287,7 @@ async function signaturesBlock(clientId, client, docsById, reload) {
     h('button', { class: 'btn link', type: 'button', onclick: connect }, st.connected ? 'Volver a conectar' : 'Conectar Google Drive'));
   }).catch((err) => drive.replaceChildren(errorText(err)));
 
-  async function connect() {
-    toast('Abriendo Google…');
-    try {
-      const { url } = await callDrive('connect', { return_url: location.href });
-      location.href = url;
-    } catch (err) {
-      toast(errorText(err), 'error');
-    }
-  }
+  const connect = connectDrive;
   async function retryDrive(r) {
     try {
       const out = await callDrive('upload', { document_id: r.signed_document_id, folder: 'Contratos' });
@@ -430,7 +432,17 @@ export async function documentsTab(clientId) {
   }
   await load();
 
+  // Aviso arriba del todo mientras Google Drive no esté conectado.
+  const driveBar = h('div', {});
+  callDrive('status').then((st) => {
+    if (st.connected) return;
+    driveBar.replaceChildren(h('div', { class: 'drive-bar' },
+      h('span', {}, 'Google Drive no está conectado: los contratos firmados solo se guardan aquí.'),
+      h('button', { class: 'btn primary', type: 'button', onclick: connectDrive }, 'Conectar Google Drive')));
+  }).catch(() => {});
+
   wrap.append(
+    driveBar,
     h('p', { class: 'muted' }, 'Propuestas, contratos y facturas de este cliente. Solo los ve la administración. Desde aquí puedes enviar cada uno por WhatsApp o por correo, y pedir la firma de una propuesta.'),
     list, signs, form);
   return wrap;

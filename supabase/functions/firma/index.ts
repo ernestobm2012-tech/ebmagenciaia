@@ -2,7 +2,8 @@
 //   POST {action: "get", token}  -> datos de la propuesta y enlace al PDF (1 hora)
 //   POST {action: "sign", token, ...datos, signature_png} -> firma
 // Al firmar: se añade al PDF original una hoja de aceptación (datos de quien firma,
-// firma, fecha, IP, navegador y huella SHA-256 del PDF original), se guarda en
+// su firma y la de Ernesto (app_assets «firma_ebm»), fecha, IP, navegador y huella
+// SHA-256 del PDF original), se guarda en
 // Documentos como «contrato», se sube a Google Drive (función google-drive, carpeta
 // del cliente › Contratos) y se avisa por correo a EBM y a quien firma (función mail).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -63,7 +64,7 @@ async function getInfo(token: string) {
 }
 
 // Hoja final con la aceptación, la firma y las evidencias.
-async function acceptancePage(original: Uint8Array, d: Record<string, string>, png: Uint8Array) {
+async function acceptancePage(original: Uint8Array, d: Record<string, string>, png: Uint8Array, ebmPng: Uint8Array | null) {
   const pdf = await PDFDocument.load(original, { ignoreEncryption: true });
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -99,7 +100,7 @@ async function acceptancePage(original: Uint8Array, d: Record<string, string>, p
   write("Aceptación de la propuesta", 20, bold, navy, 8);
   write(`${d.document} · ${d.client}`, 11, font, soft, 4);
   y -= 14;
-  write(`${d.signer_name}, con DNI/NIE ${d.signer_nif}${d.signer_role ? `, como ${d.signer_role}` : ""}${d.company_name ? ` de ${d.company_name}` : ""}${d.company_cif ? ` (CIF ${d.company_cif})` : ""}, declara que ha leído la propuesta de las páginas anteriores y acepta sus condiciones, precios y servicios tal y como figuran en ella.`, 11, font, navy, 5);
+  write(`${d.signer_name}, con DNI/NIE ${d.signer_nif}${d.signer_role ? `, como ${d.signer_role}` : ""}${d.company_name ? ` de ${d.company_name}` : ""}${d.company_cif ? ` (CIF ${d.company_cif})` : ""}, declara que ha leído la propuesta de las páginas anteriores y acepta sus condiciones, precios y servicios tal y como figuran en ella. EBM Agencia IA (Ernesto Bermejo, NIF 47498439N) se compromete a prestarlos en esas mismas condiciones.`, 11, font, navy, 5);
   y -= 16;
 
   const rows: [string, string][] = [
@@ -118,16 +119,23 @@ async function acceptancePage(original: Uint8Array, d: Record<string, string>, p
   }
   y -= 14;
 
-  page.drawText("Firma", { x: M, y: y - 10, size: 9.5, font: bold, color: soft });
-  y -= 18;
-  const img = await pdf.embedPng(png);
-  const boxW = 260, boxH = 110;
-  page.drawRectangle({ x: M, y: y - boxH, width: boxW, height: boxH, borderColor: rgb(0.88, 0.91, 0.93), borderWidth: 1 });
-  const scale = Math.min((boxW - 16) / img.width, (boxH - 16) / img.height);
-  page.drawImage(img, { x: M + (boxW - img.width * scale) / 2, y: y - boxH + (boxH - img.height * scale) / 2, width: img.width * scale, height: img.height * scale });
-  y -= boxH + 8;
-  write(d.typed_name, 10.5, font, navy, 4);
-  y -= 24;
+  // Dos firmas: la del cliente y la de EBM (si está guardada en app_assets).
+  const boxW = (width - 2 * M - 24) / 2, boxH = 110;
+  const box = async (x: number, title: string, sigPng: Uint8Array | null, name: string, sub: string) => {
+    page.drawText(pdfText(title), { x, y: y - 10, size: 9.5, font: bold, color: soft });
+    const top = y - 18;
+    page.drawRectangle({ x, y: top - boxH, width: boxW, height: boxH, borderColor: rgb(0.88, 0.91, 0.93), borderWidth: 1 });
+    if (sigPng) {
+      const img = await pdf.embedPng(sigPng);
+      const scale = Math.min((boxW - 16) / img.width, (boxH - 16) / img.height);
+      page.drawImage(img, { x: x + (boxW - img.width * scale) / 2, y: top - boxH + (boxH - img.height * scale) / 2, width: img.width * scale, height: img.height * scale });
+    }
+    lines(name, 10.5, font, boxW).forEach((l, i) => page.drawText(l, { x, y: top - boxH - 16 - i * 13, size: 10.5, font, color: navy }));
+    lines(sub, 9, font, boxW).forEach((l, i) => page.drawText(l, { x, y: top - boxH - 30 - i * 12, size: 9, font, color: soft }));
+  };
+  await box(M, "Por el cliente", png, d.typed_name, [d.signer_nif, d.signer_role, d.company_name].filter(Boolean).join(" · "));
+  await box(M + boxW + 24, "Por EBM Agencia IA", ebmPng, "Ernesto Bermejo", "NIF 47498439N · EBM Agencia IA");
+  y -= 18 + boxH + 30 + 12 + 30;
 
   write("Evidencias de la firma electrónica", 9.5, bold, soft, 4);
   write(`Firmado desde el enlace personal enviado por EBM Agencia IA. IP: ${d.ip || "desconocida"}. Navegador: ${d.user_agent || "desconocido"}.`, 8.5, font, soft, 3);
@@ -172,10 +180,13 @@ async function sign(req: Request, body: Record<string, unknown>) {
     const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
     const ua = clean(body.user_agent || req.headers.get("user-agent"), 300);
     const when = madrid(new Date(claimed.signed_at));
+    const { data: asset } = await db.from("app_assets").select("value").eq("key", "firma_ebm").maybeSingle();
+    const ebm = String(asset?.value ?? "").match(/^data:image\/png;base64,([A-Za-z0-9+/=]+)$/);
+    const ebmPng = ebm ? Uint8Array.from(atob(ebm[1]), (c) => c.charCodeAt(0)) : null;
     const signed = await acceptancePage(original, {
       ...d, ip, user_agent: ua, when, doc_sha256: docSha,
       document: r.client_documents.name, client: r.clients?.name ?? "",
-    }, png);
+    }, png, ebmPng);
 
     const name = `${r.client_documents.name} (firmada)`;
     const path = `${r.client_id}/${crypto.randomUUID()}-${safeName(name)}.pdf`;

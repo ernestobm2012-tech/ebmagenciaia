@@ -159,20 +159,32 @@ type Calendar = {
   id: string; name: string;
   booking_enabled: boolean; booking_minutes: number; booking_notice_minutes: number;
   booking_hours: Record<string, string[]>;
+  booking_kind?: string; member_id?: string | null; booking_type_id?: string | null;
 };
 const MAX_AGENDA_DAYS = 31;
+// Las agendas de «llamadas del equipo» se ven como una sola: el asistente no elige
+// persona; la llamada se pone a quien esté libre a esa hora y tenga menos ese día.
+const POOL = "Llamadas del equipo";
+const isPool = (c: Calendar) => c.booking_enabled && c.booking_kind === "llamada";
+// Lo que el asistente ve como agendas: las normales y, si hay, el grupo de llamadas.
+function visibleAgendas(calendars: Calendar[]) {
+  const pool = calendars.filter(isPool);
+  const rest = calendars.filter((c) => !isPool(c));
+  return { pool, rest, names: [...rest.map((c) => c.name), ...(pool.length ? [POOL] : [])] };
+}
 
 // Si el cliente tiene calendarios, el agente puede ver cuándo está ocupado.
 // Solo ve horas, nunca el título ni los datos de las citas (pueden ser personales).
 function agendaTool(calendars: Calendar[]): Anthropic.Tool {
-  const names = calendars.map((c) => c.name);
+  const { names, pool } = visibleAgendas(calendars);
   return {
     name: "consultar_agenda",
     description:
       `Consulta qué horas están ocupadas en la agenda del negocio entre dos fechas (máximo ${MAX_AGENDA_DAYS} días). ` +
       "Úsala antes de proponer o confirmar un día u hora. Lo que no aparece como ocupado está libre, " +
       "siempre dentro del horario del negocio. Si la agenda acepta reservas, también te da los huecos libres para citas: " +
-      "propón solo esos. Nunca digas qué hay en las horas ocupadas: solo que no están disponibles.",
+      "propón solo esos. Nunca digas qué hay en las horas ocupadas: solo que no están disponibles." +
+      (pool.length ? ` La agenda «${POOL}» sirve para programar una llamada de una persona del equipo cuando el cliente no puede hablar ahora o pide que le llamen a una hora: consúltala y ofrece solo sus huecos libres.` : ""),
     input_schema: {
       type: "object",
       properties: {
@@ -209,14 +221,28 @@ async function checkAgenda(input: Record<string, string>, clientId: string, cale
   if (to <= from) throw new Error("La fecha final es anterior a la inicial");
   if (to.getTime() - from.getTime() > (MAX_AGENDA_DAYS + 1) * 86_400_000) throw new Error(`Como máximo ${MAX_AGENDA_DAYS} días por consulta`);
 
-  const chosen = input.calendario ? calendars.filter((c) => c.name === input.calendario) : calendars;
-  if (!chosen.length) throw new Error("Esa agenda no existe");
+  const { pool, rest } = visibleAgendas(calendars);
+  const wantPool = pool.length && (!input.calendario || input.calendario === POOL);
+  const chosen = input.calendario ? rest.filter((c) => c.name === input.calendario) : rest;
+  if (!chosen.length && !wantPool) throw new Error("Esa agenda no existe");
+  const ids = [...chosen, ...(wantPool ? pool : [])].map((c) => c.id);
   const { data, error } = await db.from("calendar_events").select("calendar_id, starts_at, ends_at, all_day")
-    .eq("client_id", clientId).in("calendar_id", chosen.map((c) => c.id))
-    .lt("starts_at", to.toISOString()).gt("ends_at", from.toISOString()).order("starts_at").limit(500);
+    .eq("client_id", clientId).in("calendar_id", ids)
+    .lt("starts_at", to.toISOString()).gt("ends_at", from.toISOString()).order("starts_at").limit(1000);
   if (error) throw error;
 
-  const text = formatAgenda(data ?? [], input.desde, input.hasta, chosen.length > 1 ? calendars : null);
+  // Del grupo de llamadas no se enseñan las horas ocupadas de cada persona, solo los huecos.
+  const own = (data ?? []).filter((e) => chosen.some((c) => c.id === e.calendar_id));
+  const text = chosen.length ? formatAgenda(own, input.desde, input.hasta, chosen.length > 1 ? chosen : null) : "";
+  const poolText = wantPool ? (() => {
+    const days: string[] = [];
+    for (const iso of daysBetween(input.desde, input.hasta)) {
+      const free = poolSlots(pool, iso, data ?? []);
+      if (free.length) days.push(`${iso}: ${free.join(", ")}`);
+    }
+    return `Huecos libres para programar una llamada («${POOL}», llamadas de ${Math.min(...pool.map((c) => c.booking_minutes))} min):\n` +
+      (days.length ? days.join("\n") : "ninguno en estas fechas");
+  })() : "";
   const slots = chosen.filter((c) => c.booking_enabled).map((c) => {
     const busy = (data ?? []).filter((e) => e.calendar_id === c.id);
     const days: string[] = [];
@@ -227,7 +253,14 @@ async function checkAgenda(input: Record<string, string>, clientId: string, cale
     return `Huecos libres para reservar en "${c.name}" (citas de ${c.booking_minutes} min):\n` +
       (days.length ? days.join("\n") : "ninguno en estas fechas");
   });
-  return [text, ...slots].join("\n\n");
+  return [text, ...slots, poolText].filter(Boolean).join("\n\n");
+}
+
+// Huecos del grupo de llamadas: una hora vale si al menos una persona está libre.
+function poolSlots(pool: Calendar[], day: string, busy: Busy[]) {
+  const all = new Set<string>();
+  for (const c of pool) for (const t of freeSlots(c, day, busy.filter((e) => e.calendar_id === c.id))) all.add(t);
+  return [...all].sort();
 }
 
 function daysBetween(desde: string, hasta: string) {
@@ -284,31 +317,37 @@ function freeSlots(cal: Calendar, day: string, busy: Busy[]) {
 
 // Reserva de citas: solo en calendarios que la aceptan y solo en huecos libres.
 function bookingTool(calendars: Calendar[]): Anthropic.Tool {
-  const names = calendars.map((c) => c.name);
+  const { names, pool } = visibleAgendas(calendars);
   return {
     name: "reservar_cita",
     description:
       "Reserva una cita en la agenda. Antes usa consultar_agenda y propón solo huecos libres para reservar. " +
       "Pide nombre y teléfono, repite a la persona el día y la hora y resérvala solo cuando lo confirme. " +
-      "Si falla porque el hueco ya no está libre, vuelve a consultar la agenda y ofrece otro.",
+      "Si falla porque el hueco ya no está libre, vuelve a consultar la agenda y ofrece otro." +
+      (pool.length ? ` Para programar una llamada del equipo (el cliente pide que le llamen a una hora), usa la agenda «${POOL}»: ` +
+        "no digas el nombre de quién llamará, solo que le llamará una compañera a esa hora." : ""),
     input_schema: {
       type: "object",
       properties: {
-        ...(names.length > 1 ? { calendario: { type: "string", enum: names, description: "Agenda donde reservar" } } : {}),
+        ...(names.length > 1 || pool.length ? { calendario: { type: "string", enum: names, description: "Agenda donde reservar" } } : {}),
         fecha: { type: "string", description: "Día, formato AAAA-MM-DD" },
         hora: { type: "string", description: "Hora de inicio, formato HH:MM (hora de España)" },
         nombre: { type: "string", description: "Nombre de la persona" },
         telefono: { type: "string", description: "Teléfono de la persona" },
         motivo: { type: "string", description: "Para qué es la cita, en una frase" },
       },
-      required: [...(names.length > 1 ? ["calendario"] : []), "fecha", "hora", "nombre", "telefono", "motivo"],
+      required: [...(names.length > 1 || pool.length ? ["calendario"] : []), "fecha", "hora", "nombre", "telefono", "motivo"],
       additionalProperties: false,
     },
   };
 }
 
 async function bookAppointment(input: Record<string, string>, clientId: string, conversationId: string, calendars: Calendar[]) {
-  const bookable = calendars.filter((c) => c.booking_enabled);
+  const { pool, rest } = visibleAgendas(calendars);
+  if (pool.length && (input.calendario === POOL || (!input.calendario && !rest.some((c) => c.booking_enabled)))) {
+    return await bookCall(input, clientId, conversationId, pool);
+  }
+  const bookable = rest.filter((c) => c.booking_enabled);
   const cal = input.calendario ? bookable.find((c) => c.name === input.calendario) : bookable[0];
   if (!cal) throw new Error("Esa agenda no acepta reservas");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.fecha ?? "") || !/^\d{1,2}:\d{2}$/.test(input.hora ?? "")) {
@@ -332,6 +371,7 @@ async function bookAppointment(input: Record<string, string>, clientId: string, 
   });
   if (e2) throw e2;
   if (!id) throw new Error("Ese hueco se acaba de ocupar. Consulta la agenda y ofrece otro.");
+  if (cal.booking_type_id) await db.from("calendar_events").update({ type_id: cal.booking_type_id }).eq("id", id);
   const when = new Intl.DateTimeFormat("es-ES", {
     timeZone: "Europe/Madrid", weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
   }).format(start);
@@ -341,6 +381,59 @@ async function bookAppointment(input: Record<string, string>, clientId: string, 
     reason: `Cita reservada (${cal.name}) el ${when}: ${input.motivo}`,
   });
   return `Cita reservada en "${cal.name}" el ${when} (${cal.booking_minutes} min). Confírmaselo a la persona.`;
+}
+
+// Llamada programada: se pone a una persona del grupo libre a esa hora (la que menos
+// tenga ese día) y el lead queda a su nombre, en «Volver a llamar» a esa hora.
+async function bookCall(input: Record<string, string>, clientId: string, conversationId: string, pool: Calendar[]) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.fecha ?? "") || !/^\d{1,2}:\d{2}$/.test(input.hora ?? "")) {
+    throw new Error("Fecha AAAA-MM-DD y hora HH:MM");
+  }
+  const hora = input.hora.padStart(5, "0");
+  const dayStart = madridMidnight(input.fecha);
+  const { data: busy, error } = await db.from("calendar_events").select("calendar_id, starts_at, ends_at, all_day")
+    .in("calendar_id", pool.map((c) => c.id)).lt("starts_at", new Date(dayStart.getTime() + 26 * 3_600_000).toISOString())
+    .gt("ends_at", dayStart.toISOString()).limit(1000);
+  if (error) throw error;
+  const load = (c: Calendar) => (busy ?? []).filter((e) => e.calendar_id === c.id).length;
+  const free = pool.filter((c) => freeSlots(c, input.fecha, (busy ?? []).filter((e) => e.calendar_id === c.id)).includes(hora))
+    .sort((a, b) => load(a) - load(b) || Math.random() - 0.5);
+  if (!free.length) throw new Error("A esa hora no hay nadie libre para llamar. Consulta la agenda y ofrece otra hora.");
+
+  const start = madridAt(input.fecha, hora);
+  const description = `Teléfono: ${input.telefono}\nMotivo: ${input.motivo}\nLlamada programada por el asistente.`;
+  for (const cal of free) {
+    const end = new Date(start.getTime() + cal.booking_minutes * 60_000);
+    const { data: id, error: e2 } = await db.rpc("book_appointment", {
+      p_calendar: cal.id, p_start: start.toISOString(), p_end: end.toISOString(),
+      p_title: `Llamar a ${input.nombre} · ${input.telefono}`.slice(0, 200), p_description: description, p_conversation: conversationId,
+    });
+    if (e2) throw e2;
+    if (!id) continue; // otra conversación la ha cogido justo ahora: se prueba con la siguiente persona
+    if (cal.booking_type_id) await db.from("calendar_events").update({ type_id: cal.booking_type_id }).eq("id", id);
+    const when = new Intl.DateTimeFormat("es-ES", {
+      timeZone: "Europe/Madrid", weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
+    }).format(start);
+    // El lead de esta conversación (o uno nuevo) queda a nombre de quien llamará.
+    const reason = `Llamar el ${when}: ${input.motivo}`;
+    const { data: existing } = await db.from("leads").select("id").eq("conversation_id", conversationId)
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    let leadId = existing?.id as string | undefined;
+    if (leadId) {
+      await db.from("leads").update({ name: input.nombre, contact: input.telefono, reason, status: "callback", follow_up_at: start.toISOString(), updated_at: new Date().toISOString() }).eq("id", leadId);
+    } else {
+      const { data: lead, error: e3 } = await db.from("leads").insert({
+        client_id: clientId, conversation_id: conversationId, name: input.nombre, contact: input.telefono,
+        reason, status: "callback", follow_up_at: start.toISOString(),
+      }).select("id").single();
+      if (e3) throw e3;
+      leadId = lead.id;
+    }
+    // Se asigna aparte para que salte el aviso a esa persona.
+    if (cal.member_id) await db.from("leads").update({ caller_id: cal.member_id }).eq("id", leadId);
+    return `Llamada programada para el ${when}. Dile a la persona que una compañera le llamará a esa hora al ${input.telefono}.`;
+  }
+  throw new Error("Esa hora se acaba de ocupar. Consulta la agenda y ofrece otra.");
 }
 
 type Busy = { calendar_id: string; starts_at: string; ends_at: string; all_day: boolean };
@@ -483,7 +576,7 @@ Deno.serve(async (req) => {
       db.from("api_connections").select("*").eq("client_id", client.id).eq("active", true).order("created_at"),
       db.from("notify_contacts").select("id, name, department, notify_when")
         .eq("client_id", client.id).eq("active", true).order("created_at"),
-      db.from("calendars").select("id, name, booking_enabled, booking_minutes, booking_hours, booking_notice_minutes").eq("client_id", client.id).eq("active", true).order("created_at"),
+      db.from("calendars").select("id, name, booking_enabled, booking_minutes, booking_hours, booking_notice_minutes, booking_kind, member_id, booking_type_id").eq("client_id", client.id).eq("active", true).order("created_at"),
     ]);
     const connections = (conns ?? []) as Connection[];
     const contacts = (people ?? []) as Contact[];

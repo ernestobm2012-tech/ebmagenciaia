@@ -9,6 +9,8 @@
 //   POST ?action=digest-test   (usuario del panel) -> manda el resumen de hoy solo a sus móviles
 //   POST ?action=followups     (cron, cada 10 min) -> «toca volver a llamar»: push y correo a quien
 //                               lleva el lead (o a todo el equipo del cliente si no lo lleva nadie)
+//   POST ?action=assigned {lead_id, member_id} (la base de datos) -> aviso a la persona del
+//                               equipo a la que se pasa un lead (correo y, si tiene panel, push)
 // Esta función nunca escribe en error_log: un fallo aquí no debe provocar más avisos.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -186,9 +188,68 @@ const esc = (s: unknown) =>
   String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 const timeFmt = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
+async function mail(to: string[], subject: string, html: string) {
+  const key = Deno.env.get("RESEND_API_KEY");
+  if (!key || !to.length) return false;
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ from: FROM, to, subject, html }),
+  });
+  return res.ok;
+}
+
+const card = (title: string, lead: { name?: string | null; contact?: string | null; reason?: string | null }, extra = "") =>
+  `<div style="font-family:Lato,Arial,sans-serif;font-size:15px;line-height:1.5;color:#242F3D;max-width:560px">
+<h2 style="font-size:19px;margin:0 0 12px">${esc(title)}</h2>
+<p style="margin:0 0 6px"><b>Nombre:</b> ${esc(lead.name || "—")}</p>
+<p style="margin:0 0 6px"><b>Contacto:</b> ${esc(lead.contact || "—")}</p>
+<p style="margin:0 0 6px"><b>Motivo:</b> ${esc(lead.reason || "—")}</p>${extra}
+<p style="margin:18px 0 0"><a href="${PANEL_URL}#/actividad" style="color:#1483DC">Abrir el contacto en el panel</a></p></div>`;
+
+type Member = { id: string; name: string; role: string; email: string | null; profile_id: string | null; active: boolean };
+
+// A quién avisar de un lead: la persona del equipo (su correo y, si tiene usuario, su móvil).
+// En clientes demo, solo a administración.
+async function memberTargets(client: { status: string } | null, member: Member | null) {
+  if (client?.status === "demo") {
+    const ids = await adminIds();
+    const { data: people } = await db.from("profiles").select("email").in("id", ids);
+    return { ids, emails: (people ?? []).map((p) => p.email).filter(Boolean) as string[] };
+  }
+  const ids = member?.profile_id ? [member.profile_id] : [];
+  const emails = member?.email ? [member.email] : [];
+  if (!member?.email && member?.profile_id) {
+    const { data: p } = await db.from("profiles").select("email").eq("id", member.profile_id).maybeSingle();
+    if (p?.email) emails.push(p.email);
+  }
+  return { ids, emails };
+}
+
+async function assigned(leadId: string, memberId: string) {
+  const { data: lead } = await db.from("leads").select("id, client_id, name, contact, reason, follow_up_at").eq("id", leadId).maybeSingle();
+  const { data: member } = await db.from("team_members").select("id, name, role, email, profile_id, active").eq("id", memberId).maybeSingle();
+  if (!lead || !member || !member.active) return { skipped: true };
+  const { data: client } = await db.from("clients").select("id, name, status").eq("id", lead.client_id).maybeSingle();
+  const { ids, emails } = await memberTargets(client, member as Member);
+  const demo = client?.status === "demo" ? `[DEMO · para ${member.name}] ` : "";
+  const who = lead.name || lead.contact || "un contacto";
+  const title = member.role === "comercial" ? `Te han pasado un contacto: ${who}` : `Tienes un contacto para llamar: ${who}`;
+  const { data: subs } = ids.length
+    ? await db.from("push_subscriptions").select("id, user_id, endpoint, p256dh, auth").in("user_id", ids)
+    : { data: [] };
+  const sent = await deliver((subs ?? []) as Sub[], {
+    title: `${demo}${title}`, body: short(`${lead.contact ?? ""}${lead.reason ? ` · ${lead.reason}` : ""}`, 140),
+    url: `${PANEL_URL}#/actividad`, tag: `assigned:${lead.id}:${member.id}`,
+  });
+  const extra = lead.follow_up_at ? `\n<p style="margin:0 0 6px"><b>Volver a llamar:</b> ${esc(timeFmt.format(new Date(lead.follow_up_at)))}</p>` : "";
+  const mailed = await mail(emails, `${demo}${title}${client?.name ? ` · ${client.name}` : ""}`, card(`Hola, ${member.name.split(" ")[0]}. ${title}`, lead, extra));
+  return { sent, mailed };
+}
+
 async function followups() {
   const { data } = await db.from("leads")
-    .select("id, client_id, name, contact, reason, follow_up_at, followup_notified_at, assigned_to")
+    .select("id, client_id, name, contact, reason, follow_up_at, followup_notified_at, assigned_to, caller_id")
     .lte("follow_up_at", new Date().toISOString())
     .not("status", "in", "(won,lost)")
     .limit(200);
@@ -199,8 +260,14 @@ async function followups() {
     await db.from("leads").update({ followup_notified_at: new Date().toISOString() }).eq("id", lead.id);
     const { data: client } = await db.from("clients").select("id, name, status, parent_client_id").eq("id", lead.client_id).maybeSingle();
     let ids: string[];
+    let to: string[] = [];
+    const { data: caller } = lead.caller_id
+      ? await db.from("team_members").select("id, name, role, email, profile_id, active").eq("id", lead.caller_id).maybeSingle()
+      : { data: null };
     if (client?.status === "demo") ids = await adminIds();
-    else if (lead.assigned_to) ids = [lead.assigned_to];
+    else if (caller?.active && (caller.email || caller.profile_id)) {
+      ({ ids, emails: to } = await memberTargets(client, caller as Member));
+    } else if (lead.assigned_to) ids = [lead.assigned_to];
     else {
       const owners = [client?.id, client?.parent_client_id].filter(Boolean) as string[];
       const { data: team } = await db.from("profiles").select("id, role, client_id").in("role", ["client", "partner"]).in("client_id", owners);
@@ -209,30 +276,20 @@ async function followups() {
     }
     const demo = client?.status === "demo" ? "[DEMO] " : "";
     const who = lead.name || lead.contact || "un contacto";
-    const { data: subs } = await db.from("push_subscriptions").select("id, user_id, endpoint, p256dh, auth").in("user_id", ids);
+    const { data: subs } = ids.length
+      ? await db.from("push_subscriptions").select("id, user_id, endpoint, p256dh, auth").in("user_id", ids)
+      : { data: [] };
     sent += await deliver((subs ?? []) as Sub[], {
       title: `${demo}Toca volver a llamar${client?.name ? ` · ${client.name}` : ""}`,
       body: short(`${who}${lead.contact && lead.name ? ` (${lead.contact})` : ""}${lead.reason ? `: ${lead.reason}` : ""}`, 140),
       url: `${PANEL_URL}#/actividad`, tag: `followup:${lead.id}`,
     });
-
-    const key = Deno.env.get("RESEND_API_KEY");
-    const { data: people } = await db.from("profiles").select("email").in("id", ids);
-    const to = (people ?? []).map((p) => p.email).filter(Boolean);
-    if (key && to.length) {
-      const html = `<div style="font-family:Lato,Arial,sans-serif;font-size:15px;line-height:1.5;color:#242F3D;max-width:560px">
-<h2 style="font-size:19px;margin:0 0 12px">Toca volver a llamar a ${esc(who)}</h2>
-<p style="margin:0 0 6px"><b>Contacto:</b> ${esc(lead.contact || "—")}</p>
-<p style="margin:0 0 6px"><b>Motivo:</b> ${esc(lead.reason || "—")}</p>
-<p style="margin:0 0 6px"><b>Quedasteis en llamar:</b> ${esc(timeFmt.format(new Date(lead.follow_up_at)))}</p>
-<p style="margin:18px 0 0"><a href="${PANEL_URL}#/actividad" style="color:#1483DC">Abrir el contacto en el panel</a></p></div>`;
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ from: FROM, to, subject: `${demo}Toca volver a llamar: ${who}`, html }),
-      });
-      if (res.ok) mailed++;
+    if (!to.length && ids.length) {
+      const { data: people } = await db.from("profiles").select("email").in("id", ids);
+      to = (people ?? []).map((p) => p.email).filter(Boolean) as string[];
     }
+    const extra = `\n<p style="margin:0 0 6px"><b>Quedasteis en llamar:</b> ${esc(timeFmt.format(new Date(lead.follow_up_at)))}</p>`;
+    if (await mail(to, `${demo}Toca volver a llamar: ${who}`, card(`Toca volver a llamar a ${who}`, lead, extra))) mailed++;
   }
   return { due: due.length, sent, mailed };
 }
@@ -254,6 +311,7 @@ Deno.serve(async (req) => {
 
     if (action === "send") return json(await send(body.kind, body.id));
     if (action === "followups") return json(await followups());
+    if (action === "assigned") return json(await assigned(String(body.lead_id ?? ""), String(body.member_id ?? "")));
     if (action === "digest") {
       // Solo por la tarde-noche (para que el resumen sea del día completo) y uno al día,
       // aunque el cron se dispare dos veces o alguien llame a la dirección.

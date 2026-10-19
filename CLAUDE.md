@@ -190,6 +190,13 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 - Va incluido en la cuota de DZZERO (decisión de Ernesto) y sale en la propuesta (página 3 con imágenes).
 - OJO: `apply_migration` con DROP CONSTRAINT/UPDATE se quedaba esperando aprobación (timeout). Con `execute_sql` en trozos funcionó.
 
+- Equipo y estadísticas (19/10/2026, migración 0036): Leads tiene tres vistas, «Contactos», «Estadísticas» y «Equipo» (`admin/js/leads.js`).
+  - Equipo: tabla `team_members` (por cliente; rol `llamadas` = quien llama o `comercial`; correo, teléfono, `profile_id` opcional si tiene usuario del panel, `active`). RLS con `private.can_manage_leads`. No hace falta usuario del panel para recibir avisos: basta el correo.
+  - Cada lead guarda `caller_id` («Lo gestiona»), `seller_id` («Comercial»), `deal_value` (importe), `first_contact_at`, `passed_at` y `closed_at`. Estado nuevo `with_sales` («Pasado al comercial»); elegir comercial en un lead abierto lo pone solo en ese estado. `update_lead` nueva con 7 parámetros (p_caller, p_seller, p_value); la de 5 parámetros de la 0033 sigue en la base sin usar (el DROP pedía aprobación). «Lo lleva»/`assigned_to` ya no sale en el panel.
+  - Avisos: trigger `leads_assigned` → `push?action=assigned` (push v9) cuando cambia el comercial o quien lo gestiona: correo (Resend) a esa persona y push si tiene usuario. «Volver a llamar» avisa a quien lo gestiona. En clientes demo, todo solo a administración (con «[DEMO · para <nombre>]»).
+  - Estadísticas (por periodo y negocio): generados, en curso, pasados al comercial, cerrados, no interesados, tasa de cierre, importe, tiempo hasta la primera llamada y hasta cerrar; tablas por estado, por comercial, por quien llama, por origen (canal de la conversación) y por día/semana.
+  - DZZERO: dados de alta Óscar López (comercial, o.lopez@dzzero.com) y Juan Antonio (comercial, sin correo).
+
 ### Enviar documentos por WhatsApp o correo desde el panel (19/10/2026)
 - Pestaña Documentos del cliente: cada PDF tiene «WhatsApp» y «Correo» (`admin/js/documents.js`).
 - WhatsApp: al compartir un archivo, WhatsApp descarta el texto (le pasó a Ernesto el 19/10). Por eso en el móvil va en dos pasos: «1. Mandar el mensaje» abre `wa.me/<número>?text=` con el texto ya escrito y «2. Mandar el PDF» abre el menú de compartir solo con el archivo. En el ordenador (o como alternativa) se manda el texto con un enlace firmado al PDF que dura 30 días. El mensaje se rellena con el texto del último correo enviado con ese documento (negritas a *así*, viñetas •). El teléfono se guarda en `clients.contact_phone`.

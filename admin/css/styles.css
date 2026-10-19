@@ -426,6 +426,7 @@ td .actions { flex-wrap: wrap; gap: 4px 14px; }
 .badge.lead-called { background: #EDF1F5; color: #4A5867; }
 .badge.lead-waiting { background: #EEE9FB; color: #5B3FB8; }
 .badge.lead-callback { background: #FBEAEA; color: var(--red); }
+.badge.lead-with_sales { background: #E3F4F8; color: #0F6E86; }
 .badge.lead-won { background: #E2F6EC; color: #16794A; }
 .badge.lead-lost { background: #EDF1F5; color: #4A5867; }
 .lead-card h3 { margin: 22px 0 10px; font-size: 15px; }
@@ -436,3 +437,14 @@ td .actions { flex-wrap: wrap; gap: 4px 14px; }
 .sign-link { word-break: break-all; }
 .drive-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
   border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 16px; background: var(--surface, #F3F6FA); }
+
+/* Leads: vistas Contactos / Estadísticas / Equipo */
+.lead-views { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; margin: 0 0 16px; }
+.lead-views .seg { border: 0; background: var(--bg); color: var(--ink-soft); font: inherit; font-size: 14px; padding: 8px 16px; cursor: pointer; }
+.lead-views .seg + .seg { border-left: 1px solid var(--line); }
+.lead-views .seg.on { background: var(--blue); color: #fff; font-weight: 700; }
+.lead-filters select { width: auto; padding: 5px 10px; font-size: 13px; border-radius: 999px; }
+.lead-section { margin-top: 26px; }
+.lead-section h3 { margin: 0 0 4px; }
+.stat-bar { display: inline-block; width: 140px; max-width: 30vw; height: 8px; background: var(--surface); border-radius: 4px; vertical-align: middle; overflow: hidden; }
+.stat-bar > span { display: block; height: 100%; background: var(--blue); border-radius: 4px; }

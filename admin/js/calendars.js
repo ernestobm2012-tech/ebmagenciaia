@@ -8,6 +8,17 @@ import { h, q, field, modal, toast, formData, errorText } from './ui.js';
 const DAYS_SHOWN = 14;
 const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/calendar`;
 const COLORS = ['#1483DC', '#7C9A44', '#E07A1F', '#C24545', '#8E5CC9', '#17A2B8', '#5E6C7A'];
+// Tipos de cita con los que empieza cada negocio (colores comprobados para que se
+// distingan también con daltonismo). Cada negocio los cambia en «Tipos y colores».
+const DEFAULT_TYPES = [
+  ['Cliente nuevo', '#1483DC', true],
+  ['Segunda llamada', '#D9A400'],
+  ['Segunda visita', '#8E5CC9'],
+  ['Instalación', '#2FA36B'],
+  ['Seguimiento', '#E07A1F'],
+  ['Técnico / RMA', '#B8325A'],
+];
+const TYPE_COLORS = ['#1483DC', '#D9A400', '#8E5CC9', '#2FA36B', '#E07A1F', '#B8325A', '#17A2B8', '#5E6C7A'];
 
 const feedUrl = (cal) => `${FUNCTION_URL}?feed=${cal.feed_token}`;
 const WEEKDAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
@@ -147,10 +158,22 @@ export async function calendarsTab(clientId) {
   let anchor = startOfDay(new Date());
   let view = readView();
   let calendars = [];
+  let types = [];
   const hidden = new Set();
+  const hiddenTypes = new Set();
 
   async function load() {
-    calendars = await q(db.from('calendars').select('*').eq('client_id', clientId).order('created_at'));
+    [calendars, types] = await Promise.all([
+      q(db.from('calendars').select('*').eq('client_id', clientId).order('created_at')),
+      q(db.from('appointment_types').select('*').eq('client_id', clientId).order('sort')).catch(() => []),
+    ]);
+    // La primera vez, los tipos de cita de ejemplo (luego cada negocio los cambia).
+    if (!types.length && calendars.length) {
+      try {
+        types = await q(db.from('appointment_types').insert(DEFAULT_TYPES.map(([name, color, def], i) =>
+          ({ client_id: clientId, name, color, sort: i, is_default: !!def }))).select('*'));
+      } catch { types = []; }
+    }
     await render();
   }
 
@@ -272,6 +295,14 @@ export async function calendarsTab(clientId) {
     load();
   }
 
+  // Color de una cita: el de su tipo; si no tiene, las del agente van con el tipo por
+  // defecto y el resto con el color de su calendario.
+  function typeOf(e) {
+    return types.find((t) => t.id === e.type_id) || (e.source === 'agent' ? types.find((t) => t.is_default) : null) || null;
+  }
+  const colorOf = (e, cal) => typeOf(e)?.color || cal?.color || '#5E6C7A';
+  const typeKey = (e) => typeOf(e)?.id || 'none';
+
   // ------------------------------------------------------------ agenda: día, semana, mes y lista
   function go(dir) {
     if (view === 'day') anchor = addDays(anchor, dir);
@@ -287,8 +318,10 @@ export async function calendarsTab(clientId) {
     render();
   }
 
-  function agenda(events, from, to) {
+  function agenda(allEvents, from, to) {
     const byCal = Object.fromEntries(calendars.map((c) => [c.id, c]));
+    const events = allEvents.filter((e) => !hiddenTypes.has(typeKey(e)));
+    const untyped = allEvents.some((e) => typeKey(e) === 'none');
     const shown = calendars.filter((c) => !hidden.has(c.id));
     const body = view === 'month' ? monthGrid(events, byCal, from, to)
       : view === 'list' ? listView(events, byCal, from, to)
@@ -303,10 +336,70 @@ export async function calendarsTab(clientId) {
         h('strong', { class: 'agenda-title' }, titleOf(view, anchor, from, to)),
         h('div', { class: 'agenda-views' }, VIEWS.map(([v, label]) =>
           h('button', { type: 'button', class: `seg${v === view ? ' on' : ''}`, onclick: () => setView(v) }, label)))),
+      legend(untyped),
       hasHours && (view === 'day' || view === 'week')
         ? h('p', { class: 'muted small agenda-legend' }, h('span', { class: 'swatch-avail' }), 'Horario en el que se pueden dar citas. Toca un hueco para crear una cita a esa hora.')
         : h('p', { class: 'muted small agenda-legend' }, view === 'month' ? 'Toca un día para verlo por horas.' : view === 'list' ? '' : 'Toca un hueco para crear una cita a esa hora.'),
       body);
+  }
+
+  // Leyenda de colores: tocar un tipo lo oculta o lo vuelve a enseñar.
+  function legend(untyped) {
+    const item = (key, name, color) => h('button', {
+      type: 'button', class: `type-pill${hiddenTypes.has(key) ? ' off' : ''}`, style: `--c:${color}`,
+      title: hiddenTypes.has(key) ? 'Volver a enseñar' : 'Ocultar este tipo',
+      onclick: () => { hiddenTypes.has(key) ? hiddenTypes.delete(key) : hiddenTypes.add(key); render(); },
+    }, h('i', {}), name);
+    return h('div', { class: 'type-legend' },
+      types.map((t) => item(t.id, t.name, t.color)),
+      ...(untyped ? [item('none', 'Sin tipo (color del calendario)', '#9AA7B4')] : []),
+      h('button', { class: 'btn link small', type: 'button', onclick: editTypes }, 'Tipos y colores'));
+  }
+
+  function editTypes() {
+    const rows = types.map((t) => ({ ...t }));
+    const list = h('div', { class: 'type-edit' });
+    const note = h('p', { class: 'error' });
+    function draw() {
+      list.replaceChildren(...rows.map((t, i) => h('div', { class: 'type-row' },
+        h('input', { type: 'color', value: t.color, oninput: (e) => { t.color = e.target.value; } }),
+        h('input', { value: t.name, placeholder: 'Nombre del tipo', oninput: (e) => { t.name = e.target.value; } }),
+        h('label', { class: 'check small', title: 'Las citas que reserva el asistente salen con este color' },
+          h('input', { type: 'radio', name: 'def', checked: !!t.is_default, onchange: () => { rows.forEach((r) => { r.is_default = r === t; }); } }), ' Asistente'),
+        h('button', { class: 'btn link danger', type: 'button', onclick: () => { rows.splice(i, 1); draw(); } }, 'Quitar'))),
+      h('div', { class: 'swatches' }, h('span', { class: 'muted small' }, 'Colores sugeridos: '),
+        TYPE_COLORS.map((c) => h('button', { type: 'button', class: 'swatch', style: `background:${c}`, title: c, onclick: () => {
+          rows.push({ name: '', color: c, sort: rows.length, is_default: false, client_id: clientId });
+          draw();
+          list.querySelector('.type-row:last-of-type input:not([type])')?.focus();
+        } }))));
+    }
+    async function save() {
+      note.textContent = '';
+      if (rows.some((r) => !r.name.trim())) return (note.textContent = 'Pon nombre a todos los tipos (o quita los que sobren).');
+      try {
+        const keep = rows.filter((r) => r.id).map((r) => r.id);
+        const gone = types.filter((t) => !keep.includes(t.id)).map((t) => t.id);
+        if (gone.length) await q(db.from('appointment_types').delete().in('id', gone));
+        for (const [i, r] of rows.entries()) {
+          const row = { name: r.name.trim(), color: r.color, sort: i, is_default: !!r.is_default };
+          if (r.id) await q(db.from('appointment_types').update(row).eq('id', r.id));
+          else await q(db.from('appointment_types').insert({ ...row, client_id: clientId }));
+        }
+        close();
+        toast('Tipos de cita guardados.');
+        load();
+      } catch (err) {
+        note.textContent = errorText(err);
+      }
+    }
+    draw();
+    const close = modal('Tipos de cita y colores', h('div', { class: 'form' },
+      h('p', { class: 'muted' }, 'Cada cita se pinta del color de su tipo, para ver de un vistazo cómo está la agenda. Toca un color sugerido para añadir un tipo nuevo.'),
+      list,
+      h('button', { class: 'btn', type: 'button', onclick: () => { rows.push({ name: '', color: TYPE_COLORS[rows.length % TYPE_COLORS.length], is_default: false }); draw(); } }, 'Añadir tipo'),
+      note,
+      h('div', { class: 'actions' }, h('button', { class: 'btn primary', type: 'button', onclick: save }, 'Guardar'))));
   }
 
   // Cuadrícula por horas (Día y Semana).
@@ -396,13 +489,13 @@ export async function calendarsTab(clientId) {
         const roomy = bottom - top >= 72;
         col.append(h('button', {
           type: 'button', class: `tg-event${short ? ' short' : ''}`,
-          style: `top:${top}px;height:${Math.max(18, bottom - top - 2)}px;left:calc(${(it.lane / it.cols) * 100}% + 2px);width:calc(${100 / it.cols}% - 4px);--c:${cal?.color || '#5E6C7A'}`,
-          title: `${timeFmt.format(new Date(it.e.starts_at))} – ${timeFmt.format(new Date(it.e.ends_at))} · ${it.e.title}${cal ? ` · ${cal.name}` : ''}`,
+          style: `top:${top}px;height:${Math.max(18, bottom - top - 2)}px;left:calc(${(it.lane / it.cols) * 100}% + 2px);width:calc(${100 / it.cols}% - 4px);--c:${colorOf(it.e, cal)}`,
+          title: `${timeFmt.format(new Date(it.e.starts_at))} – ${timeFmt.format(new Date(it.e.ends_at))} · ${it.e.title}${typeOf(it.e) ? ` · ${typeOf(it.e).name}` : ''}${cal ? ` · ${cal.name}` : ''}`,
           onclick: () => editEvent(it.e),
         },
         h('span', { class: 'tg-ev-time' }, timeFmt.format(new Date(it.e.starts_at))),
         h('span', { class: 'tg-ev-title' }, it.e.title),
-        roomy ? h('span', { class: 'tg-ev-cal' }, cal?.name || '') : ''));
+        roomy ? h('span', { class: 'tg-ev-cal' }, h('i', { style: `background:${cal?.color || '#5E6C7A'}` }), [typeOf(it.e)?.name, cal?.name].filter(Boolean).join(' · ')) : ''));
       }
       // Línea de la hora actual.
       if (sameDay(d, today)) {
@@ -425,7 +518,7 @@ export async function calendarsTab(clientId) {
   }
 
   function chip(e, cal) {
-    return h('button', { type: 'button', class: 'mg-chip', style: `--c:${cal?.color || '#5E6C7A'}`, title: `${e.title}${cal ? ` · ${cal.name}` : ''}`, onclick: (ev) => { ev.stopPropagation(); editEvent(e); } },
+    return h('button', { type: 'button', class: 'mg-chip', style: `--c:${colorOf(e, cal)}`, title: `${e.title}${typeOf(e) ? ` · ${typeOf(e).name}` : ''}${cal ? ` · ${cal.name}` : ''}`, onclick: (ev) => { ev.stopPropagation(); editEvent(e); } },
       e.all_day ? '' : h('span', { class: 'mg-time' }, timeFmt.format(new Date(e.starts_at))),
       h('span', { class: 'mg-title' }, e.title));
   }
@@ -447,7 +540,7 @@ export async function calendarsTab(clientId) {
       h('span', { class: 'mg-num' }, d.getDate()),
       h('div', { class: 'mg-items' }, items.slice(0, 3).map((e) => chip(e, byCal[e.calendar_id]))),
       items.length > 3 ? h('span', { class: 'mg-more' }, `+${items.length - 3} más`) : '',
-      items.length ? h('span', { class: 'mg-dots' }, items.slice(0, 4).map((e) => h('i', { style: `background:${byCal[e.calendar_id]?.color || '#5E6C7A'}` }))) : ''));
+      items.length ? h('span', { class: 'mg-dots' }, items.slice(0, 4).map((e) => h('i', { style: `background:${colorOf(e, byCal[e.calendar_id])}` }))) : ''));
     }
     return h('div', { class: 'mg' },
       ['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((x) => h('div', { class: 'mg-wd' }, x)),
@@ -476,10 +569,10 @@ export async function calendarsTab(clientId) {
     const when = e.all_day ? 'Todo el día'
       : s < day ? `hasta ${timeFmt.format(en)}` : `${timeFmt.format(s)} – ${timeFmt.format(en)}`;
     const origin = { import: 'Enlace', google: 'Google', microsoft: 'Outlook', agent: 'Agente' }[e.source];
-    return h('button', { class: 'event', type: 'button', style: `border-left-color:${cal?.color || '#999'}`, onclick: () => editEvent(e) },
+    return h('button', { class: 'event', type: 'button', style: `border-left-color:${colorOf(e, cal)}`, onclick: () => editEvent(e) },
       h('span', { class: 'event-time' }, when),
       h('span', { class: 'event-title' }, e.title),
-      h('span', { class: 'muted small' }, [cal?.name, origin].filter(Boolean).join(' · ')));
+      h('span', { class: 'muted small' }, [typeOf(e)?.name, cal?.name, origin].filter(Boolean).join(' · ')));
   }
 
   // ------------------------------------------------------------ calendarios
@@ -640,7 +733,18 @@ export async function calendarsTab(clientId) {
       until.hidden = !allDay.checked;
     }
 
+    let typeId = ev?.type_id || '';
+    const typePick = h('div', { class: 'type-pick' });
+    const drawTypes = () => typePick.replaceChildren(
+      ...types.map((t) => h('button', {
+        type: 'button', class: `type-pill${typeId === t.id ? ' on' : ''}`, style: `--c:${t.color}`,
+        onclick: () => { typeId = typeId === t.id ? '' : t.id; drawTypes(); },
+      }, h('i', {}), t.name)),
+      h('button', { type: 'button', class: 'btn link small', onclick: () => { close(); editTypes(); } }, 'Tipos y colores'));
+    drawTypes();
+
     const form = h('form', { class: 'form', onsubmit: save },
+      ...(types.length ? [h('div', { class: 'field' }, h('span', {}, 'Tipo de cita'), typePick)] : []),
       field('Calendario', h('select', { name: 'calendar_id', required: true },
         calendars.filter((c) => c.active || c.id === ev?.calendar_id).map((c) =>
           h('option', { value: c.id, selected: c.id === (ev?.calendar_id || calendars.find((x) => !hidden.has(x.id))?.id) }, c.name)))),
@@ -672,7 +776,7 @@ export async function calendarsTab(clientId) {
       }
       if (endsAt <= startsAt) return (note.textContent = 'La cita tiene que terminar después de empezar.');
       const row = {
-        calendar_id: f.calendar_id, title: f.title, location: f.location, description: f.description,
+        calendar_id: f.calendar_id, title: f.title, location: f.location, description: f.description, type_id: typeId || null,
         all_day: f.all_day, starts_at: startsAt.toISOString(), ends_at: endsAt.toISOString(),
       };
       try {

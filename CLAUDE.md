@@ -189,3 +189,9 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 - Avisos: cron `lead-followups` cada 10 min → `push?action=followups` (push v8): push y correo (Resend) a quien lo lleva, o a todo el equipo del cliente si no lo lleva nadie; en clientes demo solo a administración. Un aviso por fecha (`followup_notified_at`).
 - Va incluido en la cuota de DZZERO (decisión de Ernesto) y sale en la propuesta (página 3 con imágenes).
 - OJO: `apply_migration` con DROP CONSTRAINT/UPDATE se quedaba esperando aprobación (timeout). Con `execute_sql` en trozos funcionó.
+
+### Enviar documentos por WhatsApp o correo desde el panel (19/10/2026)
+- Pestaña Documentos del cliente: cada PDF tiene «WhatsApp» y «Correo» (`admin/js/documents.js`).
+- WhatsApp: en el móvil usa el menú de compartir del sistema (Web Share con el PDF como archivo + texto, que también se copia al portapapeles) para mandarlo desde WhatsApp Business. En el ordenador abre `wa.me/<número>?text=` con el mensaje y un enlace firmado al PDF que dura 30 días. El teléfono se guarda en `clients.contact_phone` (columna nueva).
+- Correo: inserta en `outgoing_mail` (función `mail`) desde ebermejo@ o info@ con el PDF adjunto y espera a que salga.
+- No hay API de WhatsApp para el número de EBM: el envío por WhatsApp lo hace Ernesto desde su app.

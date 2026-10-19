@@ -36,56 +36,91 @@ function waNumber(raw) {
   return d.length === 9 ? `34${d}` : d;
 }
 
-function whatsappDialog(doc, client) {
+// Texto del último correo enviado con este documento (para no escribirlo dos veces).
+async function lastMailText(doc) {
+  try {
+    const [m] = await q(db.from('outgoing_mail').select('body_html').contains('document_ids', [doc.id])
+      .eq('status', 'done').order('created_at', { ascending: false }).limit(1));
+    if (!m?.body_html) return null;
+    // Negritas como *así* (WhatsApp), viñetas y un párrafo por bloque.
+    const html = m.body_html.replace(/<\/?b>/gi, '*').replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/li>/gi, '\n').replace(/<\/(p|div|ol|ul|h\d)>/gi, '\n\n').replace(/<li[^>]*>/gi, '• ');
+    const tmp = new DOMParser().parseFromString(html, 'text/html');
+    const text = (tmp.body.textContent || '').split('\n').map((l) => l.trim()).join('\n')
+      .replace(/\n{3,}/g, '\n\n').replace(/\*\n\n•/g, '*\n•').trim();
+    return /saludo,?$/i.test(text) ? `${text}\nErnesto` : text;
+  } catch {
+    return null;
+  }
+}
+
+// WhatsApp no deja mandar a la vez un archivo y un texto largo (al compartir un PDF
+// se queda solo con el archivo), así que va en dos pasos: primero el mensaje, que se
+// abre ya escrito en el chat del cliente, y después el PDF.
+async function whatsappDialog(doc, client) {
   const hello = firstName(client?.contact_name);
-  const text = h('textarea', { rows: 8 },
+  const fromMail = await lastMailText(doc);
+  const text = h('textarea', { rows: 12 }, fromMail ||
     `Hola${hello ? `, ${hello}` : ''}. Te paso la ${docLabel(doc).toLowerCase().startsWith('propuesta') ? 'propuesta' : `«${docLabel(doc)}»`} que hemos hablado. Te la he mandado también por correo.\n\nCualquier duda me dices y lo vemos.\n\nUn saludo,\nErnesto`);
-  const phone = h('input', { type: 'tel', placeholder: 'Opcional: 6XX XXX XXX', value: client?.contact_phone || '' });
+  const phone = h('input', { type: 'tel', placeholder: '6XX XXX XXX', value: client?.contact_phone || '' });
   const error = h('p', { class: 'error' });
   const canShareFiles = !!(navigator.canShare && navigator.canShare({ files: [new File([''], 'a.pdf', { type: 'application/pdf' })] }));
 
+  async function rememberPhone() {
+    const n = waNumber(phone.value);
+    if (client && n && n !== waNumber(client.contact_phone)) {
+      await db.from('clients').update({ contact_phone: phone.value.trim() }).eq('id', client.id);
+      client.contact_phone = phone.value.trim();
+    }
+  }
+  function openChat(msg) {
+    window.open(`https://wa.me/${waNumber(phone.value)}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
+  }
+  async function sendText() {
+    error.textContent = '';
+    openChat(text.value);
+    rememberPhone().catch(() => {});
+  }
   async function shareFile() {
     error.textContent = '';
     try {
-      // Se copia el texto por si WhatsApp no lo pega solo junto al PDF.
-      try { await navigator.clipboard.writeText(text.value); } catch { /* sin permiso: da igual */ }
       const blob = await (await fetch(await signedUrl(doc, false))).blob();
       const file = new File([blob], `${safeName(doc.name)}.pdf`, { type: 'application/pdf' });
-      await navigator.share({ files: [file], text: text.value });
+      await navigator.share({ files: [file] });
     } catch (err) {
       if (err?.name !== 'AbortError') error.textContent = errorText(err);
     }
   }
-  async function openLink() {
+  async function sendWithLink() {
     error.textContent = '';
     try {
       const url = await signedUrl(doc, false, SHARE_SECONDS);
-      const msg = `${text.value}\n\n${docLabel(doc)} (PDF): ${url}`;
-      const n = waNumber(phone.value);
-      window.open(`https://wa.me/${n}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
-      if (n && n !== waNumber(client?.contact_phone)) {
-        await db.from('clients').update({ contact_phone: phone.value.trim() }).eq('id', client.id);
-        if (client) client.contact_phone = phone.value.trim();
-      }
+      openChat(`${text.value}\n\n${docLabel(doc)} (PDF): ${url}`);
+      rememberPhone().catch(() => {});
     } catch (err) {
       error.textContent = errorText(err);
     }
   }
 
   modal(`Enviar por WhatsApp · ${doc.name}`, h('div', { class: 'form' },
-    field('Mensaje', text),
-    canShareFiles
-      ? h('p', { class: 'muted' }, 'En el móvil se abre el menú de compartir: elige WhatsApp Business y el contacto. Se envía el PDF con el mensaje (el texto también queda copiado, por si hay que pegarlo).')
-      : field('Teléfono (opcional)', phone, 'Si lo dejas vacío, WhatsApp te deja elegir el contacto. Se envía un enlace al PDF que dura 30 días.'),
+    field('Mensaje', text, fromMail ? 'Es el texto del correo que mandaste con este documento. Puedes cambiarlo.' : null),
+    field('Teléfono', phone, 'Si lo dejas vacío, WhatsApp te deja elegir el contacto.'),
     error,
-    h('div', { class: 'actions' },
-      canShareFiles ? h('button', { class: 'btn primary', type: 'button', onclick: shareFile }, 'Compartir el PDF por WhatsApp') : null,
-      h('button', { class: canShareFiles ? 'btn' : 'btn primary', type: 'button', onclick: openLink }, canShareFiles ? 'Enviar un enlace' : 'Abrir WhatsApp'))));
+    canShareFiles
+      ? h('div', { class: 'wa-steps' },
+        h('p', { class: 'muted' }, 'Son dos pasos: WhatsApp no deja mandar el PDF y un texto largo a la vez.'),
+        h('div', { class: 'actions' },
+          h('button', { class: 'btn primary', type: 'button', onclick: sendText }, '1. Mandar el mensaje'),
+          h('button', { class: 'btn primary', type: 'button', onclick: shareFile }, '2. Mandar el PDF')),
+        h('p', { class: 'muted small' }, 'Al volver del primer paso, pulsa el segundo y elige el mismo chat. ',
+          h('button', { class: 'btn link', type: 'button', onclick: sendWithLink }, 'O manda solo el mensaje con un enlace al PDF (dura 30 días).')))
+      : h('div', { class: 'actions' },
+        h('button', { class: 'btn primary', type: 'button', onclick: sendWithLink }, 'Abrir WhatsApp con el mensaje y el enlace al PDF'))));
 }
 
 function emailDialog(doc, client) {
   const hello = firstName(client?.contact_name);
-  const to = h('input', { type: 'email', required: true, value: client?.contact_email || '' });
+  const to = h('input', { type: 'text', required: true, value: [client?.contact_email, client?.contact_email_alt].filter(Boolean).join(', ') });
   const subject = h('input', { required: true, value: `${docLabel(doc)} · EBM Agencia IA` });
   const body = h('textarea', { rows: 9 },
     `Hola${hello ? `, ${hello}` : ''}:\n\nTe adjunto ${docLabel(doc).toLowerCase().startsWith('propuesta') ? 'la propuesta' : `«${docLabel(doc)}»`} que hemos hablado.\n\nCualquier duda me llamas o me escribes cuando quieras.\n\nUn saludo,`);
@@ -127,7 +162,7 @@ function emailDialog(doc, client) {
 }
 
 export async function documentsTab(clientId) {
-  const [client] = await q(db.from('clients').select('id, name, contact_name, contact_email, contact_phone').eq('id', clientId));
+  const [client] = await q(db.from('clients').select('id, name, contact_name, contact_email, contact_email_alt, contact_phone').eq('id', clientId));
   const wrap = h('div', {});
   const note = h('p', { class: 'error' });
   const fileInput = h('input', { type: 'file', name: 'file', accept: 'application/pdf', required: true });

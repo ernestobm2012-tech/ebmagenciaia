@@ -10,6 +10,7 @@ import { statsPage } from './stats.js';
 import { printersView, printerKeysCard } from './printers.js';
 import { expensesPage, expensesTab, fetchExpenses, monthlyEur } from './expenses.js';
 import { documentsTab } from './documents.js';
+import { tryChatTab } from './trychat.js';
 import {
   h, q, table, tabs, badge, kpi, field, modal, toast, formData, errorText, slugify,
   fmtDate, fmtNum, fmtEur, fmtUsd, monthStart,
@@ -252,6 +253,7 @@ async function clientPage(id) {
       { id: 'data', label: 'Datos', render: async () => clientForm(client, refresh, partners) },
       ...(hasAgents ? [
         { id: 'agents', label: 'Agentes', render: () => agentsTab(id) },
+        { id: 'trychat', label: 'Probar el chat', render: () => tryChatTab(client) },
         { id: 'knowledge', label: 'Conocimiento', render: () => knowledgeTab(id) },
         { id: 'connections', label: 'Conexiones (ERP/API)', render: () => connectionsTab(id) },
         { id: 'contacts', label: 'A quién avisar', render: () => contactsTab(id) },

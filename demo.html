@@ -33,7 +33,7 @@
       document.getElementById('title').textContent = name ? `Asistente de ${name}` : 'Demo de agente';
       document.getElementById('text').textContent = 'Pulsa el botón azul de abajo a la derecha y pregúntale lo que quieras. Con «Nueva», arriba en el chat, empiezas otra conversación.';
       const script = document.createElement('script');
-      script.src = 'js/chat.js?v=3';
+      script.src = 'js/chat.js?v=4';
       script.dataset.client = client;
       script.dataset.title = name || 'Asistente';
       if (welcome) script.dataset.welcome = welcome;

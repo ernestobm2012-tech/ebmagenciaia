@@ -12,7 +12,9 @@
   const ENDPOINT = 'https://rhjbpkaesobsbnkvioyh.supabase.co/functions/v1/chat';
   const CLIENT = script.dataset.client;
   const TITLE = script.dataset.title || 'Asistente';
-  const WELCOME = script.dataset.welcome || '¡Hola! ¿En qué puedo ayudarte?';
+  const DEFAULT_WELCOME = '¡Hola! ¿En qué puedo ayudarte?';
+  // Si la web no fija el saludo con data-welcome, se usa el que el cliente tiene en el panel.
+  let welcome = script.dataset.welcome || DEFAULT_WELCOME;
   const COLOR = /^#[0-9a-f]{3,8}$/i.test(script.dataset.color || '') ? script.dataset.color : '#1483DC';
   // La cabecera usa el color de la marca si se indica; si no, el azul noche de EBM.
   const HEAD = COLOR === '#1483DC' ? '#12294A' : COLOR;
@@ -130,11 +132,22 @@
 
   function render() {
     log.replaceChildren();
-    bubble('assistant', WELCOME);
+    bubble('assistant', welcome);
     state.messages.forEach((m) => bubble(m.role, m.text));
     restart.hidden = !state.messages.length;
   }
   render();
+  if (!script.dataset.welcome) {
+    fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client: CLIENT, action: 'welcome' }) })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && typeof data.welcome === 'string' && data.welcome.trim() && data.welcome !== welcome) {
+          welcome = data.welcome.trim();
+          if (!state.messages.length) render(); // solo si todavía no se ha escrito nada
+        }
+      })
+      .catch(() => { /* se queda con el saludo por defecto */ });
+  }
 
   // Conversación nueva: otro visitante, para que no arrastre nada de la anterior.
   restart.addEventListener('click', () => {

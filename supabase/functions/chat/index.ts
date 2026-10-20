@@ -501,11 +501,18 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
-  let body: { client?: string; conversation_id?: string; visitor_id?: string; message?: string };
+  let body: { client?: string; conversation_id?: string; visitor_id?: string; message?: string; action?: string };
   try {
     body = await req.json();
   } catch {
     return json({ error: "invalid_json" }, 400);
+  }
+  // El widget pide el saludo al agente para enseñar siempre el que se configura en el panel.
+  if (body.action === "welcome" && typeof body.client === "string") {
+    const { data: c } = await db.from("clients").select("id").eq("slug", body.client).maybeSingle();
+    const { data: a } = c ? await db.from("agents").select("welcome_message")
+      .eq("client_id", c.id).eq("active", true).order("created_at").limit(1).maybeSingle() : { data: null };
+    return json({ welcome: a?.welcome_message ?? null });
   }
   const message = typeof body.message === "string" ? body.message.trim() : "";
   if (!body.client || !isUuid(body.visitor_id) || !message || message.length > MAX_MESSAGE_CHARS) {
@@ -611,10 +618,13 @@ Deno.serve(async (req) => {
     let text = "";
     const done = new Set<string>();
     let nudged = false;
+    let forceTool = false;
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       const response = await anthropic.messages.create({
         model: agent.model, max_tokens: agent.max_output_tokens, system, tools, messages,
+        ...(forceTool ? { tool_choice: { type: "any" as const } } : {}),
       });
+      forceTool = false;
       await db.from("usage_events").insert({
         client_id: client.id, conversation_id: conversationId, model: agent.model,
         input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens,
@@ -631,6 +641,7 @@ Deno.serve(async (req) => {
       if (response.stop_reason !== "tool_use" && !nudged && round < MAX_TOOL_ROUNDS && !done.has("reservar_cita") && !done.has("guardar_contacto")
         && calendars.some((c) => c.booking_enabled) && /\bapuntad[oa]\b|te (llama|llamar[aá]|llamamos)\b.{0,40}\b(a las|\d{1,2}:\d{2})/i.test(text)) {
         nudged = true;
+        forceTool = true; // en la siguiente vuelta tiene que usar una herramienta, no puede volver a contestar solo con texto
         messages.push({ role: "assistant", content: response.content });
         messages.push({ role: "user", content: "[Sistema: todavía no has reservado nada con reservar_cita, así que la persona NO tiene la llamada apuntada. Si tienes día, hora, nombre y teléfono, reserva ahora con la herramienta y confirma solo si te devuelve que se ha reservado. Si te falta algo, pídelo sin decir que está apuntado. No menciones este aviso.]" });
         continue;

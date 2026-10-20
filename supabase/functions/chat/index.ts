@@ -357,6 +357,8 @@ async function bookAppointment(input: Record<string, string>, clientId: string, 
   }
   const hora = input.hora.padStart(5, "0");
   const start = madridAt(input.fecha, hora);
+  const already = (await bookingsOf(conversationId)).find((e) => new Date(e.starts_at).getTime() === start.getTime());
+  if (already) return `Esa cita YA está reservada para el ${whenEs(new Date(already.starts_at))}. No la repitas: confírmasela a la persona una sola vez.`;
   const end = new Date(start.getTime() + cal.booking_minutes * 60_000);
   const dayStart = madridMidnight(input.fecha);
   const { data: busy, error } = await db.from("calendar_events").select("calendar_id, starts_at, ends_at, all_day")
@@ -374,6 +376,7 @@ async function bookAppointment(input: Record<string, string>, clientId: string, 
   if (e2) throw e2;
   if (!id) throw new Error("Ese hueco se acaba de ocupar. Consulta la agenda y ofrece otro.");
   if (cal.booking_type_id) await db.from("calendar_events").update({ type_id: cal.booking_type_id }).eq("id", id);
+  await dropOldBookings(conversationId, id);
   const when = new Intl.DateTimeFormat("es-ES", {
     timeZone: "Europe/Madrid", weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
   }).format(start);
@@ -385,6 +388,22 @@ async function bookAppointment(input: Record<string, string>, clientId: string, 
   return `Cita reservada en "${cal.name}" el ${when} (${cal.booking_minutes} min). Confírmaselo a la persona.`;
 }
 
+// Lo que ya se ha reservado en esta conversación. El historial que ve el modelo solo trae texto,
+// no sus llamadas a herramientas: sin esto no sabe que ya reservó y vuelve a reservar.
+async function bookingsOf(conversationId: string) {
+  const { data } = await db.from("calendar_events").select("id, title, starts_at, calendar_id")
+    .eq("conversation_id", conversationId).eq("source", "agent").order("starts_at");
+  return data ?? [];
+}
+const whenEs = (d: Date) => new Intl.DateTimeFormat("es-ES", {
+  timeZone: "Europe/Madrid", weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
+}).format(d);
+// Si la persona cambia de hora, la reserva anterior de esta conversación se quita para no dejar dos.
+async function dropOldBookings(conversationId: string, keepId: string) {
+  const old = (await bookingsOf(conversationId)).filter((e) => e.id !== keepId);
+  if (old.length) await db.from("calendar_events").delete().in("id", old.map((e) => e.id));
+}
+
 // Llamada programada: se pone a una persona del grupo libre a esa hora (la que menos
 // tenga ese día) y el lead queda a su nombre, en «Volver a llamar» a esa hora.
 async function bookCall(input: Record<string, string>, clientId: string, conversationId: string, pool: Calendar[]) {
@@ -392,6 +411,8 @@ async function bookCall(input: Record<string, string>, clientId: string, convers
     throw new Error("Fecha AAAA-MM-DD y hora HH:MM");
   }
   const hora = input.hora.padStart(5, "0");
+  const already = (await bookingsOf(conversationId)).find((e) => new Date(e.starts_at).getTime() === madridAt(input.fecha, hora).getTime());
+  if (already) return `Esa llamada YA está programada para el ${whenEs(new Date(already.starts_at))}. No la repitas: confírmasela a la persona una sola vez.`;
   const dayStart = madridMidnight(input.fecha);
   const { data: busy, error } = await db.from("calendar_events").select("calendar_id, starts_at, ends_at, all_day")
     .in("calendar_id", pool.map((c) => c.id)).lt("starts_at", new Date(dayStart.getTime() + 26 * 3_600_000).toISOString())
@@ -416,6 +437,7 @@ async function bookCall(input: Record<string, string>, clientId: string, convers
     const when = new Intl.DateTimeFormat("es-ES", {
       timeZone: "Europe/Madrid", weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
     }).format(start);
+    await dropOldBookings(conversationId, id);
     // El lead de esta conversación (o uno nuevo) queda a nombre de quien llamará.
     const reason = `Llamar el ${when}: ${input.motivo}`;
     const { data: existing } = await db.from("leads").select("id").eq("conversation_id", conversationId)
@@ -615,8 +637,18 @@ Deno.serve(async (req) => {
       text: todayBlock(),
     }];
 
+    const madeBookings = await bookingsOf(conversationId);
+    if (madeBookings.length) {
+      system.push({
+        type: "text",
+        text: "YA RESERVADO en esta conversación (ya lo hiciste con reservar_cita en un mensaje anterior): " +
+          madeBookings.map((e) => `${e.title} el ${whenEs(new Date(e.starts_at))}`).join("; ") +
+          ". Está hecho y confirmado: NO lo vuelvas a reservar ni lo repitas, no te disculpes ni digas que «antes no estaba guardado». " +
+          "Solo si la persona pide cambiar la hora, reserva la nueva.",
+      });
+    }
     let text = "";
-    const done = new Set<string>();
+    const done = new Set<string>(madeBookings.length ? ["reservar_cita"] : []);
     let nudged = false;
     let forceTool = false;
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {

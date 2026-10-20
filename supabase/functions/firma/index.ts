@@ -45,7 +45,7 @@ function madrid(d: Date) {
 async function load(token: string) {
   if (!/^[0-9a-f]{32,64}$/.test(token)) return null;
   const { data } = await db.from("signature_requests")
-    .select("*, clients(id, name, contact_name, contact_email, contact_email_alt, contact_phone), client_documents!signature_requests_document_id_fkey(id, name, storage_path)")
+    .select("*, clients(id, name, contact_name, contact_email, contact_email_alt, contact_phone), client_documents!signature_requests_document_id_fkey(id, name, storage_path, kind)")
     .eq("token", token).maybeSingle();
   return data;
 }
@@ -53,7 +53,7 @@ async function load(token: string) {
 async function getInfo(token: string) {
   const r = await load(token);
   if (!r || r.status === "cancelled") return json({ error: "Este enlace no es válido. Pide a EBM uno nuevo." }, 404);
-  const base = { client: r.clients?.name ?? "", document: r.client_documents?.name ?? "Propuesta" };
+  const base = { client: r.clients?.name ?? "", document: r.client_documents?.name ?? "Propuesta", kind: r.client_documents?.kind === "contrato" ? "contrato" : "propuesta" };
   if (r.status === "signed") return json({ ...base, status: "signed", signed_at: r.signed_at, signer_name: r.signer_name });
   if (new Date(r.expires_at) < new Date()) return json({ error: "Este enlace ha caducado. Pide a EBM uno nuevo." }, 410);
   const { data: url } = await db.storage.from(BUCKET).createSignedUrl(r.client_documents.storage_path, 3600);
@@ -97,10 +97,14 @@ async function acceptancePage(original: Uint8Array, d: Record<string, string>, p
   };
 
   page.drawRectangle({ x: 0, y: height - 6, width, height: 6, color: blue });
-  write("Aceptación de la propuesta", 20, bold, navy, 8);
+  const isC = d.kind === "contrato";
+  write(isC ? "Firma del contrato" : "Aceptación de la propuesta", 20, bold, navy, 8);
   write(`${d.document} · ${d.client}`, 11, font, soft, 4);
   y -= 14;
-  write(`${d.signer_name}, con DNI/NIE ${d.signer_nif}${d.signer_role ? `, como ${d.signer_role}` : ""}${d.company_name ? ` de ${d.company_name}` : ""}${d.company_cif ? ` (CIF ${d.company_cif})` : ""}, declara que ha leído la propuesta de las páginas anteriores y acepta sus condiciones, precios y servicios tal y como figuran en ella. EBM Agencia IA (Ernesto Bermejo, NIF 47498439N) se compromete a prestarlos en esas mismas condiciones.`, 11, font, navy, 5);
+  const who = `${d.signer_name}, con DNI/NIE ${d.signer_nif}${d.signer_role ? `, como ${d.signer_role}` : ""}${d.company_name ? ` de ${d.company_name}` : ""}${d.company_cif ? ` (CIF ${d.company_cif})` : ""}`;
+  write(isC
+    ? `${who}, declara que ha leído el contrato y sus anexos de las páginas anteriores y los acepta íntegramente: las condiciones del servicio, el encargo del tratamiento de datos personales (Anexo II), el detalle de dónde se guardan los datos y los proveedores que intervienen (Anexo III), las medidas de seguridad (Anexo IV) y la confidencialidad. EBM Agencia IA (Ernesto Bermejo, NIF 47498439N) acepta el contrato y se obliga a cumplirlo como proveedor y encargado del tratamiento.`
+    : `${who}, declara que ha leído la propuesta de las páginas anteriores y acepta sus condiciones, precios y servicios tal y como figuran en ella. EBM Agencia IA (Ernesto Bermejo, NIF 47498439N) se compromete a prestarlos en esas mismas condiciones.`, 11, font, navy, 5);
   y -= 16;
 
   const rows: [string, string][] = [
@@ -139,7 +143,8 @@ async function acceptancePage(original: Uint8Array, d: Record<string, string>, p
 
   write("Evidencias de la firma electrónica", 9.5, bold, soft, 4);
   write(`Firmado desde el enlace personal enviado por EBM Agencia IA. IP: ${d.ip || "desconocida"}. Navegador: ${d.user_agent || "desconocido"}.`, 8.5, font, soft, 3);
-  write(`Huella SHA-256 de la propuesta original: ${d.doc_sha256}`, 8.5, font, soft, 3);
+  write(`Huella SHA-256 del documento original: ${d.doc_sha256}`, 8.5, font, soft, 3);
+  write("Datos de esta hoja: el responsable es Ernesto Bermejo (NIF 47498439N). Se usan para acreditar la firma y gestionar el contrato. Derechos y más información: ebermejo@ebmagenciaia.es y ebmagenciaia.es/privacidad.html.", 8, font, soft, 3);
   write("EBM Agencia IA · Ernesto Bermejo · NIF 47498439N · ebmagenciaia.es", 8.5, font, soft, 3);
 
   pdf.setTitle(pdfText(`${d.document} (firmada)`));
@@ -161,7 +166,7 @@ async function sign(req: Request, body: Record<string, unknown>) {
   };
   if (!d.signer_name || !d.signer_nif || !d.typed_name) return json({ error: "Faltan tu nombre, tu DNI o el nombre bajo la firma." }, 400);
   if (d.signer_email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.signer_email)) return json({ error: "El correo no parece correcto." }, 400);
-  if (body.accept !== true) return json({ error: "Tienes que marcar que aceptas la propuesta." }, 400);
+  if (body.accept !== true) return json({ error: "Tienes que marcar que aceptas el documento." }, 400);
   const sig = String(body.signature_png ?? "");
   const m = sig.match(/^data:image\/png;base64,([A-Za-z0-9+/=]+)$/);
   if (!m || sig.length > 600_000) return json({ error: "Falta la firma." }, 400);
@@ -174,7 +179,7 @@ async function sign(req: Request, body: Record<string, unknown>) {
 
   try {
     const { data: blob, error } = await db.storage.from(BUCKET).download(r.client_documents.storage_path);
-    if (error || !blob) throw new Error("No se pudo leer la propuesta.");
+    if (error || !blob) throw new Error("No se pudo leer el documento.");
     const original = new Uint8Array(await blob.arrayBuffer());
     const docSha = await sha256(original);
     const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
@@ -185,7 +190,7 @@ async function sign(req: Request, body: Record<string, unknown>) {
     const ebmPng = ebm ? Uint8Array.from(atob(ebm[1]), (c) => c.charCodeAt(0)) : null;
     const signed = await acceptancePage(original, {
       ...d, ip, user_agent: ua, when, doc_sha256: docSha,
-      document: r.client_documents.name, client: r.clients?.name ?? "",
+      document: r.client_documents.name, client: r.clients?.name ?? "", kind: r.client_documents.kind === "contrato" ? "contrato" : "propuesta",
     }, png, ebmPng);
 
     const name = `${r.client_documents.name} (firmada)`;
@@ -219,16 +224,17 @@ async function sign(req: Request, body: Record<string, unknown>) {
 
     // Correos: aviso a EBM y copia a quien firma, los dos con el PDF firmado.
     const hello = d.signer_name.split(" ")[0];
+    const isContract = r.client_documents.kind === "contrato";
     await db.from("outgoing_mail").insert([
       {
         account: "ebermejo", mode: "send", to_addr: NOTIFY_TO, client_id: r.client_id, document_ids: [doc.id],
-        subject: `Propuesta firmada: ${r.clients?.name ?? ""}`,
+        subject: `${isContract ? "Contrato firmado" : "Propuesta firmada"}: ${r.clients?.name ?? ""}`,
         body_html: `<p><b>${esc(d.signer_name)}</b>${d.signer_role ? ` (${esc(d.signer_role)})` : ""} ha firmado «${esc(r.client_documents.name)}» de <b>${esc(r.clients?.name ?? "")}</b> el ${esc(when)}.</p><p>Te adjunto el PDF firmado. Ya está en el panel (Documentos del cliente)${driveId ? " y en Google Drive, en la carpeta del cliente › Contratos" : `. No se pudo subir a Google Drive: ${esc(driveError ?? "")}`}.</p>`,
       },
       ...(d.signer_email ? [{
         account: "ebermejo", mode: "send", to_addr: [d.signer_email], client_id: r.client_id, document_ids: [doc.id],
-        subject: `Propuesta aceptada · EBM Agencia IA`,
-        body_html: `<p>Hola, ${esc(hello)}:</p><p>Muchas gracias por la confianza. Te adjunto la propuesta con tu firma para que la tengas guardada.</p><p>En breve me pongo en contacto contigo para empezar.</p><p>Un saludo,</p>`,
+        subject: `${isContract ? "Contrato firmado" : "Propuesta aceptada"} · EBM Agencia IA`,
+        body_html: `<p>Hola, ${esc(hello)}:</p><p>Muchas gracias por la confianza. Te adjunto ${isContract ? "el contrato" : "la propuesta"} con tu firma para que lo tengas guardado.</p><p>En breve me pongo en contacto contigo para empezar.</p><p>Un saludo,</p>`,
       }] : []),
     ]);
     return json({ ok: true });

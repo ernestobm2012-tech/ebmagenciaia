@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Firmar la propuesta · EBM Agencia IA</title>
+  <title>Firmar · EBM Agencia IA</title>
   <meta name="robots" content="noindex, nofollow">
   <meta name="referrer" content="no-referrer">
   <link rel="icon" href="/favicon.ico" sizes="48x48">
@@ -37,7 +37,7 @@
   </header>
 
   <main class="wrap sign">
-    <section id="loading" class="state"><p>Cargando la propuesta…</p></section>
+    <section id="loading" class="state"><p>Cargando…</p></section>
 
     <section id="invalid" class="state" hidden>
       <h2>No podemos abrir este enlace</h2>
@@ -45,13 +45,13 @@
     </section>
 
     <section id="signed" class="state" hidden>
-      <h2>Propuesta firmada</h2>
+      <h2 id="signedH">Documento firmado</h2>
       <p id="signedText">Muchas gracias. Hemos recibido tu firma y te llegará una copia por correo.</p>
     </section>
 
     <section id="formState" hidden>
-      <h1>Aceptar la propuesta</h1>
-      <p class="lead">Revisa la propuesta y, si estás de acuerdo, rellena tus datos y firma con el dedo o el ratón.</p>
+      <h1 id="h1">Aceptar la propuesta</h1>
+      <p class="lead" id="leadTxt">Revisa la propuesta y, si estás de acuerdo, rellena tus datos y firma con el dedo o el ratón.</p>
 
       <div class="doc">
         <div><b id="docName">Propuesta</b><span id="clientName"></span></div>
@@ -67,7 +67,7 @@
           <label class="field"><span>Cargo</span><input id="f_role" placeholder="Gerente, administrador…"></label>
           <label class="field"><span>Teléfono</span><input id="f_phone" type="tel" autocomplete="tel"></label>
         </div>
-        <label class="field"><span>Correo</span><input id="f_email" type="email" autocomplete="email"><small>Te mandamos aquí la propuesta firmada.</small></label>
+        <label class="field"><span>Correo</span><input id="f_email" type="email" autocomplete="email"><small id="mailHint">Te mandamos aquí la propuesta firmada.</small></label>
 
         <div class="field">
           <span>Firma</span>
@@ -76,8 +76,8 @@
         </div>
         <label class="field"><span>Nombre bajo la firma</span><input id="f_typed" required></label>
 
-        <label class="check"><input type="checkbox" id="f_accept"><span>He leído la propuesta y acepto sus condiciones, precios y servicios tal y como figuran en ella.</span></label>
-        <p class="fine">Al firmar guardamos tus datos, la firma, la fecha y hora, tu IP y tu navegador como prueba de la aceptación, y añadimos una hoja final a la propuesta con todo ello. Más información en la <a href="privacidad.html" target="_blank" rel="noopener">política de privacidad</a>.</p>
+        <label class="check"><input type="checkbox" id="f_accept"><span id="acceptTxt">He leído la propuesta y acepto sus condiciones, precios y servicios tal y como figuran en ella.</span></label>
+        <p class="fine">Al firmar guardamos tus datos, la firma, la fecha y hora, tu IP y tu navegador como prueba de la aceptación, y añadimos una hoja final al documento con todo ello. Más información en la <a href="privacidad.html" target="_blank" rel="noopener">política de privacidad</a>.</p>
         <button class="btn primary" id="submit" type="submit">Firmar y aceptar</button>
         <p class="form-note" id="note" role="status"></p>
       </form>
@@ -102,6 +102,17 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'No se ha podido conectar. Inténtalo otra vez.');
       return data;
+    }
+    // Textos según sea una propuesta o un contrato.
+    let W = { it: 'la propuesta', done: 'la propuesta firmada', Done: 'Propuesta firmada' };
+    function wording(kind) {
+      if (kind !== 'contrato') return;
+      W = { it: 'el contrato', done: 'el contrato firmado', Done: 'Contrato firmado' };
+      $('h1').textContent = 'Firmar el contrato';
+      $('leadTxt').textContent = 'Lee el contrato y sus anexos (incluido el encargo del tratamiento de datos personales) y, si estás de acuerdo, rellena tus datos y firma con el dedo o el ratón.';
+      $('pdfLink').textContent = 'Ver el contrato (PDF)';
+      $('mailHint').textContent = 'Te mandamos aquí el contrato firmado.';
+      $('acceptTxt').textContent = 'He leído el contrato y sus anexos y los acepto íntegramente, incluido el encargo del tratamiento de datos personales.';
     }
     const fmt = (iso) => new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso));
 
@@ -141,7 +152,9 @@
       if (!token) return show('invalid');
       try {
         const d = await call({ action: 'get' });
+        wording(d.kind);
         if (d.status === 'signed') {
+          $('signedH').textContent = W.Done;
           $('signedText').textContent = `${d.signer_name || 'Ya'} firmó «${d.document}» el ${fmt(d.signed_at)}. Muchas gracias.`;
           return show('signed');
         }
@@ -172,7 +185,7 @@
       if (!$('f_name').value.trim() || !$('f_nif').value.trim()) return (note.textContent = 'Pon tu nombre y tu DNI o NIE.');
       if (pad.isEmpty()) return (note.textContent = 'Dibuja tu firma en el recuadro.');
       if (!$('f_typed').value.trim()) return (note.textContent = 'Escribe tu nombre bajo la firma.');
-      if (!$('f_accept').checked) return (note.textContent = 'Marca la casilla para aceptar la propuesta.');
+      if (!$('f_accept').checked) return (note.textContent = `Marca la casilla para aceptar ${W.it}.`);
       note.className = 'form-note';
       note.textContent = 'Guardando la firma…';
       $('submit').disabled = true;
@@ -185,8 +198,9 @@
           typed_name: $('f_typed').value, signature_png: pad.toDataURL(), user_agent: navigator.userAgent,
         });
         $('signedText').textContent = $('f_email').value.trim()
-          ? 'Muchas gracias. Hemos recibido tu firma y te acabamos de mandar la propuesta firmada por correo.'
+          ? `Muchas gracias. Hemos recibido tu firma y te acabamos de mandar ${W.done} por correo.`
           : 'Muchas gracias. Hemos recibido tu firma.';
+        $('signedH').textContent = W.Done;
         show('signed');
         window.scrollTo(0, 0);
       } catch (err) {

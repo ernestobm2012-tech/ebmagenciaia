@@ -229,9 +229,12 @@ async function signDialog(doc, client, onChange) {
   onChange();
   const link = signLink(req);
   const hello = firstName(client?.contact_name);
+  const isContract = doc.kind === 'contrato';
   const label = docLabel(doc).toLowerCase().startsWith('propuesta') ? 'la propuesta' : `«${docLabel(doc)}»`;
   const text = h('textarea', { rows: 7 },
-    `Hola${hello ? `, ${hello}` : ''}. Si te parece bien ${label}, puedes aceptarla y firmarla aquí, desde el móvil o el ordenador:\n\n${link}\n\nEn cuanto la firmes te llega una copia por correo y nos ponemos en marcha.\n\nUn saludo,\nErnesto`);
+    isContract
+      ? `Hola${hello ? `, ${hello}` : ''}. Te paso ${label} para que lo leas y, si estás de acuerdo, lo firmes aquí, desde el móvil o el ordenador:\n\n${link}\n\nEn cuanto lo firmes te llega una copia por correo.\n\nUn saludo,\nErnesto`
+      : `Hola${hello ? `, ${hello}` : ''}. Si te parece bien ${label}, puedes aceptarla y firmarla aquí, desde el móvil o el ordenador:\n\n${link}\n\nEn cuanto la firmes te llega una copia por correo y nos ponemos en marcha.\n\nUn saludo,\nErnesto`);
   const phone = h('input', { type: 'tel', placeholder: '6XX XXX XXX', value: client?.contact_phone || '' });
   const to = h('input', { type: 'text', value: [client?.contact_email, client?.contact_email_alt].filter(Boolean).join(', ') });
   const error = h('p', { class: 'error' });
@@ -266,12 +269,12 @@ async function signDialog(doc, client, onChange) {
   }
 
   modal(`Pedir firma · ${doc.name}`, h('div', { class: 'form' },
-    h('p', { class: 'muted' }, 'El cliente abre el enlace, ve la propuesta, rellena sus datos y firma. El PDF firmado se guarda en Documentos y en tu Google Drive. El enlace dura 60 días.'),
+    h('p', { class: 'muted' }, 'El cliente abre el enlace, ve el documento, rellena sus datos y firma. El PDF firmado se guarda en Documentos y en tu Google Drive. El enlace dura 60 días.'),
     h('p', {}, h('code', { class: 'small sign-link' }, link), ' ', h('button', { class: 'btn link', type: 'button', onclick: () => copy(link) }, 'Copiar')),
     field('Mensaje', text),
     h('div', { class: 'grid2' },
       field('Teléfono (WhatsApp)', phone, 'Vacío: WhatsApp te deja elegir el contacto.'),
-      field('Correo', to, 'Varios, separados por comas. Sale de ebermejo@ con la propuesta adjunta.')),
+      field('Correo', to, 'Varios, separados por comas. Sale de ebermejo@ con el documento adjunto.')),
     error,
     h('div', { class: 'actions' },
       h('button', { class: 'btn primary', type: 'button', onclick: whatsapp }, 'Enviar por WhatsApp'), ' ', sendMail)));
@@ -426,7 +429,7 @@ export async function documentsTab(clientId) {
         h('button', { class: 'btn link', type: 'button', onclick: () => open(d, true) }, 'Descargar'), ' · ',
         h('button', { class: 'btn link', type: 'button', onclick: () => whatsappDialog(d, client) }, 'WhatsApp'), ' · ',
         h('button', { class: 'btn link', type: 'button', onclick: () => emailDialog(d, client) }, 'Correo'), ' · ',
-        d.kind === 'propuesta' ? [h('button', { class: 'btn link', type: 'button', onclick: () => signDialog(d, client, load) }, 'Pedir firma'), ' · '] : null,
+        (d.kind === 'propuesta' || (d.kind === 'contrato' && !/\(firmad[ao]\)\s*$/i.test(d.name))) ? [h('button', { class: 'btn link', type: 'button', onclick: () => signDialog(d, client, load) }, 'Pedir firma'), ' · '] : null,
         h('button', { class: 'btn link danger', type: 'button', onclick: () => remove(d) }, 'Borrar')) },
     ], docs, { empty: 'Todavía no hay documentos de este cliente.' }));
   }

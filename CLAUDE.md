@@ -8,6 +8,7 @@ Un hook de `.claude/settings.json` hace `git pull` al abrir la sesión y recuerd
 1. Al empezar: leer en Drive «Memoria de trabajo EBM» (carpeta `_Memoria`, id `1SBlvvLEqEmgxa_G5bPih7yV940sdtUNh`) y seguir desde lo pendiente.
 2. Después de cada tarea terminada o decisión nueva: actualizar esa memoria sin que Ernesto lo pida (una línea con fecha). Es la única forma de que otra sesión sepa qué se hizo.
 3. Cliente o propuesta nueva: carpeta en Drive y resumen, como se explica más abajo.
+4. Automático (20/10/2026, decisión de Ernesto): el hook `Stop` de `.claude/settings.json` (`.claude/hooks/memoria-al-dia.py`) no deja terminar la respuesta si en ese turno se cambió algo (archivos fuera del scratchpad, commits, SQL que modifica, despliegues, agentes de ElevenLabs) y no se ha guardado en Drive una versión nueva de «Memoria de trabajo EBM»; si además no se tocó CLAUDE.md, pide también apuntar lo técnico aquí. Avisa una sola vez por turno. Solo actúa en sesiones abiertas con este repositorio.
 
 ## Qué hay aquí
 

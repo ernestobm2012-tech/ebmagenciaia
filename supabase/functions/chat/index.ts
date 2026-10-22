@@ -654,7 +654,7 @@ Deno.serve(async (req) => {
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       const response = await anthropic.messages.create({
         model: agent.model, max_tokens: agent.max_output_tokens, system, tools, messages,
-        ...(forceTool ? { tool_choice: { type: "any" as const } } : {}),
+        // Sonnet 5.5 no admite tool_choice "any": el aviso interno de arriba basta (si no, el chat falla con 400).
       });
       forceTool = false;
       await db.from("usage_events").insert({

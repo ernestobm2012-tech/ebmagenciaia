@@ -9,7 +9,8 @@
 //   POST { action: "booking", token }  -> datos de una cita (enlace del cliente)
 //   POST { action: "cancel",  token }  -> la anula si aún hay tiempo
 // Cada persona del equipo reserva en su calendario (calendars.member_id) con su horario
-// (booking_hours) y su antelación mínima (booking_notice_minutes).
+// (booking_hours) y su antelación mínima (booking_notice_minutes). Si al cliente le da igual quién
+// le atienda, va primero su profesional habitual (customers.preferred_member_id).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -231,22 +232,27 @@ async function book(clientId: string, clientName: string, body: Record<string, u
   const start = madridAt(body.date, body.time);
   const end = new Date(start.getTime() + service.duration_minutes * 60_000);
   const dayBusy = await busyBetween(cals.map((c) => c.id), madridAt(body.date, "00:00"), madridAt(addDays(body.date, 1), "00:00"));
-  // Solo quien tiene ese hueco libre; si da igual la persona, primero quien tenga menos citas ese día.
-  const free = cals.filter((c) => freeStarts(c, body.date as string, service.duration_minutes, dayBusy).includes(body.time as string))
-    .sort((a, b) => dayBusy.filter((e) => e.calendar_id === a.id).length - dayBusy.filter((e) => e.calendar_id === b.id).length);
-  if (!free.length) return fail("Esa hora acaba de ocuparse. Elige otra, por favor.", 409);
 
   // Cliente del negocio: se reconoce por el teléfono.
-  let { data: customer } = await db.from("customers").select("id, email").eq("client_id", clientId).eq("phone", phone).maybeSingle();
+  const fields = "id, email, preferred_member_id";
+  let { data: customer } = await db.from("customers").select(fields).eq("client_id", clientId).eq("phone", phone).maybeSingle();
   if (!customer) {
     const { data, error } = await db.from("customers").insert({ client_id: clientId, name, phone, email: email || null })
-      .select("id, email").single();
+      .select(fields).single();
     if (error) {   // otra reserva del mismo teléfono a la vez
-      ({ data: customer } = await db.from("customers").select("id, email").eq("client_id", clientId).eq("phone", phone).maybeSingle());
+      ({ data: customer } = await db.from("customers").select(fields).eq("client_id", clientId).eq("phone", phone).maybeSingle());
     } else customer = data;
   } else if (email && !customer.email) {
     await db.from("customers").update({ email }).eq("id", customer.id);
   }
+
+  // Solo quien tiene ese hueco libre; si da igual la persona, primero su profesional habitual
+  // y luego quien tenga menos citas ese día.
+  const load = (c: Calendar) => dayBusy.filter((e) => e.calendar_id === c.id).length;
+  const usual = customer?.preferred_member_id;
+  const free = cals.filter((c) => freeStarts(c, body.date as string, service.duration_minutes, dayBusy).includes(body.time as string))
+    .sort((a, b) => Number(b.member_id === usual) - Number(a.member_id === usual) || load(a) - load(b));
+  if (!free.length) return fail("Esa hora acaba de ocuparse. Elige otra, por favor.", 409);
 
   const description = [`Teléfono: ${phone}`, email && `Correo: ${email}`, notes && `Notas: ${notes}`, "Reservada desde la web."]
     .filter(Boolean).join("\n");
@@ -260,6 +266,10 @@ async function book(clientId: string, clientName: string, body: Record<string, u
     const row = (data ?? [])[0];
     if (!row) continue;
     const member = team.members.find((m) => m.id === cal.member_id);
+    // Si eligió a una persona y aún no tiene habitual, queda como su habitual.
+    if (customer && !usual && isUuid(body.member_id)) {
+      await db.from("customers").update({ preferred_member_id: cal.member_id }).eq("id", customer.id);
+    }
     await notify("cita", row.id);
     return json({
       ok: true, token: row.manage_token, when: whenEs(start), service: service.name,

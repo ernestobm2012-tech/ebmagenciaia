@@ -45,6 +45,7 @@ Ernesto autorizó hacer commits directamente a `main` y publicar en GitHub Pages
 - El conector de Gmail está en ernestobm2012@gmail.com, pero el de Google Calendar de las herramientas de Claude sigue apuntando a mipqrincon@gmail.com (comprobado el 03/10/2026): no usarlo para probar la agenda de Ernesto.
 - `mi-pequeno-rincon` (agentes + web): agente "Claudia", color `#7C9A44`, a la izquierda, con consulta de disponibilidad (`agent_availability` en el proyecto de Supabase de MPR `ztsdkfwnqrlmsirfvoat`). Instalado en mipequenorincon.es (repo `Mi-peque-o-rincon`).
 - `palmo`: en modo demo. Agente **"Sara"** con avatar de IA, color `#00a3e0`, catálogo de 1.964 productos (`buscar_producto`) y avisos por departamento. Instalado en https://ernestobm2012-tech.github.io/palmo/ (repo `palmo`). Palmo es cliente directo y también partner/revendedor con su propia marca (`parent_client_id`, `brand_*`): sus clientes finales no deben ver EBM en ningún sitio.
+- `henko-peluqueria` (26/10/2026, modo demo): Henko Peluquería, Fuensalida (Toledo), Instagram @henkofuensalida. Quiere web con reservas online (hoy reserva por WhatsApp). Repo `ernestobm2012-tech/henko-peluqueria` (público, lo creó Ernesto: la integración de GitHub no puede crear repositorios, da 403). Carpeta de Drive `1CNc4lgrUocdc6s3k2OvyxlovZGYo22zh` (`drive_folder_id` puesto). Material de su Instagram (no legible desde la nube) en la subcarpeta Información. Para las reservas desde una web hace falta una función pública nueva que use `calendars` + `book_appointment` (hoy solo reserva el chat).
 
 ## Pendiente
 

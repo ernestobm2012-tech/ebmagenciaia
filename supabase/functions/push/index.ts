@@ -4,7 +4,8 @@
 //   POST ?action=unsubscribe   (usuario del panel) -> lo quita
 //   POST ?action=test          (usuario del panel) -> manda una prueba a sus móviles
 //   POST ?action=send {kind,id} (la base de datos) -> avisa de un contacto, un paso
-//                               a humano, un mensaje de la web o un error
+//                               a humano, un mensaje de la web, un error o una cita de la
+//                               web de un negocio (cita / cita_anulada, desde la función reservas)
 //   POST ?action=digest        (cron, cada tarde) -> resumen del día a los administradores
 //   POST ?action=digest-test   (usuario del panel) -> manda el resumen de hoy solo a sus móviles
 //   POST ?action=followups     (cron, cada 10 min) -> «toca volver a llamar»: push y correo a quien
@@ -91,7 +92,8 @@ async function recipients(client: { id: string; status: string; parent_client_id
 const short = (s: unknown, n: number) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
 async function send(kind: string, id: string) {
-  if (!["lead", "handoff", "contact", "error"].includes(kind) || typeof id !== "string") return { error: "invalid_request" };
+  if (!["lead", "handoff", "contact", "error", "cita", "cita_anulada"].includes(kind) || typeof id !== "string") return { error: "invalid_request" };
+  if (kind === "cita" || kind === "cita_anulada") return await appointment(kind, id);
   const table = { lead: "leads", handoff: "handoffs", contact: "contact_messages", error: "error_log" }[kind]!;
   const { data: row } = await db.from(table).select("*").eq("id", id).maybeSingle();
   if (!row) return { skipped: "not_found" };
@@ -124,6 +126,32 @@ async function send(kind: string, id: string) {
     ? ((await db.from("push_subscriptions").select("id, user_id, endpoint, p256dh, auth").in("user_id", await adminIds())).data ?? []) as Sub[]
     : await recipients(client);
   return { sent: await deliver(subs, payload) };
+}
+
+// Cita reservada (o anulada) por un cliente desde la web del negocio (función reservas).
+// El aviso abre el panel propio del negocio si lo tiene (site_settings.data.admin_url).
+async function appointment(kind: string, id: string) {
+  const { data: ev } = await db.from("calendar_events")
+    .select("id, client_id, title, starts_at, calendars(team_members(name))").eq("id", id).maybeSingle();
+  if (!ev) return { skipped: "not_found" };
+  const key = `${kind}:${id}`;
+  const { data: prev } = await db.from("push_log").select("sent_at").eq("key", key).maybeSingle();
+  if (prev) return { skipped: "duplicate" };
+  await db.from("push_log").upsert({ key, sent_at: new Date().toISOString() });
+
+  const [{ data: client }, { data: site }] = await Promise.all([
+    db.from("clients").select("id, name, status, parent_client_id").eq("id", ev.client_id).maybeSingle(),
+    db.from("site_settings").select("data").eq("client_id", ev.client_id).maybeSingle(),
+  ]);
+  const demo = client?.status === "demo" ? "[DEMO] " : "";
+  const who = (ev.calendars as { team_members?: { name?: string } } | null)?.team_members?.name;
+  const url = typeof site?.data?.admin_url === "string" ? site.data.admin_url : `${PANEL_URL}#/calendarios`;
+  const payload: Payload = {
+    title: `${demo}${kind === "cita" ? "Nueva cita" : "Cita anulada"}${client?.name ? ` · ${client.name}` : ""}`,
+    body: short(`${timeFmt.format(new Date(ev.starts_at))}${who ? ` con ${who}` : ""} · ${ev.title}`, 140),
+    url, tag: key,
+  };
+  return { sent: await deliver(await recipients(client), payload) };
 }
 
 // ---- Resumen diario: cuántas conversaciones, llamadas, contactos y avisos ha habido hoy.

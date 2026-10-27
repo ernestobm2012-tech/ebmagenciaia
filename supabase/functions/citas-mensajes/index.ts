@@ -3,6 +3,7 @@
 // respuesta va al correo del negocio. Cada envío queda en message_log (así no se repite).
 //   POST { action: "confirm", event_id }        -> confirmación al reservar (la llama reservas)
 //   POST { action: "waitlist", client_id, day } -> «se ha liberado un hueco» (trigger al borrar una cita)
+//   POST { action: "gift", gift_id }             -> tarjeta regalo reservada en la web (se paga en el salón)
 //   POST ?action=cron                            -> cada hora: recordatorio del día antes, petición de
 //                                                   reseña, «te echamos de menos» y cumpleaños
 // Lo que se manda se decide en site_settings.data.messages del negocio:
@@ -166,6 +167,26 @@ async function waitlist(clientId: unknown, day: unknown) {
         button: link ? { text: "Reservar ahora", href: link } : undefined,
       }))) sent++;
   }
+  return json({ ok: true, sent });
+}
+
+// ---- Tarjeta regalo reservada: se paga y se recoge en el salón
+async function gift(giftId: unknown) {
+  if (!isUuid(giftId)) return json({ error: "Falta la tarjeta" }, 400);
+  const { data: g } = await db.from("gift_cards").select("id, client_id, code, amount, buyer_name, buyer_email, recipient_name").eq("id", giftId).maybeSingle();
+  if (!g || !okEmail(g.buyer_email)) return json({ ok: true, sent: false });
+  const b = await business(g.client_id);
+  if (!b) return json({ ok: true, sent: false });
+  const amount = `${Number(g.amount).toLocaleString("es-ES")} €`;
+  const sent = await send(b, { event_id: g.id, kind: "gift" }, g.buyer_email,
+    `Tu tarjeta regalo de ${brandName(b)} (${amount}) está reservada`,
+    layout(b, {
+      title: `¡Qué buen regalo, ${first(g.buyer_name)}!`,
+      body: `<p style="margin:0 0 10px">Hemos reservado tu tarjeta regalo${g.recipient_name ? ` para <b>${esc(g.recipient_name)}</b>` : ""} de <b>${esc(amount)}</b>.</p>
+        <p style="text-align:center;margin:12px 0"><span style="display:inline-block;border:2px dashed ${esc(b.settings.brand_color || "#684C33")};padding:8px 18px;border-radius:8px;font-size:20px;letter-spacing:.12em"><b>${esc(g.code)}</b></span></p>
+        <p style="margin:0 0 10px">Pásate por el salón cuando te venga bien para pagarla y te la damos preparada. Solo tienes que decirnos tu nombre o este código.</p>
+        ${b.settings.address ? `<p style="margin:0">Estamos en ${esc(b.settings.address)}.</p>` : ""}`,
+    }));
   return json({ ok: true, sent });
 }
 
@@ -335,6 +356,7 @@ Deno.serve(async (req) => {
     const a = action || body.action;
     if (a === "confirm") return await confirm(body.event_id);
     if (a === "waitlist") return await waitlist(body.client_id, body.day);
+    if (a === "gift") return await gift(body.gift_id);
     if (a === "cron") return await cron();
     return json({ error: "Acción no válida" }, 400);
   } catch (err) {

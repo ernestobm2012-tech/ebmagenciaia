@@ -5,7 +5,7 @@
 //   POST ?action=test          (usuario del panel) -> manda una prueba a sus móviles
 //   POST ?action=send {kind,id} (la base de datos) -> avisa de un contacto, un paso
 //                               a humano, un mensaje de la web, un error o una cita de la
-//                               web de un negocio (cita / cita_anulada, desde la función reservas)
+//                               web de un negocio (cita / cita_anulada / regalo, desde la función reservas)
 //   POST ?action=digest        (cron, cada tarde) -> resumen del día a los administradores
 //   POST ?action=digest-test   (usuario del panel) -> manda el resumen de hoy solo a sus móviles
 //   POST ?action=followups     (cron, cada 10 min) -> «toca volver a llamar»: push y correo a quien
@@ -92,8 +92,9 @@ async function recipients(client: { id: string; status: string; parent_client_id
 const short = (s: unknown, n: number) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
 async function send(kind: string, id: string) {
-  if (!["lead", "handoff", "contact", "error", "cita", "cita_anulada"].includes(kind) || typeof id !== "string") return { error: "invalid_request" };
+  if (!["lead", "handoff", "contact", "error", "cita", "cita_anulada", "regalo"].includes(kind) || typeof id !== "string") return { error: "invalid_request" };
   if (kind === "cita" || kind === "cita_anulada") return await appointment(kind, id);
+  if (kind === "regalo") return await giftCard(id);
   const table = { lead: "leads", handoff: "handoffs", contact: "contact_messages", error: "error_log" }[kind]!;
   const { data: row } = await db.from(table).select("*").eq("id", id).maybeSingle();
   if (!row) return { skipped: "not_found" };
@@ -149,6 +150,28 @@ async function appointment(kind: string, id: string) {
   const payload: Payload = {
     title: `${demo}${kind === "cita" ? "Nueva cita" : "Cita anulada"}${client?.name ? ` · ${client.name}` : ""}`,
     body: short(`${timeFmt.format(new Date(ev.starts_at))}${who ? ` con ${who}` : ""} · ${ev.title}`, 140),
+    url, tag: key,
+  };
+  return { sent: await deliver(await recipients(client), payload) };
+}
+
+// Tarjeta regalo reservada en la web del negocio (se paga en el salón).
+async function giftCard(id: string) {
+  const { data: g } = await db.from("gift_cards").select("id, client_id, amount, buyer_name, recipient_name").eq("id", id).maybeSingle();
+  if (!g) return { skipped: "not_found" };
+  const key = `regalo:${id}`;
+  const { data: prev } = await db.from("push_log").select("sent_at").eq("key", key).maybeSingle();
+  if (prev) return { skipped: "duplicate" };
+  await db.from("push_log").upsert({ key, sent_at: new Date().toISOString() });
+  const [{ data: client }, { data: site }] = await Promise.all([
+    db.from("clients").select("id, name, status, parent_client_id").eq("id", g.client_id).maybeSingle(),
+    db.from("site_settings").select("data").eq("client_id", g.client_id).maybeSingle(),
+  ]);
+  const demo = client?.status === "demo" ? "[DEMO] " : "";
+  const url = typeof site?.data?.admin_url === "string" ? `${site.data.admin_url}#cupones` : PANEL_URL;
+  const payload: Payload = {
+    title: `${demo}Tarjeta regalo reservada${client?.name ? ` · ${client.name}` : ""}`,
+    body: short(`${Number(g.amount).toLocaleString("es-ES")} € · ${g.buyer_name}${g.recipient_name ? ` para ${g.recipient_name}` : ""}. Pasará a pagarla.`, 140),
     url, tag: key,
   };
   return { sent: await deliver(await recipients(client), payload) };

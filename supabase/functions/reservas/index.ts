@@ -10,6 +10,8 @@
 //   POST { action: "coupon",  client, code, service_id, phone? } -> comprueba un cupón
 //   POST { action: "waitlist", client, service_id, member_id?, day, name, phone, email }
 //        -> lista de espera de un día sin huecos (se avisa por correo si alguien anula)
+//   POST { action: "gift", client, amount, recipient_name?, message?, name, phone, email? }
+//        -> reserva una tarjeta regalo (se paga en el salón; devuelve el código)
 //   POST { action: "booking", token }  -> datos de una cita (enlace del cliente)
 //   POST { action: "cancel",  token }  -> la anula si aún hay tiempo
 //   POST { action: "unsubscribe", token } -> deja de recibir ofertas (enlace de los correos)
@@ -297,6 +299,48 @@ async function joinWaitlist(clientId: string, body: Record<string, unknown>, req
   return json({ ok: true });
 }
 
+// Tarjeta regalo: se reserva aquí y se paga en el salón.
+const GIFT_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+async function reserveGift(clientId: string, clientName: string, body: Record<string, unknown>, req: Request) {
+  if (clean(body.website, 10)) return fail("No se ha podido reservar.");
+  const settings = await settingsOf(clientId);
+  const gift = (settings.gift_card ?? {}) as { amounts?: number[]; prefix?: string; min?: number; max?: number };
+  const amount = Math.round(Number(body.amount) * 100) / 100;
+  const min = Number(gift.min) || 10, max = Number(gift.max) || 300;
+  if (!Number.isFinite(amount) || (!(gift.amounts ?? []).includes(amount) && (amount < min || amount > max))) {
+    return fail(`Elige un importe entre ${min} y ${max} €.`);
+  }
+  const name = clean(body.name, 80), email = clean(body.email, 120).toLowerCase();
+  const digits = clean(body.phone, 30).replace(/[^\d+]/g, "");
+  const phone = digits.startsWith("+") ? digits : digits.replace(/^0034|^34(?=\d{9}$)/, "");
+  if (name.length < 2) return fail("Escribe tu nombre.");
+  if (!/^\+?\d{9,15}$/.test(phone) || (!phone.startsWith("+") && phone.length !== 9)) return fail("Revisa el teléfono: deben ser 9 cifras.");
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail("Revisa el correo.");
+  if (await tooMany(clientId, req, "regalo")) return fail("Has reservado varias tarjetas hoy. Llámanos o escríbenos por WhatsApp.", 429);
+  const prefix = (String(gift.prefix || clientName.split(/\s+/)[0] || "REGALO").normalize("NFD").replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 8)) || "REGALO";
+  for (let i = 0; i < 5; i++) {
+    const rnd = crypto.getRandomValues(new Uint8Array(5));
+    const code = `${prefix}-${[...rnd].map((b) => GIFT_CHARS[b % GIFT_CHARS.length]).join("")}`;
+    const { data, error } = await db.from("gift_cards").insert({
+      client_id: clientId, code, amount, balance: amount, buyer_name: name, buyer_phone: phone, buyer_email: email || null,
+      recipient_name: clean(body.recipient_name, 80) || null, message: clean(body.message, 300) || null,
+    }).select("id").single();
+    if (error?.code === "23505") continue;
+    if (error) throw error;
+    await Promise.all([notify("regalo", data.id), giftMail(data.id)]);
+    return json({ ok: true, code, amount, email_sent: !!email });
+  }
+  throw new Error("No se pudo generar el código de la tarjeta");
+}
+
+async function giftMail(id: string) {
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/citas-mensajes?action=gift`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gift_id: id }),
+    });
+  } catch { /* sin correo */ }
+}
+
 async function book(clientId: string, clientName: string, body: Record<string, unknown>, req: Request) {
   if (clean(body.website, 10)) return fail("No se ha podido reservar.");   // campo trampa para robots
   const name = clean(body.name, 80);
@@ -461,6 +505,7 @@ Deno.serve(async (req) => {
     if (body.action === "slots") return await slots(client.id, body);
     if (body.action === "book") return await book(client.id, client.name, body, req);
     if (body.action === "coupon") return await coupon(client.id, body);
+    if (body.action === "gift") return await reserveGift(client.id, client.name, body, req);
     if (body.action === "waitlist") return await joinWaitlist(client.id, body, req);
     return fail("Acción no válida");
   } catch (err) {

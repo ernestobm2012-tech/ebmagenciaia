@@ -35,11 +35,20 @@ Deno.serve(async (req) => {
   const ua = req.headers.get("user-agent") ?? "";
   if (!ua || BOT.test(ua)) return ok();
 
-  let body: { p?: unknown; r?: unknown } = {};
+  let body: { p?: unknown; r?: unknown; c?: unknown } = {};
   try { body = JSON.parse(await req.text()); } catch { return ok(); }
   let path = typeof body.p === "string" ? body.p.split("?")[0].split("#")[0].slice(0, 200) : "";
   if (!path.startsWith("/") || path.startsWith("/admin")) return ok();
   path = path.replace(/index\.html$/, "") || "/";
+
+  // Webs de clientes (p. ej. Henko): c = slug del negocio; sin c, es la web de EBM.
+  let clientId: string | null = null;
+  if (typeof body.c === "string" && body.c) {
+    if (!/^[a-z0-9-]{2,60}$/.test(body.c)) return ok();
+    const { data } = await db.from("clients").select("id").eq("slug", body.c).maybeSingle();
+    if (!data) return ok();
+    clientId = data.id;
+  }
 
   let referrer: string | null = null;
   if (typeof body.r === "string" && body.r) {
@@ -52,10 +61,10 @@ Deno.serve(async (req) => {
 
   const day = madridDay();
   const ip = (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "desconocida";
-  const visitor = await hmac(`web|${day}|${ip}|${ua}`);
+  const visitor = await hmac(`web|${typeof body.c === "string" ? body.c : ""}|${day}|${ip}|${ua}`);
 
   const { count } = await db.from("web_visits").select("id", { count: "exact", head: true }).eq("day", day).eq("visitor", visitor);
   if ((count ?? 0) >= MAX_PER_VISITOR_DAY) return ok();
-  await db.from("web_visits").insert({ day, path, visitor, referrer, device });
+  await db.from("web_visits").insert({ day, path, visitor, referrer, device, client_id: clientId });
   return ok();
 });

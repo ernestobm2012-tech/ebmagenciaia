@@ -6,8 +6,13 @@
 //        -> horas libres de cada día y quién puede a esa hora
 //   POST { action: "book",    client, service_id, member_id?, date, time, name, phone, email?, notes? }
 //        -> crea la cita en el calendario de la persona (o de quien esté libre)
+//        (+ coupon?, marketing? = acepta recibir ofertas por correo)
+//   POST { action: "coupon",  client, code, service_id, phone? } -> comprueba un cupón
+//   POST { action: "waitlist", client, service_id, member_id?, day, name, phone, email }
+//        -> lista de espera de un día sin huecos (se avisa por correo si alguien anula)
 //   POST { action: "booking", token }  -> datos de una cita (enlace del cliente)
 //   POST { action: "cancel",  token }  -> la anula si aún hay tiempo
+//   POST { action: "unsubscribe", token } -> deja de recibir ofertas (enlace de los correos)
 // Cada persona del equipo reserva en su calendario (calendars.member_id) con su horario
 // (booking_hours) y su antelación mínima (booking_notice_minutes). Si al cliente le da igual quién
 // le atienda, va primero su profesional habitual (customers.preferred_member_id).
@@ -162,8 +167,13 @@ async function info(clientId: string) {
     db.from("site_media").select("id, kind, storage_path, youtube_id, title, category")
       .eq("client_id", clientId).eq("published", true).order("sort").order("created_at", { ascending: false }),
   ]);
+  const today = madridToday();
+  const { data: promos } = await db.from("coupons").select("code, title, kind, value, service_ids, valid_until, new_customers_only")
+    .eq("client_id", clientId).eq("active", true).eq("show_on_web", true)
+    .or(`valid_until.is.null,valid_until.gte.${today}`).or(`valid_from.is.null,valid_from.lte.${today}`);
   return {
     settings,
+    promos: promos ?? [],
     services: services ?? [],
     team: team.members.map((m) => ({ ...m, bookable: team.byMember.has(m.id) })),
     media: (media ?? []).map((m) => ({
@@ -198,6 +208,95 @@ async function slots(clientId: string, body: Record<string, unknown>) {
   });
 }
 
+type Coupon = {
+  id: string; code: string; kind: "percent" | "fixed"; value: number; service_ids: string[];
+  valid_from: string | null; valid_until: string | null; max_uses: number | null;
+  once_per_customer: boolean; new_customers_only: boolean; active: boolean;
+};
+const couponText = (c: Coupon) => c.kind === "percent"
+  ? `${Number(c.value).toLocaleString("es-ES")} % de descuento` : `${Number(c.value).toLocaleString("es-ES")} € de descuento`;
+const discountOf = (c: Coupon, price: number | null) => price == null ? null
+  : Math.min(price, c.kind === "percent" ? Math.round(price * c.value) / 100 : Number(c.value));
+
+// Comprueba un cupón para un servicio (y una clienta, si ya se sabe quién es).
+async function checkCoupon(clientId: string, raw: unknown, service: Service, customerId: string | null) {
+  const code = clean(raw, 20).toUpperCase().replace(/\s/g, "");
+  if (!code) return { coupon: null };
+  const { data } = await db.from("coupons").select("*").eq("client_id", clientId).eq("code", code).maybeSingle();
+  const c = data as Coupon | null;
+  const today = madridToday();
+  if (!c || !c.active) return { error: "Ese código no existe o ya no está activo." };
+  if (c.valid_from && c.valid_from > today) return { error: "Ese código aún no se puede usar." };
+  if (c.valid_until && c.valid_until < today) return { error: "Ese código ya ha caducado." };
+  if (c.service_ids?.length && !c.service_ids.includes(service.id)) return { error: "Ese código no vale para este servicio." };
+  if (c.max_uses) {
+    const { count } = await db.from("calendar_events").select("id", { count: "exact", head: true }).eq("coupon_id", c.id);
+    if ((count ?? 0) >= c.max_uses) return { error: "Ese código ya se ha agotado." };
+  }
+  if (customerId && c.once_per_customer) {
+    const { count } = await db.from("calendar_events").select("id", { count: "exact", head: true })
+      .eq("coupon_id", c.id).eq("customer_id", customerId);
+    if (count) return { error: "Ya has usado este código." };
+  }
+  if (customerId && c.new_customers_only) {
+    const { count } = await db.from("calendar_events").select("id", { count: "exact", head: true }).eq("customer_id", customerId);
+    if (count) return { error: "Este código es solo para la primera visita." };
+  }
+  return { coupon: c };
+}
+
+async function customerByPhone(clientId: string, raw: unknown) {
+  const digits = clean(raw, 30).replace(/[^\d+]/g, "");
+  const phone = digits.startsWith("+") ? digits : digits.replace(/^0034|^34(?=\d{9}$)/, "");
+  if (!/^\+?\d{9,15}$/.test(phone)) return null;
+  const { data } = await db.from("customers").select("id").eq("client_id", clientId).eq("phone", phone).maybeSingle();
+  return data?.id ?? null;
+}
+
+async function coupon(clientId: string, body: Record<string, unknown>) {
+  const service = await loadService(clientId, body.service_id);
+  if (!service) return fail("Elige primero el servicio.");
+  const r = await checkCoupon(clientId, body.code, service, await customerByPhone(clientId, body.phone));
+  if (r.error) return fail(r.error, 404);
+  if (!r.coupon) return fail("Escribe el código.");
+  return json({ ok: true, code: r.coupon.code, text: couponText(r.coupon), discount_eur: discountOf(r.coupon, service.price_eur) });
+}
+
+// Huella diaria del visitante para frenar abusos (reservas y lista de espera).
+async function tooMany(clientId: string, req: Request, kind: string) {
+  const ip = (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "?";
+  const visitor = await hmac(`${kind}|${madridToday()}|${ip}|${req.headers.get("user-agent") ?? ""}`);
+  const since = new Date(Date.now() - 86_400_000).toISOString();
+  const { count } = await db.from("web_booking_attempts").select("id", { count: "exact", head: true })
+    .eq("visitor", visitor).gte("created_at", since);
+  if ((count ?? 0) >= MAX_ATTEMPTS_PER_DAY) return true;
+  await db.from("web_booking_attempts").insert({ client_id: clientId, visitor });
+  return false;
+}
+
+async function joinWaitlist(clientId: string, body: Record<string, unknown>, req: Request) {
+  if (clean(body.website, 10)) return fail("No se ha podido apuntar.");
+  const name = clean(body.name, 80), email = clean(body.email, 120).toLowerCase();
+  const digits = clean(body.phone, 30).replace(/[^\d+]/g, "");
+  const phone = digits.startsWith("+") ? digits : digits.replace(/^0034|^34(?=\d{9}$)/, "");
+  if (name.length < 2) return fail("Escribe tu nombre.");
+  if (!/^\+?\d{9,15}$/.test(phone) || (!phone.startsWith("+") && phone.length !== 9)) return fail("Revisa el teléfono: deben ser 9 cifras.");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail("Déjanos un correo para poder avisarte.");
+  if (!isDay(body.day) || body.day < madridToday()) return fail("Elige un día.");
+  if (await tooMany(clientId, req, "espera")) return fail("Ya te has apuntado varias veces hoy. Escríbenos por WhatsApp.", 429);
+  const service = await loadService(clientId, body.service_id);
+  const { count } = await db.from("waitlist").select("id", { count: "exact", head: true })
+    .eq("client_id", clientId).eq("day", body.day).eq("phone", phone).is("notified_at", null);
+  if (!count) {
+    const { error } = await db.from("waitlist").insert({
+      client_id: clientId, day: body.day, name, phone, email,
+      service_id: service?.id ?? null, member_id: isUuid(body.member_id) ? body.member_id : null,
+    });
+    if (error) throw error;
+  }
+  return json({ ok: true });
+}
+
 async function book(clientId: string, clientName: string, body: Record<string, unknown>, req: Request) {
   if (clean(body.website, 10)) return fail("No se ha podido reservar.");   // campo trampa para robots
   const name = clean(body.name, 80);
@@ -213,13 +312,8 @@ async function book(clientId: string, clientName: string, body: Record<string, u
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail("Revisa el correo.");
   if (!isDay(body.date) || typeof body.time !== "string" || !/^\d{2}:\d{2}$/.test(body.time)) return fail("Elige día y hora.");
 
-  const ip = (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "?";
-  const visitor = await hmac(`reserva|${madridToday()}|${ip}|${req.headers.get("user-agent") ?? ""}`);
-  const since = new Date(Date.now() - 86_400_000).toISOString();
-  const { count } = await db.from("web_booking_attempts").select("id", { count: "exact", head: true })
-    .eq("visitor", visitor).gte("created_at", since);
-  if ((count ?? 0) >= MAX_ATTEMPTS_PER_DAY) return fail("Has hecho muchas reservas hoy. Llámanos o escríbenos por WhatsApp.", 429);
-  await db.from("web_booking_attempts").insert({ client_id: clientId, visitor });
+  if (await tooMany(clientId, req, "reserva")) return fail("Has hecho muchas reservas hoy. Llámanos o escríbenos por WhatsApp.", 429);
+  const marketing = body.marketing === true && !!email;
 
   const service = await loadService(clientId, body.service_id);
   if (!service || !service.bookable) return fail("Ese servicio no se puede reservar en la web.");
@@ -245,6 +339,14 @@ async function book(clientId: string, clientName: string, body: Record<string, u
   } else if (email && !customer.email) {
     await db.from("customers").update({ email }).eq("id", customer.id);
   }
+  if (customer && marketing) {
+    await db.from("customers").update({ marketing_ok: true, marketing_ok_at: new Date().toISOString(), ...(email ? { email } : {}) })
+      .eq("id", customer.id);
+  }
+
+  const promo = await checkCoupon(clientId, body.coupon, service, customer?.id ?? null);
+  if (promo.error) return fail(promo.error, 422);
+  const discount = promo.coupon ? discountOf(promo.coupon, service.price_eur) : null;
 
   // Solo quien tiene ese hueco libre; si da igual la persona, primero su profesional habitual
   // y luego quien tenga menos citas ese día.
@@ -254,13 +356,15 @@ async function book(clientId: string, clientName: string, body: Record<string, u
     .sort((a, b) => Number(b.member_id === usual) - Number(a.member_id === usual) || load(a) - load(b));
   if (!free.length) return fail("Esa hora acaba de ocuparse. Elige otra, por favor.", 409);
 
-  const description = [`Teléfono: ${phone}`, email && `Correo: ${email}`, notes && `Notas: ${notes}`, "Reservada desde la web."]
+  const description = [`Teléfono: ${phone}`, email && `Correo: ${email}`, notes && `Notas: ${notes}`,
+    promo.coupon && `Cupón: ${promo.coupon.code} (${couponText(promo.coupon)})`, "Reservada desde la web."]
     .filter(Boolean).join("\n");
   for (const cal of free) {
-    const { data, error } = await db.rpc("book_service", {
+    const { data, error } = await db.rpc("book_service_coupon", {
       p_calendar: cal.id, p_start: start.toISOString(), p_end: end.toISOString(),
       p_title: `${service.name} · ${name}`, p_description: description, p_service: service.id,
       p_customer: customer?.id ?? null, p_price: service.price_eur, p_type: cal.booking_type_id,
+      p_coupon: promo.coupon?.id ?? null, p_discount: discount,
     });
     if (error) throw error;
     const row = (data ?? [])[0];
@@ -270,10 +374,11 @@ async function book(clientId: string, clientName: string, body: Record<string, u
     if (customer && !usual && isUuid(body.member_id)) {
       await db.from("customers").update({ preferred_member_id: cal.member_id }).eq("id", customer.id);
     }
-    await notify("cita", row.id);
+    await Promise.all([notify("cita", row.id), confirmMail(row.id)]);
     return json({
       ok: true, token: row.manage_token, when: whenEs(start), service: service.name,
-      member: member?.name ?? null, business: clientName,
+      member: member?.name ?? null, business: clientName, email_sent: !!(email || customer?.email),
+      coupon: promo.coupon ? couponText(promo.coupon) : null,
     });
   }
   return fail("Esa hora acaba de ocuparse. Elige otra, por favor.", 409);
@@ -286,6 +391,15 @@ async function notify(kind: string, id: string) {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, id }),
     });
   } catch { /* sin aviso */ }
+}
+
+// Confirmación por correo (si dejó correo); si falla, la cita sigue hecha.
+async function confirmMail(id: string) {
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/citas-mensajes?action=confirm`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event_id: id }),
+    });
+  } catch { /* sin correo */ }
 }
 
 async function byToken(token: unknown) {
@@ -333,11 +447,21 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
+    if (body.action === "unsubscribe") {
+      if (typeof body.token !== "string" || !/^[0-9a-f]{36}$/.test(body.token)) return fail("Enlace no válido.", 404);
+      const { data } = await db.from("customers").update({ marketing_ok: false }).eq("unsub_token", body.token)
+        .select("name, clients(name)").maybeSingle();
+      if (!data) return fail("Enlace no válido.", 404);
+      return json({ ok: true, business: (data as any).clients?.name ?? null });
+    }
+
     const client = await loadClient(body.client);
     if (!client) return fail("Negocio no encontrado", 404);
     if (body.action === "info") return json(await info(client.id));
     if (body.action === "slots") return await slots(client.id, body);
     if (body.action === "book") return await book(client.id, client.name, body, req);
+    if (body.action === "coupon") return await coupon(client.id, body);
+    if (body.action === "waitlist") return await joinWaitlist(client.id, body, req);
     return fail("Acción no válida");
   } catch (err) {
     console.error(err);

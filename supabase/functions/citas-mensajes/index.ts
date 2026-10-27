@@ -75,6 +75,17 @@ function layout(b: Business, o: { title: string; body: string; button?: { text: 
 </div></body></html>`;
 }
 
+// Versión en texto plano del mismo correo: los correos que solo llevan HTML diseñado
+// tienen más papeletas de caer en «Promociones» de Gmail.
+function plainText(html: string) {
+  return html.replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<a [^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href, txt) => `${txt.replace(/<[^>]+>/g, "")}: ${href}`)
+    .replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div|h1|h2|tr|li)>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/[ \t]+/g, " ").replace(/ *\n */g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 async function send(b: Business, log: { customer_id?: string | null; event_id?: string | null; kind: string },
   to: string, subject: string, html: string) {
   // Reserva el envío antes de mandarlo: si otra pasada ya lo hizo, el índice único lo frena.
@@ -90,7 +101,7 @@ async function send(b: Business, log: { customer_id?: string | null; event_id?: 
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: `${brandName(b)} <${FROM_ADDRESS}>`, to: [to], subject, html,
+        from: `${brandName(b)} <${FROM_ADDRESS}>`, to: [to], subject, html, text: plainText(html),
         ...(b.settings.email ? { reply_to: b.settings.email } : {}),
       }),
     });

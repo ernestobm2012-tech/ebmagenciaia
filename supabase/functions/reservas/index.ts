@@ -41,6 +41,9 @@ const fail = (message: string, status = 400) => json({ error: message }, status)
 const isUuid = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v);
 const isDay = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const clean = (v: unknown, n: number) => typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "";
+// Teléfono: los españoles se guardan siempre con 9 cifras (sin +34 ni 0034), así la misma
+// clienta se reconoce aunque un día lo escriba con prefijo y otro sin él.
+const normPhone = (digits: string) => digits.replace(/^(\+34|0034|34)(?=\d{9}$)/, "");
 const mediaUrl = (path: string) => `${SUPABASE_URL}/storage/v1/object/public/site-media/${path}`;
 
 type Calendar = {
@@ -249,7 +252,7 @@ async function checkCoupon(clientId: string, raw: unknown, service: Service, cus
 
 async function customerByPhone(clientId: string, raw: unknown) {
   const digits = clean(raw, 30).replace(/[^\d+]/g, "");
-  const phone = digits.startsWith("+") ? digits : digits.replace(/^0034|^34(?=\d{9}$)/, "");
+  const phone = normPhone(digits);
   if (!/^\+?\d{9,15}$/.test(phone)) return null;
   const { data } = await db.from("customers").select("id").eq("client_id", clientId).eq("phone", phone).maybeSingle();
   return data?.id ?? null;
@@ -280,7 +283,7 @@ async function joinWaitlist(clientId: string, body: Record<string, unknown>, req
   if (clean(body.website, 10)) return fail("No se ha podido apuntar.");
   const name = clean(body.name, 80), email = clean(body.email, 120).toLowerCase();
   const digits = clean(body.phone, 30).replace(/[^\d+]/g, "");
-  const phone = digits.startsWith("+") ? digits : digits.replace(/^0034|^34(?=\d{9}$)/, "");
+  const phone = normPhone(digits);
   if (name.length < 2) return fail("Escribe tu nombre.");
   if (!/^\+?\d{9,15}$/.test(phone) || (!phone.startsWith("+") && phone.length !== 9)) return fail("Revisa el teléfono: deben ser 9 cifras.");
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail("Déjanos un correo para poder avisarte.");
@@ -312,7 +315,7 @@ async function reserveGift(clientId: string, clientName: string, body: Record<st
   }
   const name = clean(body.name, 80), email = clean(body.email, 120).toLowerCase();
   const digits = clean(body.phone, 30).replace(/[^\d+]/g, "");
-  const phone = digits.startsWith("+") ? digits : digits.replace(/^0034|^34(?=\d{9}$)/, "");
+  const phone = normPhone(digits);
   if (name.length < 2) return fail("Escribe tu nombre.");
   if (!/^\+?\d{9,15}$/.test(phone) || (!phone.startsWith("+") && phone.length !== 9)) return fail("Revisa el teléfono: deben ser 9 cifras.");
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail("Revisa el correo.");
@@ -349,7 +352,7 @@ async function book(clientId: string, clientName: string, body: Record<string, u
   const email = clean(body.email, 120).toLowerCase();
   const notes = clean(body.notes, 500);
   if (name.length < 2) return fail("Escribe tu nombre.");
-  const phone = digits.startsWith("+") ? digits : digits.replace(/^0034|^34(?=\d{9}$)/, "");
+  const phone = normPhone(digits);
   if (!/^\+?\d{9,15}$/.test(phone) || (!phone.startsWith("+") && phone.length !== 9)) {
     return fail("Revisa el teléfono: deben ser 9 cifras.");
   }

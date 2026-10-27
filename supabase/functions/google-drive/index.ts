@@ -5,6 +5,8 @@
 //   POST ?action=status   (admin del panel)  -> si está conectado y con qué cuenta
 //   POST ?action=upload   (función firma con la clave de servicio, o admin) {document_id, folder}
 //                          -> sube el PDF a <carpeta del cliente>/<folder>
+//   POST ?action=import   (trigger de drive_imports) {job_id}
+//                          -> copia fotos de una carpeta de Drive a la web del cliente (site-media)
 // Secretos: GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET (los mismos del calendario).
 // En Google Cloud hay que tener activada la API de Drive y esta función como URI de redirección.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -162,6 +164,58 @@ async function upload(body: Record<string, unknown>) {
   return { id: out.id as string, link: out.webViewLink as string };
 }
 
+// Fotos de una carpeta de Drive a la web del cliente (tabla drive_imports, migración 0043).
+// La fila solo se puede crear desde la base (administración); aquí se procesa una vez.
+type ImportItem = { name: string; title?: string; category?: string; sort?: number; publish?: boolean };
+const IMAGE_TYPES: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+
+async function importPhotos(jobId: string) {
+  const { data: job } = await db.from("drive_imports").update({ status: "working" })
+    .eq("id", jobId).eq("status", "pending").select("id, client_id, folder_id, items").maybeSingle();
+  if (!job) return { skipped: "not_pending" };
+  const { token } = await accessToken();
+  const done: string[] = [];
+  const failed: Record<string, string> = {};
+  for (const item of (job.items ?? []) as ImportItem[]) {
+    const name = String(item.name ?? "");
+    const type = IMAGE_TYPES[name.split(".").pop()?.toLowerCase() ?? ""];
+    if (!type || !/^[\w.-]{1,80}$/.test(name)) { failed[name] = "nombre o tipo no válido"; continue; }
+    try {
+      const search = new URL("https://www.googleapis.com/drive/v3/files");
+      search.search = new URLSearchParams({
+        q: `'${q(job.folder_id)}' in parents and name = '${q(name)}' and trashed = false`,
+        fields: "files(id)", pageSize: "1", supportsAllDrives: "true", includeItemsFromAllDrives: "true",
+      }).toString();
+      const found = await (await fetch(search, { headers: { Authorization: `Bearer ${token}` } })).json();
+      const fileId = found.files?.[0]?.id;
+      if (!fileId) { failed[name] = "no está en la carpeta"; continue; }
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) { failed[name] = `Drive ${res.status}`; continue; }
+      const path = `${job.client_id}/${name}`;
+      const { error } = await db.storage.from("site-media")
+        .upload(path, new Uint8Array(await res.arrayBuffer()), { contentType: type, upsert: true });
+      if (error) { failed[name] = error.message; continue; }
+      if (item.publish) {
+        const { data: exists } = await db.from("site_media").select("id").eq("client_id", job.client_id).eq("storage_path", path).maybeSingle();
+        if (!exists) {
+          await db.from("site_media").insert({
+            client_id: job.client_id, kind: "photo", storage_path: path,
+            title: item.title ?? null, category: item.category ?? null, sort: item.sort ?? 0,
+          });
+        }
+      }
+      done.push(name);
+    } catch (err) {
+      failed[name] = err instanceof Error ? err.message : String(err);
+    }
+  }
+  const result = { done, failed };
+  await db.from("drive_imports").update({ status: Object.keys(failed).length && !done.length ? "error" : "done", result }).eq("id", job.id);
+  return result;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
   const url = new URL(req.url);
@@ -181,6 +235,7 @@ Deno.serve(async (req) => {
       if ((req.headers.get("authorization") ?? "") !== `Bearer ${SERVICE_KEY}` && !(await currentAdmin(req))) return json({ error: "No autorizado" }, 401);
       return json(await upload(body));
     }
+    if (action === "import") return json(await importPhotos(String(body.job_id ?? "")));
     return json({ error: "Acción desconocida" }, 400);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

@@ -1,6 +1,8 @@
 // Panel del cliente: solo lectura y solo sus datos (lo garantiza RLS).
 import { db, session, can } from './app.js';
-import { activityTabs } from './activity.js';
+import { activityTabs, openConversation } from './activity.js';
+import { leadsView } from './leads.js';
+import { homeView, statsView } from './dashboard.js';
 import { calendarsTab } from './calendars.js';
 import { socialTab } from './social.js';
 import { printersView } from './printers.js';
@@ -8,22 +10,46 @@ import { contactsTab } from './contacts.js';
 import { h, q, table, kpi, fmtNum, monthStart } from './ui.js';
 
 export const clientNav = [
-  { href: '#/', label: 'Resumen', module: 'resumen' },
-  { href: '#/actividad', label: 'Actividad', module: 'actividad' },
-  { href: '#/calendarios', label: 'Calendarios', module: 'calendarios' },
-  { href: '#/avisos', label: 'A quién avisar', module: 'avisar' },
-  { href: '#/redes', label: 'Redes sociales', module: 'redes' },
-  { href: '#/impresoras', label: 'Impresoras', needs: 'impresoras', module: 'impresoras' },
+  { href: '#/', label: 'Resumen', icon: 'home', module: 'resumen' },
+  { href: '#/contactos', label: 'Contactos', icon: 'users', module: 'actividad', key: 'act_leads' },
+  { href: '#/conversaciones', label: 'Conversaciones', icon: 'chat', module: 'actividad', key: 'act_conversaciones' },
+  { href: '#/calendarios', label: 'Agenda', icon: 'cal', module: 'calendarios' },
+  { href: '#/estadisticas', label: 'Estadísticas', icon: 'chart', module: 'resumen', key: 'act_leads' },
+  { href: '#/avisos', label: 'Avisos', icon: 'bell', module: 'avisar' },
+  { href: '#/redes', label: 'Redes sociales', icon: 'share', module: 'redes' },
+  { href: '#/impresoras', label: 'Impresoras', icon: 'print', needs: 'impresoras', module: 'impresoras' },
 ];
 
 export const clientRoutes = [
-  [/^\/$/, overview],
+  [/^\/$/, home],
+  [/^\/contactos$/, contactsListPage],
+  [/^\/conversaciones$/, conversationsPage],
+  [/^\/estadisticas$/, statsView],
   [/^\/actividad$/, activityPage],
   [/^\/calendarios$/, calendarsPage],
   [/^\/avisos$/, contactsPage],
   [/^\/redes$/, socialPage],
   [/^\/impresoras$/, printersPage],
 ];
+
+// Un negocio con contactos ve la portada nueva; un partner con varios clientes (o sin contactos), la de siempre.
+async function home() {
+  if (session.clients.length > 1 || !can('act_leads')) return overview();
+  return homeView();
+}
+
+async function contactsListPage() {
+  return h('div', { class: 'page' }, h('h1', {}, 'Contactos'),
+    h('p', { class: 'muted' }, 'Todas las personas que han escrito. Toca una para ver su ficha y apuntar lo que habéis hablado.'),
+    await leadsView({ clientId: session.client.id, openConversation: can('act_mensajes') ? openConversation : null, only: ['list', 'team'] }));
+}
+
+async function conversationsPage() {
+  const allowed = ['conversations', 'handoffs', 'notifications'].filter((id) => ({ conversations: 'act_conversaciones', handoffs: 'act_derivaciones', notifications: 'act_avisos' })[id] && can({ conversations: 'act_conversaciones', handoffs: 'act_derivaciones', notifications: 'act_avisos' }[id]));
+  return h('div', { class: 'page' }, h('h1', {}, 'Conversaciones'),
+    h('p', { class: 'muted' }, 'Lo que ha hablado el asistente con cada persona.'),
+    activityTabs({ allowed, canOpen: can('act_mensajes') }));
+}
 
 async function overview() {
   const since = monthStart().toISOString();
@@ -92,8 +118,8 @@ async function calendarsPage() {
       session.clients.map((c) => h('option', { value: c.id, selected: c.is_own }, c.name)))
     : null;
   await show(session.client.id);
-  return h('div', { class: 'page' }, h('h1', {}, 'Calendarios'),
-    h('p', { class: 'muted' }, 'Tus agendas. Puedes tener las que necesites y verlas también en Google u Outlook.'),
+  return h('div', { class: 'page' }, h('h1', {}, 'Agenda'),
+    h('p', { class: 'muted' }, 'Las llamadas y citas de tu equipo. Puedes verlas también en Google u Outlook.'),
     picker, holder);
 }
 
@@ -106,7 +132,7 @@ async function contactsPage() {
       session.clients.map((c) => h('option', { value: c.id, selected: c.is_own }, c.name)))
     : null;
   await show(session.client.id);
-  return h('div', { class: 'page' }, h('h1', {}, 'A quién avisar'),
+  return h('div', { class: 'page' }, h('h1', {}, 'Avisos'),
     h('p', { class: 'muted' }, 'Las personas a las que el agente avisa cuando entra un contacto o hace falta alguien.'),
     picker, holder);
 }

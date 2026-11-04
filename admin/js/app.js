@@ -1,6 +1,6 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
-import { h, q, toast, errorText, field } from './ui.js';
+import { h, q, toast, errorText, field, icon } from './ui.js';
 import { adminRoutes, adminNav } from './admin.js';
 import { clientRoutes, clientNav } from './client.js';
 import { pushCard, registerWorker } from './push.js';
@@ -49,9 +49,11 @@ async function start(s) {
     const isAdmin = profile.role === 'admin';
     const [clients, brands, services] = isAdmin ? [[], [], []]
       : await Promise.all([q(db.rpc('my_clients')), q(db.rpc('my_brand')), q(db.rpc('my_client_services'))]);
+    // El logo del negocio (si lo tiene) sale arriba en el menú; sin él, solo el nombre.
+    const clientLogo = isAdmin ? null : await q(db.rpc('my_client_logo')).catch(() => null);
     if (recovering) return;
     session = { user: s.user, profile, clients, client: clients.find((c) => c.is_own) || null, brand: brands[0] || null,
-      services: [...new Set(services.flatMap((c) => c.services || []))] };
+      services: [...new Set(services.flatMap((c) => c.services || []))], clientLogo };
     applyBrand();
     renderShell();
   } catch (err) {
@@ -134,29 +136,45 @@ let outlet;
 function allowedClientNav() {
   const modules = session.profile?.modules;
   return clientNav.filter((n) => (!n.needs || session.services?.includes(n.needs))
-    && (!modules || modules.includes(n.module)));
+    && (!modules || modules.includes(n.module)) && (!n.key || can(n.key)));
 }
 
 function renderShell() {
   const isAdmin = session.profile.role === 'admin';
   const nav = isAdmin ? adminNav : allowedClientNav();
   outlet = h('main', { class: 'main' });
-  root.replaceChildren(h('div', { class: 'shell' },
-    h('aside', { class: 'sidebar' },
+  const link = (n) => h('a', { href: n.href, 'data-nav': n.href }, n.icon ? icon(n.icon) : null, h('span', {}, n.label));
+  const name = session.profile.full_name || session.profile.email;
+  const initials = name.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
+  const sidebar = isAdmin
+    ? h('aside', { class: 'sidebar' },
       h('a', { href: '#/', class: 'brand' }, logo()),
-      h('div', { class: 'who' }, isAdmin ? 'Administración' : session.client?.name || 'Sin cliente asignado'),
-      h('nav', {}, nav.map((n) => h('a', { href: n.href, 'data-nav': n.href }, n.label))),
+      h('div', { class: 'who' }, 'Administración'),
+      h('nav', {}, nav.map(link)),
       h('div', { class: 'sidebar-foot' },
         h('div', { class: 'muted small' }, session.profile.email),
-        h('button', { class: 'btn link', type: 'button', onclick: () => db.auth.signOut() }, 'Cerrar sesión'))),
-    outlet));
+        h('button', { class: 'btn link', type: 'button', onclick: () => db.auth.signOut() }, 'Cerrar sesión')))
+    : h('aside', { class: 'sidebar' },
+      h('a', { href: '#/', class: 'brand' },
+        session.clientLogo ? h('img', { src: session.clientLogo, alt: session.client?.name || '', class: 'client-logo' }) : null,
+        h('span', { class: 'client-name' }, session.client?.name || 'Sin cliente asignado')),
+      h('nav', {}, nav.map(link)),
+      h('div', { class: 'by' }, 'Con tecnología de ', logo()),
+      h('div', { class: 'sidebar-foot' },
+        h('span', { class: 'av' }, initials || '?'),
+        h('div', { class: 'me' }, h('b', {}, name), h('small', {}, session.profile.email)),
+        h('button', { class: 'btn link', type: 'button', title: 'Cerrar sesión', 'aria-label': 'Cerrar sesión', onclick: () => db.auth.signOut() }, icon('out'), h('span', {}, 'Cerrar sesión'))));
+  root.replaceChildren(h('div', { class: isAdmin ? 'shell' : 'shell client' }, sidebar, outlet));
   route();
 }
+
+// La ruta sin lo que va detrás de «?» (por ejemplo «#/?ejemplo» enseña datos de muestra).
+const currentPath = () => (location.hash.replace(/^#/, '') || '/').split('?')[0];
 
 async function route() {
   if (!session.user || !outlet) return;
   const isAdmin = session.profile.role === 'admin';
-  const path = location.hash.replace(/^#/, '') || '/';
+  const path = currentPath();
   const routes = isAdmin ? adminRoutes : clientRoutes;
 
   document.querySelectorAll('[data-nav]').forEach((a) => {
@@ -188,10 +206,12 @@ async function route() {
     try {
       const node = await view(...match.slice(1));
       // Si el usuario ya navegó a otra ruta mientras cargaba, no pisar.
-      if ((location.hash.replace(/^#/, '') || '/') === path) {
+      if (currentPath() === path) {
         // En el Resumen, justo debajo del título: instalar la app y activar los avisos.
         if (path === '/' && node.children.length >= 2) {
-          node.children[1].after(pushCard(db));
+          // En el panel de un cliente la tarjeta de avisos va al final, para que lo primero sea su trabajo.
+          if (!isAdmin && node.classList.contains('home')) node.append(pushCard(db));
+          else node.children[1].after(pushCard(db));
           if (isAdmin) node.children[1].after(credentialsCard(db));
         }
         outlet.replaceChildren(node);

@@ -20,7 +20,7 @@ const clientCol = (showClient, names) => (
   : names ? [{ label: 'Cliente', cell: (r) => names[r.client_id] || '—' }]
   : []);
 
-async function openConversation(conv) {
+export async function openConversation(conv) {
   const body = h('div', { class: 'chat' }, h('p', { class: 'empty' }, 'Cargando…'));
   modal(`Conversación · ${fmtDateTime(conv.started_at)}`, body, { wide: true });
   try {
@@ -59,7 +59,7 @@ export function activityTabs({ clientId = null, showClient = false, isAdmin = fa
       render: () => leadsView({ clientId, clientCol: clientCol(showClient, clientNames), openConversation: canOpen ? openConversation : null }),
     },
     {
-      id: 'handoffs', label: 'Pasos a humano',
+      id: 'handoffs', label: 'Pasadas a una persona',
       render: async () => table([
         { label: 'Fecha', cell: (r) => fmtDateTime(r.created_at) },
         ...clientCol(showClient, clientNames),

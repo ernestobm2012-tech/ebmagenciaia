@@ -59,13 +59,13 @@ function sortLeads(rows) {
 
 // clientId: un solo cliente. clientCol: columnas extra de cliente (admin o partner).
 // openConversation: función para enseñar la conversación (o null si no puede verla).
-export async function leadsView({ clientId = null, clientCol = [], openConversation = null }) {
+export async function leadsView({ clientId = null, clientCol = [], openConversation = null, only = null }) {
   const ctx = { clientId, clientCol, openConversation, rows: [], members: [] };
   const views = [
     { id: 'list', label: 'Contactos', render: () => listView(ctx) },
     { id: 'stats', label: 'Estadísticas', render: () => statsView(ctx) },
     { id: 'team', label: 'Equipo', render: () => teamView(ctx) },
-  ];
+  ].filter((v) => !only || only.includes(v.id));
   const wrap = h('div', {});
   const bar = h('div', { class: 'lead-views' });
   const body = h('div', {});
@@ -144,7 +144,7 @@ function listView(ctx) {
   return wrap;
 }
 
-function openLead(lead, ctx, onSaved) {
+export function openLead(lead, ctx, onSaved) {
   const history = h('div', { class: 'lead-history' }, h('p', { class: 'empty' }, 'Cargando…'));
   const team = ctx.members.filter((m) => m.client_id === lead.client_id
     && ((m.active && m.role !== 'otro') || m.id === lead.caller_id || m.id === lead.seller_id));

@@ -10,6 +10,7 @@ import { statsPage } from './stats.js';
 import { printersView, printerKeysCard } from './printers.js';
 import { expensesPage, expensesTab, fetchExpenses, monthlyEur } from './expenses.js';
 import { documentsTab } from './documents.js';
+import { catalogPage } from './catalog.js';
 import { tryChatTab } from './trychat.js';
 import {
   h, q, table, tabs, badge, kpi, field, modal, toast, formData, errorText, slugify,
@@ -135,7 +136,7 @@ async function contactsPage() {
 
 // ---------------------------------------------------------------- clientes
 // partners: clientes que pueden hacer de partner (todos menos el propio).
-const SERVICES_OFFERED = [['agentes', 'Agentes de IA'], ['web', 'Página web'], ['software', 'Software'], ['impresoras', 'Lector de impresoras']];
+const SERVICES_OFFERED = [['agentes', 'Agentes de IA'], ['web', 'Página web'], ['software', 'Software'], ['impresoras', 'Lector de impresoras'], ['presupuestos', 'Catálogo y presupuestos']];
 const servicesText = (r) => (r.services || []).map((s) => Object.fromEntries(SERVICES_OFFERED)[s] || s).join(' · ');
 
 function clientForm(client, onSaved, partners = []) {
@@ -263,6 +264,7 @@ async function clientPage(id) {
       ] : []),
       ...((client.services || []).includes('impresoras') ? [{ id: 'printers', label: 'Impresoras', render: async () =>
         h('div', {}, await printersView([id]), await printerKeysCard(id)) }] : []),
+      ...((client.services || []).includes('presupuestos') ? [{ id: 'catalog', label: 'Catálogo y presupuestos', render: () => catalogPage(id) }] : []),
       { id: 'expenses', label: 'Gastos', render: () => expensesTab(id) },
       { id: 'documents', label: 'Documentos', render: () => documentsTab(id) },
       ...(hasAgents ? [{ id: 'activity', label: 'Actividad', render: async () => activityTabs({ clientId: id, isAdmin: true }) }] : []),
@@ -472,6 +474,7 @@ const MODULES = [
   ['calendarios', 'Calendarios', 'Sus agendas, que puede crear y editar.', []],
   ['avisar', 'A quién avisar', 'Ver y cambiar las personas a las que avisa el agente.', []],
   ['redes', 'Redes sociales', 'Conectar Instagram para que conteste el agente.', []],
+  ['catalogo', 'Catálogo y presupuestos', 'Su catálogo de productos, la ficha del equipo de cada contacto y los presupuestos con sus precios.', []],
   ['impresoras', 'Impresoras', 'Contadores, copias, tóner y avisos de error.', [
     ['impresoras_precios', 'Cambiar el precio por copia', 'Si no lo marcas, ve los precios pero no puede tocarlos.'],
   ]],

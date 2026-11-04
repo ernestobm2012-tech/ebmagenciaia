@@ -2,6 +2,7 @@
 import { db, session, can } from './app.js';
 import { activityTabs, openConversation } from './activity.js';
 import { leadsView } from './leads.js';
+import { catalogView, quotesView } from './catalog.js';
 import { homeView, statsView } from './dashboard.js';
 import { calendarsTab } from './calendars.js';
 import { socialTab } from './social.js';
@@ -15,6 +16,8 @@ export const clientNav = [
   { href: '#/conversaciones', label: 'Conversaciones', icon: 'chat', module: 'actividad', key: 'act_conversaciones' },
   { href: '#/calendarios', label: 'Agenda', icon: 'cal', module: 'calendarios' },
   { href: '#/estadisticas', label: 'Estadísticas', icon: 'chart', module: 'resumen', key: 'act_leads' },
+  { href: '#/catalogo', label: 'Catálogo', icon: 'box', needs: 'presupuestos', module: 'catalogo' },
+  { href: '#/presupuestos', label: 'Presupuestos', icon: 'doc', needs: 'presupuestos', module: 'catalogo' },
   { href: '#/avisos', label: 'Avisos', icon: 'bell', module: 'avisar' },
   { href: '#/redes', label: 'Redes sociales', icon: 'share', module: 'redes' },
   { href: '#/impresoras', label: 'Impresoras', icon: 'print', needs: 'impresoras', module: 'impresoras' },
@@ -27,6 +30,8 @@ export const clientRoutes = [
   [/^\/estadisticas$/, statsView],
   [/^\/actividad$/, activityPage],
   [/^\/calendarios$/, calendarsPage],
+  [/^\/catalogo$/, catalogoPage],
+  [/^\/presupuestos$/, presupuestosPage],
   [/^\/avisos$/, contactsPage],
   [/^\/redes$/, socialPage],
   [/^\/impresoras$/, printersPage],
@@ -42,6 +47,18 @@ async function contactsListPage() {
   return h('div', { class: 'page' }, h('h1', {}, 'Contactos'),
     h('p', { class: 'muted' }, 'Todas las personas que han escrito. Toca una para ver su ficha y apuntar lo que habéis hablado.'),
     await leadsView({ clientId: session.client.id, openConversation: can('act_mensajes') ? openConversation : null, only: ['list', 'team'] }));
+}
+
+async function catalogoPage() {
+  return h('div', { class: 'page' }, h('h1', {}, 'Catálogo'),
+    h('p', { class: 'muted' }, 'Los equipos con los que trabajas. Aquí no hay precios: el precio lo pones tú en cada presupuesto.'),
+    await catalogView(session.client.id));
+}
+
+async function presupuestosPage() {
+  return h('div', { class: 'page' }, h('h1', {}, 'Presupuestos'),
+    h('p', { class: 'muted' }, 'Los presupuestos de tus contactos. Se crean desde la ficha de cada contacto, en la pestaña «Presupuestos».'),
+    await quotesView(session.client.id));
 }
 
 async function conversationsPage() {

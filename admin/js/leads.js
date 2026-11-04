@@ -4,8 +4,9 @@
 //   Estadísticas: generados, en curso, cerrados, por comercial, por quien llama, por origen y por día.
 //   Equipo: personas que llaman y comerciales de cada negocio (no necesitan usuario del panel).
 // Los cambios de un lead pasan por la función update_lead de la base, que comprueba el acceso.
-import { db, session } from './app.js';
-import { h, q, table, modal, fmtDateTime, field, toast, errorText, kpi, fmtNum, fmtEur } from './ui.js';
+import { db, session, can } from './app.js';
+import { h, q, table, modal, fmtDateTime, field, toast, errorText, kpi, fmtNum, fmtEur, tabs } from './ui.js';
+import { fichaTab, quotesView } from './catalog.js';
 
 export const LEAD_STATUS = {
   new: 'Nuevo',
@@ -72,7 +73,7 @@ export async function leadsView({ clientId = null, clientCol = [], openConversat
   let current = views[0];
 
   ctx.reload = async () => {
-    let query = db.from('leads').select('*, clients(name), conversations(channel)').order('created_at', { ascending: false }).limit(2000);
+    let query = db.from('leads').select('*, clients(name, services), conversations(channel)').order('created_at', { ascending: false }).limit(2000);
     if (clientId) query = query.eq('client_id', clientId);
     let members = db.from('team_members').select('*').order('name');
     if (clientId) members = members.eq('client_id', clientId);
@@ -189,17 +190,27 @@ export function openLead(lead, ctx, onSaved) {
     h('div', {}, save, ' ',
       when.value ? h('button', { class: 'btn link', type: 'button', onclick: () => { when.value = ''; } }, 'Quitar la fecha') : null));
 
-  const body = h('div', { class: 'lead-card' },
-    h('p', { class: 'muted' },
-      lead.contact ? [h('b', {}, lead.contact), ' · '] : '',
-      `Entró el ${fmtDateTime(lead.created_at)}`,
-      lead.clients?.name ? ` · ${lead.clients.name}` : ''),
+  const followUp = h('div', {},
     form,
     h('h3', {}, 'Historial'),
     history,
     lead.conversation_id && ctx.openConversation
       ? h('p', {}, h('button', { class: 'btn link', type: 'button', onclick: () => ctx.openConversation({ id: lead.conversation_id, started_at: lead.created_at }) }, 'Ver la conversación completa'))
       : null);
+  // Con catálogo y presupuestos contratados, el contacto tiene tres pestañas.
+  const hasCatalog = lead.clients?.services?.includes('presupuestos') && can('catalogo');
+  const body = h('div', { class: 'lead-card' },
+    h('p', { class: 'muted' },
+      lead.contact ? [h('b', {}, lead.contact), ' · '] : '',
+      `Entró el ${fmtDateTime(lead.created_at)}`,
+      lead.clients?.name ? ` · ${lead.clients.name}` : ''),
+    hasCatalog
+      ? tabs([
+        { id: 'follow', label: 'Seguimiento', render: async () => followUp },
+        { id: 'ficha', label: 'Ficha y equipo', render: () => fichaTab(lead, { onChanged: onSaved }) },
+        { id: 'quotes', label: 'Presupuestos', render: () => quotesView(lead.client_id, { leadId: lead.id, lead }) },
+      ])
+      : followUp);
   const close = modal(lead.name || lead.contact || 'Contacto', body, { wide: true });
 
   async function loadHistory() {

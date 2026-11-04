@@ -304,3 +304,8 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 
 ### Documento vivo de preguntas para el cliente DZZERO (05/11/2026)
 - Regla de Ernesto: cada duda que salga al probar el asistente de DZZERO (algo que solo puede responder Óscar) se apunta en el Google Doc «DZZERO · Preguntas pendientes para Óscar» (Drive, carpeta de propuestas de DZZERO, id `1d0JI6Rrq4KnXXMS5v-m8u8K3TCsNTcO3WvNVk8hkndk`), con columna de respuesta. Ernesto se lo pasa a Óscar cuando quiera. La herramienta de Drive no edita texto: para añadir preguntas se crea una versión nueva con todas y la anterior se renombra «(anterior)». Con las respuestas, se meten en la fuente de conocimiento del asistente («Respuestas de Óscar…») y en el prompt si hace falta.
+
+### DZZERO: anuncios y número de WhatsApp (05/11/2026, hablado por Ernesto con Óscar)
+- Aclara el aviso anterior sobre formularios de Meta: los anuncios van a abrir DIRECTAMENTE WhatsApp con un botón («Enviar mensaje»), así que la persona escribe primero y rigen las 72 h gratis de la propuesta. Lo que hay que hacer es hablar con la agencia de publicidad de DZZERO (quien crea y lleva los anuncios) para añadir ese botón a todos los anuncios; falta su contacto (pregunta 9 del documento de preguntas).
+- El WhatsApp será un número NUEVO solo para el asistente (no el +34 633 38 65 51 que usa una persona hoy).
+- El documento de preguntas para Óscar está ahora en «versión 2» (id `16yCPinRcgIMQjoaN-yoWlNnYSyJ4GfM1g9ZLMCDD_7Y`); la primera (id `1d0JI6Rr…`) quedó como «(anterior)». Usar siempre la última.

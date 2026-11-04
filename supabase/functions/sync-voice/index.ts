@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
     }
   };
 
-  const { data: agents } = await db.from("agents").select("id, client_id, voice_agent_id")
+  const { data: agents } = await db.from("agents").select("id, client_id, voice_agent_id, voice_since")
     .not("voice_agent_id", "is", null);
   let imported = 0;
   let leads = 0;
@@ -69,7 +69,9 @@ Deno.serve(async (req) => {
     try {
       const list = await get(`/conversations?agent_id=${encodeURIComponent(agent.voice_agent_id)}&page_size=30`);
       const ids: string[] = (list.conversations ?? [])
-        .filter((c: { status: string }) => c.status === "done")
+        // Si el agente tiene fecha de inicio (voice_since), no se importan llamadas anteriores.
+        .filter((c: { status: string; start_time_unix_secs?: number }) => c.status === "done"
+          && (!agent.voice_since || (c.start_time_unix_secs ?? 0) * 1000 >= new Date(agent.voice_since).getTime()))
         .map((c: { conversation_id: string }) => c.conversation_id);
       if (!ids.length) continue;
       const { data: known } = await db.from("conversations").select("external_id").in("external_id", ids);

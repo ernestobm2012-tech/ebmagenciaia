@@ -681,3 +681,7 @@ svg.i { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-widt
 .hours-x { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ink-soft); margin-top: 4px; }
 @media (max-width: 1000px) { .home-grid, .cards2 { grid-template-columns: minmax(0, 1fr); } .funnel { grid-template-columns: repeat(2, minmax(0, 1fr)); } .stage + .stage { border-left: 0; } }
 @media (max-width: 760px) { .call { flex-wrap: wrap; } .call .person { flex-basis: 55%; } .dkpis { grid-template-columns: 1fr 1fr; } .stage .n { font-size: 32px; } }
+
+/* Por si un navegador conserva un JS antiguo: ningún logo suelto puede salir enorme en el menú del cliente. */
+.shell.client .sidebar .logo { max-height: 52px; width: auto; }
+.shell.client .by { display: none; }

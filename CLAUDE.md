@@ -321,3 +321,7 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 - Estadísticas (`#/estadisticas`, necesita `act_leads`): embudo (contactos, llamadas agendadas, hechas, pasados al comercial, ventas), quién llama, cuánto tardan en llamar, importe, contactos por día/semana, de dónde llegan (provincia sacada del motivo «Madrid (28936) · casa:», canal), casa o negocio y a qué hora escriben. Periodos 7 días / 30 días / 3 meses / este año / todo.
 - Vista de muestra: añadir `?ejemplo` a la dirección (`#/?ejemplo`, `#/estadisticas?ejemplo`) enseña datos inventados solo en el navegador (con un aviso amarillo y enlace «Ver los míos»); no guarda nada. Sirve para enseñar el panel a un cliente nuevo sin contactos.
 - Probado en Chromium con una base simulada (la sandbox no llega a Supabase); sin errores de JavaScript. El archivo de prueba está en el scratchpad de la sesión (`prueba/fake.js` y `prueba/shot.mjs`).
+
+### Logo del cliente en el panel (04/11/2026)
+- Decisión de Ernesto: el logo de EBM Agencia IA sigue siempre arriba en el menú del cliente (no se puede quitar); debajo va una tarjeta con el logo del negocio (`clients.logo_url`, RPC `my_client_logo()`) y su nombre. Se quitó el pie «Con tecnología de EBM». Con marca de partner, `logo()` pone el del partner en vez del de EBM.
+- DZZERO: `assets/dzzero-logo.png` (recorte redondo 360×360 del logo que mandó Ernesto) y `clients.logo_url = '../assets/dzzero-logo.png'`. Para otro cliente: subir su logo a `assets/` y poner `logo_url`.

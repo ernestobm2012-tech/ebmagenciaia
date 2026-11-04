@@ -574,15 +574,15 @@ svg.i { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-widt
 
 @media (min-width: 761px) {
   .shell.client .sidebar { background: #fff; color: var(--ink); border-right: 1px solid var(--line); padding: 22px 16px; }
-  .shell.client .brand { text-decoration: none; background: none; box-shadow: none; padding: 0 6px 6px; display: flex; flex-direction: column; gap: 10px; }
-  .shell.client .client-logo { height: 64px; width: auto; max-width: 100%; object-fit: contain; align-self: flex-start; }
-  .shell.client .client-name { align-self: flex-start; text-decoration: none; font-weight: 900; font-size: 12.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--blue-strong); background: var(--blue-wash); padding: 8px 12px; border-radius: 12px; }
+  .shell.client .brand { background: none; box-shadow: none; padding: 0 8px; }
+  .shell.client .brand .logo { height: 52px; margin: 0; }
+  .shell.client .client-card { display: flex; align-items: center; gap: 12px; margin: 14px 0 6px; padding: 12px 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); text-decoration: none; }
+  .shell.client .client-logo { height: 52px; width: 52px; border-radius: 50%; object-fit: cover; flex: none; box-shadow: 0 8px 18px -10px rgba(18, 41, 74, .7); }
+  .shell.client .client-name { font-weight: 900; font-size: 14px; letter-spacing: .06em; text-transform: uppercase; color: var(--navy); }
   .shell.client .sidebar nav { gap: 4px; margin-top: 10px; }
   .shell.client .sidebar nav a { display: flex; align-items: center; gap: 12px; color: var(--ink-soft); padding: 12px 14px; border-radius: 12px; font-size: 15px; }
   .shell.client .sidebar nav a:hover { background: var(--surface); color: var(--ink); }
   .shell.client .sidebar nav a.active { background: var(--blue); color: #fff; box-shadow: 0 10px 20px -10px var(--blue); }
-  .shell.client .by { flex: none; font-size: 11px; color: var(--ink-soft); padding: 8px 8px 12px; display: flex; align-items: center; gap: 8px; }
-  .shell.client .by .logo { height: 20px; width: auto; opacity: .75; }
   .shell.client .sidebar-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--line); padding: 14px 6px 0; }
   .shell.client .av { width: 40px; height: 40px; border-radius: 50%; background: var(--navy); color: #fff; display: grid; place-items: center; font-weight: 900; font-size: 13px; flex: none; }
   .shell.client .me { min-width: 0; flex: 1; }
@@ -595,10 +595,11 @@ svg.i { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-widt
   .shell.client h1 { font-size: 30px; color: var(--navy); letter-spacing: -.02em; }
 }
 @media (max-width: 760px) {
-  .shell.client .client-logo { height: 34px; width: auto; }
-  .shell.client .client-name { font-weight: 900; font-size: 12px; color: var(--blue-strong); margin-left: 8px; text-decoration: none; }
-  .shell.client .brand { display: flex; align-items: center; }
-  .shell.client .av, .shell.client .me, .shell.client .by { display: none; }
+  .shell.client .brand .logo { height: 30px; }
+  .shell.client .client-card { grid-area: who; display: flex; align-items: center; gap: 8px; text-decoration: none; min-width: 0; }
+  .shell.client .client-logo { height: 30px; width: 30px; border-radius: 50%; object-fit: cover; flex: none; }
+  .shell.client .client-name { font-weight: 900; font-size: 12px; color: var(--navy); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .shell.client .av, .shell.client .me { display: none; }
   .shell.client .sidebar nav a { display: flex; align-items: center; gap: 8px; }
   .shell.client .sidebar nav a svg.i { width: 18px; height: 18px; }
   .shell.client .sidebar-foot .btn.link span { display: none; }

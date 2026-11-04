@@ -155,11 +155,11 @@ function renderShell() {
         h('div', { class: 'muted small' }, session.profile.email),
         h('button', { class: 'btn link', type: 'button', onclick: () => db.auth.signOut() }, 'Cerrar sesión')))
     : h('aside', { class: 'sidebar' },
-      h('a', { href: '#/', class: 'brand' },
+      h('a', { href: '#/', class: 'brand' }, logo()),
+      h('a', { href: '#/', class: 'client-card' },
         session.clientLogo ? h('img', { src: session.clientLogo, alt: session.client?.name || '', class: 'client-logo' }) : null,
         h('span', { class: 'client-name' }, session.client?.name || 'Sin cliente asignado')),
       h('nav', {}, nav.map(link)),
-      h('div', { class: 'by' }, 'Con tecnología de ', logo()),
       h('div', { class: 'sidebar-foot' },
         h('span', { class: 'av' }, initials || '?'),
         h('div', { class: 'me' }, h('b', {}, name), h('small', {}, session.profile.email)),

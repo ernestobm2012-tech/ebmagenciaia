@@ -44,12 +44,12 @@ export function activityTabs({ clientId = null, showClient = false, isAdmin = fa
     {
       id: 'conversations', label: 'Conversaciones',
       render: async () => table([
-        { label: 'Inicio', cell: (r) => fmtDateTime(r.started_at) },
+        { label: 'Inicio', nowrap: true, cell: (r) => fmtDateTime(r.started_at) },
         ...clientCol(showClient, clientNames),
         { label: 'Canal', cell: (r) => CHANNELS[r.channel] || r.channel },
         { label: 'Resumen', primary: true, cell: (r) => h('span', { class: 'clip', title: r.summary || r.topic || '' }, r.summary || r.topic || '—') },
-        { label: 'Mensajes', hideM: true, num: true, cell: (r) => r.message_count },
-        { label: 'Humano', hideM: true, cell: (r) => (r.handed_off ? 'Sí' : '—') },
+        { label: 'Mensajes', hideM: true, hideT: true, num: true, cell: (r) => r.message_count },
+        { label: 'Humano', hideM: true, hideT: true, cell: (r) => (r.handed_off ? 'Sí' : '—') },
         { label: 'Estado', cell: (r) => badge(r.status) },
       ], await list('conversations', { ...opts, orderBy: 'started_at' }),
       { empty: 'Aún no hay conversaciones.', onRow: canOpen ? openConversation : null }),

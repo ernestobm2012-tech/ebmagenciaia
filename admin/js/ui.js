@@ -83,10 +83,10 @@ export function table(columns, rows, { empty = 'Todavía no hay datos.', onRow }
   // En el móvil cada fila se convierte en una tarjeta (cards-m); «primary» marca la columna que hace de título.
   return h('div', { class: 'table-wrap cards-m' },
     h('table', {},
-      h('thead', {}, h('tr', {}, columns.map((c) => h('th', { class: c.num ? 'num' : null }, c.label)))),
+      h('thead', {}, h('tr', {}, columns.map((c) => h('th', { class: [c.num ? 'num' : '', c.hideM ? 'hide-m' : '', c.hideL ? 'hide-l' : '', c.hideT ? 'hide-t' : '', c.nowrap ? 'nw' : ''].join(' ').trim() || null }, c.label)))),
       h('tbody', {}, rows.map((row) =>
         h('tr', { class: onRow ? 'clickable' : null, onclick: onRow ? () => onRow(row) : null },
-          columns.map((c) => h('td', { class: [c.num ? 'num' : '', c.primary ? 'primary' : '', c.hideM ? 'hide-m' : ''].join(' ').trim() || null, 'data-label': c.label }, c.cell(row))))))));
+          columns.map((c) => h('td', { class: [c.num ? 'num' : '', c.primary ? 'primary' : '', c.hideM ? 'hide-m' : '', c.hideL ? 'hide-l' : '', c.hideT ? 'hide-t' : '', c.nowrap ? 'nw' : ''].join(' ').trim() || null, 'data-label': c.label }, c.cell(row))))))));
 }
 
 export function kpi(label, value, hint) {

@@ -18,7 +18,7 @@ export function exitSample() {
 }
 export function sampleBanner() {
   return h('div', { class: 'sample-banner' }, icon('target'),
-    'Estás viendo un ejemplo con datos inventados: puedes probarlo todo y no se guarda nada. ',
+    'Ejemplo con datos inventados: pruébalo todo, no se guarda nada. ',
     h('a', { href: '#/', onclick: (e) => { e.preventDefault(); exitSample(); } }, 'Ver los míos'));
 }
 

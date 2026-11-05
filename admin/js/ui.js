@@ -80,12 +80,13 @@ export function badge(status) {
 // columns: [{ label, cell: (row) => Node|string, num?: bool }]
 export function table(columns, rows, { empty = 'Todavía no hay datos.', onRow } = {}) {
   if (!rows.length) return h('p', { class: 'empty' }, empty);
-  return h('div', { class: 'table-wrap' },
+  // En el móvil cada fila se convierte en una tarjeta (cards-m); «primary» marca la columna que hace de título.
+  return h('div', { class: 'table-wrap cards-m' },
     h('table', {},
       h('thead', {}, h('tr', {}, columns.map((c) => h('th', { class: c.num ? 'num' : null }, c.label)))),
       h('tbody', {}, rows.map((row) =>
         h('tr', { class: onRow ? 'clickable' : null, onclick: onRow ? () => onRow(row) : null },
-          columns.map((c) => h('td', { class: c.num ? 'num' : null }, c.cell(row))))))));
+          columns.map((c) => h('td', { class: [c.num ? 'num' : '', c.primary ? 'primary' : '', c.hideM ? 'hide-m' : ''].join(' ').trim() || null, 'data-label': c.label }, c.cell(row))))))));
 }
 
 export function kpi(label, value, hint) {
@@ -145,6 +146,7 @@ const ICONS = {
   out: '<path d="M9 4H5v16h4M16 8l4 4-4 4M20 12H9"/>',
   box: '<path d="M3 7.5L12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5L12 12l9-4.5M12 12v9"/>',
   doc: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h7"/>',
+  more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
 };
 export function icon(name, cls = 'i') {

@@ -128,14 +128,14 @@ function listView(ctx) {
     wrap.replaceChildren(bar,
       ...(ctx.members.length ? [] : [h('p', { class: 'muted small' }, 'Para repartir los contactos, da de alta a tu equipo en la pestaña «Equipo».')]),
       table([
-        { label: 'Entró', cell: (r) => fmtDateTime(r.created_at) },
+        { label: 'Entró', hideM: true, cell: (r) => fmtDateTime(r.created_at) },
         ...ctx.clientCol,
-        { label: 'Persona', cell: (r) => h('div', {}, h('b', {}, r.name || '—'), h('div', { class: 'muted small' }, r.contact || '')) },
+        { label: 'Persona', primary: true, cell: (r) => h('div', {}, h('b', {}, r.name || '—'), h('div', { class: 'muted small' }, r.contact || '')) },
         { label: 'Motivo', cell: (r) => h('span', { class: 'clip', title: r.reason || '' }, r.reason || '—') },
         { label: 'Estado', cell: (r) => statusBadge(r.status) },
         { label: 'Próxima llamada', cell: nextCall },
-        { label: 'Lo gestiona', cell: (r) => who(r.caller_id) },
-        { label: 'Comercial', cell: (r) => who(r.seller_id) },
+        { label: 'Lo gestiona', hideM: true, cell: (r) => who(r.caller_id) },
+        { label: 'Comercial', hideM: true, cell: (r) => who(r.seller_id) },
       ], list, {
         empty: current.id === 'today' ? 'No hay nada pendiente para hoy.' : 'No hay contactos aquí.',
         onRow: (r) => openLead(r, ctx, render),

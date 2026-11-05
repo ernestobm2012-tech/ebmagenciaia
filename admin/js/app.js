@@ -171,8 +171,22 @@ function renderShell() {
         h('span', { class: 'av' }, initials || '?'),
         h('div', { class: 'me' }, h('b', {}, name), h('small', {}, session.profile.email)),
         h('button', { class: 'btn link', type: 'button', title: 'Cerrar sesión', 'aria-label': 'Cerrar sesión', onclick: () => db.auth.signOut() }, icon('out'), h('span', {}, 'Cerrar sesión'))));
-  root.replaceChildren(h('div', { class: isAdmin ? 'shell' : 'shell client' }, sidebar, outlet));
+  // En el móvil el menú va abajo, al alcance del pulgar: cuatro accesos y «Más» con el resto.
+  const tabbar = isAdmin ? null : buildTabbar(nav);
+  root.replaceChildren(h('div', { class: isAdmin ? 'shell' : 'shell client' }, sidebar, outlet, tabbar));
   route();
+}
+
+// Barra inferior del panel del cliente (solo se ve en pantallas pequeñas).
+function buildTabbar(nav) {
+  const first = ['#/', '#/contactos', '#/calendarios', '#/presupuestos'];
+  const main = first.map((href) => nav.find((n) => n.href === href)).filter(Boolean);
+  const rest = nav.filter((n) => !main.includes(n));
+  const tab = (n, extra = {}) => h('a', { href: n.href, 'data-nav': n.href, class: 'tab-item', ...extra }, n.icon ? icon(n.icon) : null, h('span', {}, n.label));
+  const sheet = h('div', { class: 'more-sheet', hidden: true },
+    rest.map((n) => h('a', { href: n.href, 'data-nav': n.href, onclick: () => { sheet.hidden = true; } }, n.icon ? icon(n.icon) : null, h('span', {}, n.label))));
+  const more = rest.length ? h('button', { type: 'button', class: 'tab-item', onclick: () => { sheet.hidden = !sheet.hidden; } }, icon('more'), h('span', {}, 'Más')) : null;
+  return h('div', { class: 'tabbar-wrap' }, sheet, h('nav', { class: 'tabbar' }, main.map((n) => tab(n)), more));
 }
 
 // La ruta sin lo que va detrás de «?» (por ejemplo «#/?ejemplo» enseña datos de muestra).

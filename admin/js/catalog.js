@@ -60,7 +60,7 @@ export async function catalogView(clientId) {
         ...cats.map((c) => h('button', { type: 'button', class: `chip${category === c ? ' on' : ''}`, onclick: () => { category = c; render(); } },
           `${c} · ${rows.filter((r) => r.category === c).length}`))) : null,
       table([
-        { label: 'Producto', cell: (r) => h('div', {}, h('b', {}, r.name), r.description ? h('div', { class: 'muted small clip', style: 'display:block' }, r.description) : null) },
+        { label: 'Producto', primary: true, cell: (r) => h('div', {}, h('b', {}, r.name), r.description ? h('div', { class: 'muted small clip', style: 'display:block' }, r.description) : null) },
         { label: 'Tipo', cell: (r) => r.category || '—' },
         { label: 'Estado', cell: (r) => h('span', { class: `badge ${r.active ? 'active' : 'paused'}` }, r.active ? 'En catálogo' : 'Retirado') },
       ], list, { empty: rows.length ? 'Ningún producto con ese filtro.' : 'Todavía no hay productos. Añade el primero o importa tu lista.', onRow: editProduct }));
@@ -152,8 +152,8 @@ export async function quotesView(clientId, { leadId = null, lead = null, ctx = n
       leadId ? h('p', {}, h('button', { class: 'btn primary', type: 'button', onclick: () => openQuote(null, { lead, clientId: lead.client_id, onSaved: load }) }, 'Nuevo presupuesto')) : null,
       table([
         { label: 'Nº', cell: (r) => `#${r.number}` },
-        { label: 'Fecha', cell: (r) => fmtDate(r.created_at) },
-        { label: 'Cliente', cell: (r) => r.customer_name || r.leads?.name || '—' },
+        { label: 'Fecha', hideM: true, cell: (r) => fmtDate(r.created_at) },
+        { label: 'Cliente', primary: true, cell: (r) => r.customer_name || r.leads?.name || '—' },
         { label: 'Estado', cell: (r) => h('span', { class: `badge q-${r.status}` }, STATUS[r.status]) },
         { label: 'Pago único', num: true, cell: (r) => (r.cash_total != null && r.offer !== 'monthly' ? fmtEur(r.cash_total) : '—') },
         { label: 'Al mes', num: true, cell: (r) => (r.monthly_total != null && r.offer !== 'cash' ? `${fmtEur(r.monthly_total)}${r.months ? ` × ${r.months}` : ''}` : '—') },
@@ -293,12 +293,12 @@ export async function openQuote(quote, { lead = null, clientId, fromEquipment = 
           const money = (key) => h('input', { type: 'number', min: 0, step: '0.01', inputmode: 'decimal', style: 'width:110px', value: it[key] ?? '', disabled: locked,
             oninput: (e) => { it[key] = e.target.value === '' ? null : Number(e.target.value); paintTotals(); } });
           return h('tr', {},
-            h('td', {}, h('input', { value: it.name, disabled: locked, oninput: (e) => { it.name = e.target.value; } }),
+            h('td', { class: 'q-name' }, h('input', { value: it.name, disabled: locked, oninput: (e) => { it.name = e.target.value; } }),
               h('input', { class: 'small', placeholder: 'Descripción (opcional)', value: it.description || '', disabled: locked, oninput: (e) => { it.description = e.target.value; } })),
-            h('td', {}, h('input', { type: 'number', min: 1, style: 'width:60px', value: it.qty, disabled: locked, oninput: (e) => { it.qty = Math.max(1, Number(e.target.value) || 1); paintTotals(); } })),
-            state.offer !== 'monthly' ? h('td', { class: 'num' }, money('unit_cash')) : null,
-            state.offer !== 'cash' ? h('td', { class: 'num' }, money('unit_monthly')) : null,
-            h('td', {}, locked ? null : h('button', { class: 'btn link', type: 'button', onclick: () => { items.splice(idx, 1); paintItems(); paintTotals(); } }, 'Quitar')));
+            h('td', { 'data-label': 'Uds.' }, h('input', { type: 'number', min: 1, style: 'width:60px', value: it.qty, disabled: locked, oninput: (e) => { it.qty = Math.max(1, Number(e.target.value) || 1); paintTotals(); } })),
+            state.offer !== 'monthly' ? h('td', { class: 'num', 'data-label': 'Precio ud. (€)' }, money('unit_cash')) : null,
+            state.offer !== 'cash' ? h('td', { class: 'num', 'data-label': 'Al mes ud. (€)' }, money('unit_monthly')) : null,
+            h('td', { class: 'q-del' }, locked ? null : h('button', { class: 'btn link', type: 'button', onclick: () => { items.splice(idx, 1); paintItems(); paintTotals(); } }, 'Quitar')));
         })))) : h('p', { class: 'empty' }, 'Añade el equipo y las líneas que quieras (instalación, mantenimiento…).'));
   }
 

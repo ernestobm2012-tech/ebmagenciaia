@@ -696,3 +696,64 @@ svg.i { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-widt
 .badge.q-sent { background: #e3f0fd; color: #0b5cad; }
 .badge.q-accepted { background: #e2f5ea; color: #17703f; }
 .badge.q-rejected { background: #fbe7e7; color: #a12a2a; }
+
+/* ---------- panel del cliente en el móvil (cada pantalla pensada para el pulgar) ---------- */
+.tabbar-wrap { display: none; }
+@media (max-width: 760px) {
+  /* Cabecera: logos y salir; el menú pasa abajo. */
+  .shell.client .sidebar nav { display: none; }
+  .shell.client .sidebar { padding: 10px 14px; }
+  .shell.client .main { padding: 16px 14px 96px; }
+  .shell.client h1 { font-size: 24px; }
+  .sample-banner { font-size: 12.5px; padding: 8px 12px; margin: 0 0 12px; gap: 8px; }
+
+  /* Barra inferior */
+  .tabbar-wrap { display: block; }
+  .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; display: flex; background: #fff; border-top: 1px solid var(--line);
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 24px -16px rgba(18, 41, 74, .45); }
+  .tab-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 2px; border: 0; background: none;
+    color: var(--ink-soft); font: inherit; font-size: 11.5px; font-weight: 700; text-decoration: none; border-radius: 12px; min-width: 0; }
+  .tab-item svg.i { width: 24px; height: 24px; }
+  .tab-item.active { color: var(--blue); background: var(--blue-wash); }
+  .more-sheet { position: fixed; left: 10px; right: 10px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 61; background: #fff; border: 1px solid var(--line);
+    border-radius: 18px; padding: 8px; box-shadow: 0 18px 40px -12px rgba(18, 41, 74, .5); display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .more-sheet[hidden] { display: none; }
+  .more-sheet a { display: flex; align-items: center; gap: 10px; padding: 14px; border-radius: 12px; background: var(--surface); color: var(--ink); text-decoration: none; font-weight: 700; font-size: 14.5px; }
+  .more-sheet a.active { background: var(--blue); color: #fff; }
+  .more-sheet a svg.i { width: 22px; height: 22px; }
+
+  /* Las tablas se convierten en tarjetas */
+  .shell.client .cards-m, .modal .cards-m { overflow: visible; border: 0; background: none; box-shadow: none; }
+  .shell.client .cards-m table, .shell.client .cards-m tbody, .modal .cards-m table, .modal .cards-m tbody { display: block; width: 100%; }
+  .shell.client .cards-m thead, .modal .cards-m thead { display: none; }
+  .shell.client .cards-m tr, .modal .cards-m tr { display: flex; flex-direction: column; gap: 3px; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin: 0 0 10px; box-shadow: 0 6px 16px -14px rgba(18, 41, 74, .5); }
+  .shell.client .cards-m tr.clickable:active, .modal .cards-m tr.clickable:active { background: var(--blue-wash); }
+  .shell.client .cards-m td, .modal .cards-m td { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; padding: 2px 0; border: 0; text-align: right; font-size: 14px; white-space: normal; }
+  .shell.client .cards-m td::before, .modal .cards-m td::before { content: attr(data-label); color: var(--ink-soft); font-size: 12.5px; text-align: left; flex: none; }
+  .shell.client .cards-m td.primary, .modal .cards-m td.primary { order: -1; display: block; text-align: left; font-size: 16px; padding-bottom: 4px; }
+  .shell.client .cards-m td.primary::before, .modal .cards-m td.primary::before { display: none; }
+  .shell.client .cards-m td .clip, .modal .cards-m td .clip { white-space: normal; max-width: none; }
+
+  /* Fichas y editor de presupuesto: ventana a pantalla casi completa y cómoda */
+  .modal { max-height: 92vh; }
+  .modal-body { padding-bottom: 28px; }
+  .modal .btn, .quote-editor .btn { min-height: 44px; }
+  .quote-editor .title-row, .modal .title-row { flex-wrap: wrap; }
+  .quote-editor .quote-items .table-wrap { border: 0; overflow: visible; }
+  .quote-editor .quote-items table, .quote-editor .quote-items tbody { display: block; }
+  .quote-editor .quote-items thead { display: none; }
+  .quote-editor .quote-items tr { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px; margin: 0 0 10px; }
+  .quote-editor .quote-items td { display: block; padding: 0; border: 0; text-align: left; }
+  .quote-editor .quote-items td::before { content: attr(data-label); display: block; font-size: 11.5px; color: var(--ink-soft); margin-bottom: 2px; }
+  .quote-editor .quote-items td.q-name { grid-column: 1 / -1; }
+  .quote-editor .quote-items td.q-name::before, .quote-editor .quote-items td.q-del::before { display: none; }
+  .quote-editor .quote-items td.q-del { grid-column: 1 / -1; text-align: right; }
+  .quote-editor .quote-items td input { width: 100% !important; }
+  .quote-editor > .grid2, .modal .grid2 { grid-template-columns: minmax(0, 1fr); }
+  .quote-totals { font-size: 16px; }
+  .cat-search { min-width: 0; width: 100%; }
+}
+@media (max-width: 760px) {
+  .cards-m td.hide-m { display: none !important; }
+  .overlay { z-index: 120; }
+}

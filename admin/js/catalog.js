@@ -7,6 +7,8 @@ import { h, q, table, modal, field, toast, errorText, fmtDate, fmtEur, formData 
 const STATUS = { draft: 'Borrador', sent: 'Enviado', accepted: 'Aceptado', rejected: 'Rechazado' };
 const OFFER = { cash: 'Solo pago único', monthly: 'Solo cuotas mensuales', both: 'Las dos formas' };
 const num = (v) => (v === '' || v == null || Number.isNaN(Number(v)) ? null : Number(v));
+// replaceChildren pinta «null» si le pasas null: aquí se descartan los vacíos.
+const fill = (el, ...nodes) => el.replaceChildren(...nodes.filter(Boolean));
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 // ------------------------------------------------------------------ página con pestañas (ficha del cliente, admin)
@@ -48,7 +50,7 @@ export async function catalogView(clientId) {
       && (!text || `${r.name} ${r.category || ''} ${r.description || ''}`.toLowerCase().includes(text)));
     const find = h('input', { type: 'search', placeholder: 'Buscar un producto…', value: search, class: 'cat-search',
       oninput: (e) => { search = e.target.value; const pos = e.target.selectionStart; render(); const el = wrap.querySelector('.cat-search'); el.focus(); el.setSelectionRange(pos, pos); } });
-    wrap.replaceChildren(
+    fill(wrap, 
       h('div', { class: 'title-row' },
         h('button', { class: 'btn primary', type: 'button', onclick: () => editProduct(null) }, 'Añadir producto'),
         h('button', { class: 'btn', type: 'button', onclick: importProducts }, 'Importar una lista'),
@@ -146,7 +148,7 @@ export async function quotesView(clientId, { leadId = null, lead = null, ctx = n
     if (clientId) query = query.eq('client_id', clientId);
     if (leadId) query = query.eq('lead_id', leadId);
     const rows = await q(query);
-    wrap.replaceChildren(
+    fill(wrap, 
       leadId ? h('p', {}, h('button', { class: 'btn primary', type: 'button', onclick: () => openQuote(null, { lead, clientId: lead.client_id, onSaved: load }) }, 'Nuevo presupuesto')) : null,
       table([
         { label: 'Nº', cell: (r) => `#${r.number}` },
@@ -226,7 +228,7 @@ export async function fichaTab(lead, { onChanged = () => {} } = {}) {
         await load();
       } catch (err) { toast(errorText(err), 'error'); }
     };
-    wrap.replaceChildren(
+    fill(wrap, 
       h('h3', {}, 'Datos del cliente'), form,
       h('h3', {}, 'Equipo que se va a montar'),
       catalog.length ? null : h('p', { class: 'muted small' }, 'El catálogo está vacío: añade productos en el menú «Catálogo».'),
@@ -277,12 +279,12 @@ export async function openQuote(quote, { lead = null, clientId, fromEquipment = 
   };
   function paintTotals() {
     const t = calc();
-    totals.replaceChildren(
+    fill(totals, 
       state.offer !== 'monthly' ? h('div', {}, 'Pago único: ', h('b', {}, fmtEur(t.cash))) : null,
       state.offer !== 'cash' ? h('div', {}, 'Cuota mensual: ', h('b', {}, fmtEur(t.monthly)), state.months ? ` × ${state.months} meses = ${fmtEur(t.monthly * state.months)}` : '') : null);
   }
   function paintItems() {
-    itemsBox.replaceChildren(
+    fill(itemsBox, 
       items.length ? h('div', { class: 'table-wrap' }, h('table', {},
         h('thead', {}, h('tr', {}, h('th', {}, 'Concepto'), h('th', {}, 'Uds.'),
           state.offer !== 'monthly' ? h('th', { class: 'num' }, 'Precio ud. (€)') : null,

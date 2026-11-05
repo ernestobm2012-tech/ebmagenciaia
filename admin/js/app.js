@@ -5,15 +5,18 @@ import { adminRoutes, adminNav } from './admin.js';
 import { clientRoutes, clientNav } from './client.js';
 import { pushCard, registerWorker } from './push.js';
 import { credentialsCard } from './credentials.js';
+import { initSampleFlag, sampleOn, makeSampleDb, sampleBanner } from './sample.js';
 
 const root = document.getElementById('root');
 registerWorker();
+initSampleFlag();
 // Con marca de partner (p. ej. Palmo), su logo sustituye al de EBM.
 const logo = () => (session.brand?.logo_url
   ? h('img', { src: session.brand.logo_url, alt: session.brand.name, class: 'logo' })
   : h('img', { src: '../assets/logo-ebm.png', alt: 'EBM', class: 'logo' }));
 
 export let db = null;
+let realDb = null;
 export let session = { user: null, profile: null, client: null, clients: [], brand: null };
 // Mientras se cambia la contraseña desde el enlace del correo no se entra al panel.
 let recovering = false;
@@ -25,7 +28,7 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 } else {
   // Quien llega desde el enlace de invitación aún no tiene contraseña: se la pedimos.
   let invited = /type=invite/.test(location.hash);
-  db = createClient(SUPABASE_URL, SUPABASE_KEY);
+  db = realDb = createClient(SUPABASE_URL, SUPABASE_KEY);
   db.auth.onAuthStateChange((event, s) => {
     // Fuera del callback: supabase-js no permite llamadas a la API dentro de él.
     setTimeout(() => {
@@ -54,6 +57,10 @@ async function start(s) {
     if (recovering) return;
     session = { user: s.user, profile, clients, client: clients.find((c) => c.is_own) || null, brand: brands[0] || null,
       services: [...new Set(services.flatMap((c) => c.services || []))], clientLogo };
+    // Modo de ejemplo (solo panel del cliente): datos inventados en memoria, no se guarda nada.
+    db = (sampleOn() && !isAdmin && session.client)
+      ? await makeSampleDb(realDb, { clientId: session.client.id, clientName: session.client.name, services: session.services })
+      : realDb;
     applyBrand();
     renderShell();
   } catch (err) {
@@ -214,6 +221,7 @@ async function route() {
           else node.children[1].after(pushCard(db));
           if (isAdmin) node.children[1].after(credentialsCard(db));
         }
+        if (sampleOn() && !isAdmin) node.prepend(sampleBanner());
         outlet.replaceChildren(node);
       }
     } catch (err) {

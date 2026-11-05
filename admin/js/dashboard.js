@@ -82,61 +82,10 @@ function funnel(rows) {
 // ------------------------------------------------------------------ datos
 async function load() {
   const clientId = session.client.id;
-  if (/ejemplo/.test(location.hash)) return { ...sample(), sample: true };
   const [rows, members] = await Promise.all([
     q(db.from('leads').select('*, conversations(channel)').eq('client_id', clientId).order('created_at', { ascending: false }).limit(2000)),
     q(db.from('team_members').select('*').eq('client_id', clientId).order('name')).catch(() => []),
   ]);
-  return { rows, members, sample: false };
-}
-
-// Datos de muestra con generador fijo: la misma vista cada vez, para enseñarla.
-function sample() {
-  let seed = 7;
-  const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
-  const pick = (xs) => xs[Math.floor(rnd() * xs.length)];
-  const members = [
-    { id: 'm1', name: 'Laura Méndez', role: 'llamadas', job_title: 'Teleoperadora', active: true, client_id: 'x' },
-    { id: 'm2', name: 'Ángela López', role: 'llamadas', job_title: 'Teleoperadora', active: true, client_id: 'x' },
-    { id: 'm3', name: 'Óscar López', role: 'comercial', job_title: 'Comercial', active: true, client_id: 'x' },
-  ];
-  const names = ['Marta García', 'Luis Romero', 'Carmen Pérez', 'Javier Molina', 'Rosa Lozano', 'Pedro Sanz', 'Elena Torres', 'Sergio Vidal', 'Daniel Ferrer', 'Lucía Ortega', 'Ana Navarro', 'Pablo Gil', 'Irene Castro', 'Diego Ramos', 'Nuria Prieto'];
-  const places = [['Madrid', 28936], ['Madrid', 28942], ['Toledo', 45001], ['Guadalajara', 19001], ['Almería', 4100], ['Valencia', 46001], ['Sevilla', 41001], ['Madrid', 28001]];
-  const hours = [9, 10, 10, 11, 12, 13, 16, 17, 18, 19, 20, 21, 22];
-  const now = new Date();
-  const rows = [];
-  for (let i = 0; i < 142; i++) {
-    const day = Math.floor(Math.pow(rnd(), 0.8) * 30);
-    const d = new Date(now); d.setDate(d.getDate() - day); d.setHours(pick(hours), Math.floor(rnd() * 60), 0, 0);
-    if (d > now) d.setTime(now.getTime() - 3_600_000 * (1 + rnd() * 5));
-    const [city, cp] = pick(places);
-    const roll = rnd();
-    const status = day === 0 && roll < 0.5 ? 'new' : roll < 0.12 ? 'won' : roll < 0.22 ? 'lost' : roll < 0.42 ? 'with_sales' : roll < 0.7 ? 'called' : roll < 0.8 ? 'waiting' : 'callback';
-    const caller = rnd() < 0.55 ? 'm1' : 'm2';
-    const created = d.toISOString();
-    rows.push({
-      id: `s${i}`, client_id: 'x', name: pick(names), contact: `6${String(10000000 + Math.floor(rnd() * 89999999))}`,
-      reason: `${city} (${String(cp).padStart(5, '0')}) · ${rnd() < 0.72 ? 'casa' : 'negocio'}: ${pick(['compra garrafas', 'bebe del grifo', 'usa jarra con filtro', 'familia de 4', 'quiere información'])}`,
-      status, created_at: created, updated_at: created, caller_id: ['new'].includes(status) ? null : caller,
-      seller_id: ['with_sales', 'won'].includes(status) ? 'm3' : null,
-      first_contact_at: ['new', 'callback'].includes(status) ? null : new Date(d.getTime() + (8 + rnd() * 50) * 60_000).toISOString(),
-      follow_up_at: null, deal_value: status === 'won' ? 1000 + Math.floor(rnd() * 2000) : null,
-      conversations: { channel: pick(['whatsapp', 'whatsapp', 'whatsapp', 'web', 'phone']) },
-    });
-  }
-  // Las llamadas de hoy.
-  const today = [['Marta García', 'Fuenlabrada · Madrid (28942) · casa: compra garrafas', 10, 0], ['Luis Romero', 'Toledo (45001) · negocio: oficina de 12 personas', 10, 30],
-    ['Carmen Pérez', 'Getafe · Madrid (28901) · casa: bebe del grifo', 11, 0], ['Javier Molina', 'Guadalajara (19001) · casa: familia de 4', 12, 0],
-    ['Rosa Lozano', 'Almería (04100) · negocio: bar', 12, 30], ['Pedro Sanz', 'Illescas · Toledo (45200) · casa: usa jarra con filtro', 16, 0]];
-  today.forEach(([name, reason, hh, mm], i) => {
-    const f = new Date(now); f.setHours(hh, mm, 0, 0);
-    rows.unshift({
-      id: `t${i}`, client_id: 'x', name, contact: `6${String(20000000 + i * 1111111)}`, reason, status: 'callback',
-      created_at: new Date(now.getTime() - 3_600_000 * (3 + i)).toISOString(), updated_at: new Date(now.getTime() - 3_600_000 * (2 + i)).toISOString(),
-      caller_id: i % 2 ? 'm2' : 'm1', seller_id: null, first_contact_at: null, follow_up_at: f.toISOString(), deal_value: null,
-      conversations: { channel: 'whatsapp' },
-    });
-  });
   return { rows, members };
 }
 
@@ -149,16 +98,11 @@ const firstName = () => {
   return n ? n[0].toUpperCase() + n.slice(1).toLowerCase() : '';
 };
 
-function sampleBanner() {
-  return h('div', { class: 'sample-banner' }, icon('target'), 'Estás viendo datos de ejemplo, solo para enseñar cómo queda. ',
-    h('a', { href: '#/' }, 'Ver los míos'));
-}
-
 // ------------------------------------------------------------------ portada
 export async function homeView() {
-  const { rows, members, sample: isSample } = await load();
+  const { rows, members } = await load();
   const memberName = new Map(members.map((m) => [m.id, m.name]));
-  const ctx = { members, memberName, openConversation: isSample ? null : openConversation, rows };
+  const ctx = { members, memberName, openConversation, rows };
 
   const now = new Date();
   const endToday = new Date(now); endToday.setHours(23, 59, 59, 999);
@@ -173,7 +117,7 @@ export async function homeView() {
 
   const callList = h('div', { class: 'calls' });
   const redraw = () => {
-    callList.replaceChildren(...(todays.length ? todays.map((r, i) => callCard(r, i, ctx, isSample, redraw)) : [
+    callList.replaceChildren(...(todays.length ? todays.map((r, i) => callCard(r, i, ctx, redraw)) : [
       h('div', { class: 'calls-empty' }, icon('check'), h('div', {}, h('b', {}, 'No hay nada pendiente para hoy'),
         h('div', { class: 'muted' }, 'Cuando entre un contacto o toque volver a llamar a alguien, aparecerá aquí.'))),
     ]));
@@ -195,7 +139,6 @@ export async function homeView() {
   return h('div', { class: 'page home' },
     h('h1', {}, `${greeting()}${firstName() ? `, ${firstName()}` : ''}`),
     h('p', { class: 'muted' }, `${dateText[0].toUpperCase()}${dateText.slice(1)} · ${callsToday ? `hoy hay ${callsToday} ${callsToday === 1 ? 'llamada' : 'llamadas'} para vuestro equipo` : 'hoy no hay llamadas agendadas'}`),
-    isSample ? sampleBanner() : null,
     h('div', { class: 'home-grid' },
       h('section', { class: 'home-main' },
         h('div', { class: 'section-head' }, h('h2', {}, 'Hoy toca llamar'), h('span', { class: 'count' }, todays.length)),
@@ -215,12 +158,12 @@ export async function homeView() {
     h('p', { class: 'muted small tip' }, 'Toca un contacto para ver su ficha, apuntar lo que habéis hablado o cambiar la hora de la llamada.'));
 }
 
-function callCard(r, i, ctx, isSample, redraw) {
+function callCard(r, i, ctx, redraw) {
   const f = r.follow_up_at ? new Date(r.follow_up_at) : null;
   const late = f && f < new Date() && !sameDay(f, new Date());
   const time = f ? (late ? new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short' }).format(f) : hhmm(f)) : 'Nuevo';
   const phone = phoneOf(r);
-  const open = () => (isSample ? toast('Esto es un ejemplo: con tus contactos se abre la ficha.') : openLead(r, ctx, redraw));
+  const open = () => openLead(r, ctx, redraw);
   return h('div', { class: `call${i === 0 ? ' first' : ''}`, onclick: open },
     h('div', { class: 'when' }, h('b', {}, time), h('small', {}, late ? 'atrasada' : f ? 'hoy' : 'sin llamar')),
     h('span', { class: 'avatar', style: `background:${COLORS[(r.name || '').length % COLORS.length]}` }, initials(r.name)),
@@ -241,11 +184,11 @@ const PERIODS = [
 ];
 
 export async function statsView() {
-  const { rows: all, members, sample: isSample } = await load();
+  const { rows: all, members } = await load();
   const page = h('div', { class: 'page stats' },
     h('h1', {}, 'Estadísticas'),
     h('p', { class: 'muted', id: 'stats-sub' }, ''),
-    isSample ? sampleBanner() : null);
+    null);
   const bar = h('div', { class: 'lead-filters' });
   const body = h('div', {});
   let period = PERIODS[1];

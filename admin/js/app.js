@@ -192,6 +192,7 @@ function buildTabbar(nav) {
 // La ruta sin lo que va detrás de «?» (por ejemplo «#/?ejemplo» enseña datos de muestra).
 const currentPath = () => (location.hash.replace(/^#/, '') || '/').split('?')[0];
 
+let lastPath = null;
 async function route() {
   if (!session.user || !outlet) return;
   const isAdmin = session.profile.role === 'admin';
@@ -237,6 +238,9 @@ async function route() {
         }
         if (sampleOn() && !isAdmin) node.prepend(sampleBanner());
         outlet.replaceChildren(node);
+        // Al cambiar de pantalla se empieza por arriba (no donde estaba la anterior); al refrescar la misma, se queda donde estaba.
+        if (path !== lastPath) { window.scrollTo(0, 0); document.querySelector('.main')?.scrollTo?.(0, 0); }
+        lastPath = path;
       }
     } catch (err) {
       outlet.replaceChildren(h('p', { class: 'error' }, errorText(err)));

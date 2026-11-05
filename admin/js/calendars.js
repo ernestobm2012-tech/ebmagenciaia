@@ -304,8 +304,10 @@ export async function calendarsTab(clientId) {
     const events = allEvents.filter((e) => !hiddenTypes.has(typeKey(e)));
     const untyped = allEvents.some((e) => typeKey(e) === 'none');
     const shown = calendars.filter((c) => !hidden.has(c.id));
+    // En el móvil la semana en columnas no cabe (obliga a mover el dedo a los lados): se enseña día a día, como la lista.
+    const narrow = window.matchMedia?.('(max-width: 760px)').matches;
     const body = view === 'month' ? monthGrid(events, byCal, from, to)
-      : view === 'list' ? listView(events, byCal, from, to)
+      : view === 'list' || (view === 'week' && narrow) ? listView(events, byCal, from, to)
       : timeGrid(events, byCal, shown, view === 'day' ? [from] : Array.from({ length: 7 }, (_, i) => addDays(from, i)));
     const hasHours = shown.some((c) => c.booking_enabled && Object.keys(c.booking_hours || {}).length);
     return h('div', { class: 'agenda-wrap' },
@@ -318,9 +320,9 @@ export async function calendarsTab(clientId) {
         h('div', { class: 'agenda-views' }, VIEWS.map(([v, label]) =>
           h('button', { type: 'button', class: `seg${v === view ? ' on' : ''}`, onclick: () => setView(v) }, label)))),
       legend(untyped),
-      hasHours && (view === 'day' || view === 'week')
+      hasHours && (view === 'day' || (view === 'week' && !narrow))
         ? h('p', { class: 'muted small agenda-legend' }, h('span', { class: 'swatch-avail' }), 'Horario en el que se pueden dar citas. Toca un hueco para crear una cita a esa hora.')
-        : h('p', { class: 'muted small agenda-legend' }, view === 'month' ? 'Toca un día para verlo por horas.' : view === 'list' ? '' : 'Toca un hueco para crear una cita a esa hora.'),
+        : h('p', { class: 'muted small agenda-legend' }, view === 'month' ? 'Toca un día para verlo por horas.' : view === 'list' || (view === 'week' && narrow) ? '' : 'Toca un hueco para crear una cita a esa hora.'),
       body);
   }
 

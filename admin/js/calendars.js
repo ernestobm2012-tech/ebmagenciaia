@@ -222,9 +222,9 @@ export async function calendarsTab(clientId) {
         h('button', { class: 'btn primary', type: 'button', onclick: () => editCalendar() }, 'Nuevo calendario'),
         ...(calendars.length ? [h('button', { class: 'btn', type: 'button', onclick: () => editEvent() }, 'Nueva cita')] : []))]),
       ...(grouped ? [groupBar()] : []),
-      ...(readonly ? [] : [calendars.length
+      calendars.length
         ? h('div', { class: 'cal-list' }, (grouped ? calendars.filter((c) => c.agenda_group === group) : calendars).map(calendarCard))
-        : h('p', { class: 'empty' }, 'Todavía no hay calendarios. Crea uno por cada persona, sala o servicio que tenga agenda propia.')]),
+        : h('p', { class: 'empty' }, 'Todavía no hay calendarios. Crea uno por cada persona, sala o servicio que tenga agenda propia.'),
       ...(calendars.length ? [agenda(events, from, to)] : []));
   }
 
@@ -240,9 +240,6 @@ export async function calendarsTab(clientId) {
       h('p', { class: 'muted small' }, readonly
         ? `${GROUP_HELP[group] || ''} Es solo para verla: las citas se cambian desde la ficha del contacto. Toca una cita para abrir su ficha.`
         : GROUP_HELP[group] || ''),
-      mine.length > 1 ? h('div', { class: 'agenda-people' }, mine.map((c) => h('label', { class: 'check' },
-        h('input', { type: 'checkbox', checked: !hidden.has(c.id), onchange: (e) => { e.target.checked ? hidden.delete(c.id) : hidden.add(c.id); render(); } }),
-        h('i', { class: 'dot', style: `background:${c.color}` }), ` ${c.name.replace(/^(Calendario|Agenda) de /, '')}`))) : null,
       summary ? h('div', { class: 'agenda-summary' }, summary.map((c) => h('div', { class: 'sum-card' },
         h('small', {}, c.label), h('b', {}, c.n),
         c.per.length ? h('span', { class: 'muted small' }, c.per.map((p) => `${p.name} ${p.n}`).join(' · ')) : null))) : null);
@@ -278,7 +275,7 @@ export async function calendarsTab(clientId) {
           h('button', { class: 'btn small-primary', type: 'button', onclick: () => googleConnect(cal) }, 'Conectar con Google'),
           h('button', { class: 'btn small-primary', type: 'button', onclick: () => outlookConnect(cal) }, 'Conectar con Outlook'),
         ],
-        h('button', { class: 'btn link', type: 'button', onclick: () => editCalendar(cal) }, 'Editar')));
+        readonly ? null : h('button', { class: 'btn link', type: 'button', onclick: () => editCalendar(cal) }, 'Editar')));
   }
 
   // ------------------------------------------------------------ Google directo

@@ -8,11 +8,13 @@ import { calendarsTab } from './calendars.js';
 import { socialTab } from './social.js';
 import { printersView } from './printers.js';
 import { contactsTab } from './contacts.js';
+import { customersView } from './customers.js';
 import { h, q, table, kpi, fmtNum, monthStart } from './ui.js';
 
 export const clientNav = [
   { href: '#/', label: 'Resumen', icon: 'home', module: 'resumen' },
   { href: '#/contactos', label: 'Contactos', icon: 'users', module: 'actividad', key: 'act_leads' },
+  { href: '#/clientes', label: 'Clientes', icon: 'star', module: 'actividad', key: 'act_leads' },
   { href: '#/conversaciones', label: 'Conversaciones', icon: 'chat', module: 'actividad', key: 'act_conversaciones' },
   { href: '#/calendarios', label: 'Agenda', icon: 'cal', module: 'calendarios' },
   { href: '#/estadisticas', label: 'Estadísticas', icon: 'chart', module: 'resumen', key: 'act_leads' },
@@ -26,6 +28,7 @@ export const clientNav = [
 export const clientRoutes = [
   [/^\/$/, home],
   [/^\/contactos$/, contactsListPage],
+  [/^\/clientes$/, customersView],
   [/^\/conversaciones$/, conversationsPage],
   [/^\/estadisticas$/, statsView],
   [/^\/actividad$/, activityPage],

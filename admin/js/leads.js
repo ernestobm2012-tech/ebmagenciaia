@@ -8,6 +8,7 @@ import { db, session, can } from './app.js';
 import { h, q, table, modal, fmtDateTime, field, toast, errorText, kpi, fmtNum, fmtEur, tabs } from './ui.js';
 import { fichaTab, quotesView } from './catalog.js';
 import { callSheetTab } from './ficha.js';
+import { openCustomer } from './customers.js';
 
 export const LEAD_STATUS = {
   new: 'Nuevo',
@@ -93,6 +94,13 @@ const shortName = (n) => (n || 'Alguien del equipo').split(/[\s@]/)[0].replace(/
 export const presenceTag = (p) => h('span', { class: 'presence', title: 'Otra persona tiene abierta esta ficha ahora mismo' }, `En proceso · ${shortName(p.user_name)}`);
 async function setPresence(id, on) {
   try { await db.rpc('lead_presence_set', { p_id: id, p_on: on }); } catch { /* sin marca, no pasa nada */ }
+}
+
+// Pasar un contacto cerrado a Clientes (tabla customers) con la RPC lead_to_customer.
+async function toCustomers(lead) {
+  const id = await q(db.rpc('lead_to_customer', { p_lead: lead.id }));
+  toast('Añadido a Clientes');
+  return id;
 }
 
 // datetime-local trabaja en hora local sin zona.
@@ -328,6 +336,22 @@ export function openLead(lead, ctx, onSaved) {
         { id: 'quotes', label: 'Presupuestos', render: () => quotesView(lead.client_id, { leadId: lead.id, lead }) },
       ] : []),
     ]));
+  // Si el contacto está cerrado como cliente: botón para pasarlo a Clientes (o enlace si ya está).
+  const customerBar = h('div', { class: 'customer-bar' });
+  async function paintCustomerBar() {
+    if (lead.status !== 'won') { customerBar.replaceChildren(); return; }
+    let existing = null;
+    try { existing = (await q(db.from('customers').select('*').eq('lead_id', lead.id).limit(1)))[0] || null; } catch { /* sin consulta */ }
+    customerBar.replaceChildren(existing
+      ? h('p', {}, '✓ Ya está en Clientes. ', h('button', { class: 'btn link', type: 'button', onclick: () => openCustomer(existing, { onSaved: paintCustomerBar }) }, 'Ver su ficha de cliente'))
+      : h('p', {}, 'Este contacto es cliente. ', h('button', { class: 'btn primary', type: 'button', onclick: async (e) => {
+        e.target.disabled = true;
+        try { await toCustomers(lead); await paintCustomerBar(); } catch (err) { toast(errorText(err), 'error'); e.target.disabled = false; }
+      } }, 'Pasar a Clientes')));
+  }
+  body.prepend(customerBar);
+  paintCustomerBar();
+
   // Mientras la ficha está abierta, el resto del equipo ve el contacto «en proceso».
   setPresence(lead.id, true);
   const beat = setInterval(() => setPresence(lead.id, true), 60_000);
@@ -388,8 +412,12 @@ export function openLead(lead, ctx, onSaved) {
           } catch (err) { toast(`La visita sigue en la agenda del comercial anterior: ${errorText(err)}`, 'error'); }
         }
       }
+      const becameClient = status.value === 'won' && lead.status !== 'won';
       Object.assign(lead, { status: status.value, follow_up_at: followUp, caller_id: caller.value || null, seller_id: seller.value || null, deal_value: amount });
       toast('Guardado');
+      if (becameClient && confirm('Lo has cerrado como cliente. ¿Lo añado a Clientes?')) {
+        try { await toCustomers(lead); } catch (err) { toast(errorText(err), 'error'); }
+      }
       onSaved();
       close();
     } catch (err) {

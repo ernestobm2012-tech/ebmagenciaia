@@ -165,6 +165,17 @@ function build(clientId, clientName, services, products) {
   ];
   const types = [['Cliente nuevo', '#1483DC', true], ['Segunda llamada', '#D9A400', false], ['Segunda visita', '#8E5CC9', false], ['Instalación', '#2FA36B', false], ['Seguimiento', '#E07A1F', false]]
     .map(([name, color, def], i) => ({ id: `ty${i}`, client_id: clientId, name, color, sort: i, is_default: def }));
+  const customers = [
+    ['Antonio Navarro', '600111222', 'Fuenlabrada', 'Madrid', 'Fuente de ósmosis con agua fría y caliente', -5, -1],
+    ['Marisa Gómez', '600333444', 'Getafe', 'Madrid', 'Ósmosis inversa debajo del fregadero', -3, -2],
+    ['Bar La Plaza', '600555666', 'Illescas', 'Toledo', 'Fuente de pie, agua fría y caliente', -2, null],
+    ['Raúl Prieto', '600777888', 'Guadalajara', 'Guadalajara', 'Ósmosis inversa doméstica', -1, null],
+  ].map(([name, phone, town, province, equipment, im, mm], i) => ({
+    id: `cu${i}`, client_id: clientId, name, phone, email: null, address: `Calle Mayor ${i + 3}`, town, postal_code: null, province, equipment,
+    installed_at: iso(new Date(now.getFullYear(), now.getMonth() + im, 10)).slice(0, 10),
+    last_maintenance_at: mm == null ? null : iso(new Date(now.getFullYear(), now.getMonth() + mm, 12)).slice(0, 10),
+    notes: null, lead_id: null, created_at: iso(now),
+  }));
   const events = [];
   leads.filter((l) => l.status === 'callback').slice(0, 14).forEach((l, i) => {
     const st = l.follow_up_at ? new Date(l.follow_up_at) : new Date(now.getTime() + (i + 1) * 3_600_000 * 5);
@@ -181,7 +192,7 @@ function build(clientId, clientName, services, products) {
   });
 
   return {
-    leads, lead_presence: [], team_members: members, lead_notes: [], lead_products: leadProducts, products: prods, quotes, quote_items: quoteItems,
+    leads, lead_presence: [], customers, team_members: members, lead_notes: [], lead_products: leadProducts, products: prods, quotes, quote_items: quoteItems,
     conversations, messages, calendars, appointment_types: types, calendar_events: events,
     handoffs: [], notifications: [], appointments: [], notify_contacts: [
       { id: 'n1', client_id: clientId, name: 'Atención al cliente', email: 'atencionalcliente@ejemplo.es', department: 'general', active: true },
@@ -282,6 +293,14 @@ export async function makeSampleDb(real, { clientId, clientName, services }) {
       return done();
     }
     if (fn === 'lead_presence_set') return done();
+    if (fn === 'lead_to_customer') {
+      const l = tables.leads.find((x) => x.id === args.p_lead);
+      if (!l) return done();
+      const phone = String(l.contact || '').replace(/\D/g, '').slice(-9);
+      const row = { id: `cu${Math.random()}`, client_id: clientId, name: l.name || 'Sin nombre', phone, email: l.email, address: l.address, town: l.town, postal_code: l.postal_code, province: l.province, equipment: null, installed_at: null, last_maintenance_at: null, notes: null, lead_id: l.id, created_at: new Date().toISOString() };
+      tables.customers.push(row);
+      return done(row.id);
+    }
     if (fn === 'schedule_visit') {
       const l = tables.leads.find((x) => x.id === args.p_lead);
       if (!l) return done();

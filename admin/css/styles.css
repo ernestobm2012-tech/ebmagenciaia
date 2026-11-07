@@ -849,3 +849,14 @@ tr.lead-hot:hover td { background: #D4EDD1; }
 .visit-box .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .visit-box .row-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 @media (max-width: 760px) { .visit-box .grid3 { grid-template-columns: 1fr; } }
+
+/* Clientes y ficha de cliente (07/11/2026) */
+.customers .section-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.customers .section-head h1 { margin: 0; }
+.customers .section-head .btn { margin-left: auto; }
+.lead-controls .field.inline.grow { flex: 1 1 260px; }
+.lead-controls .field.inline.grow input { width: 100%; }
+.customer-bar p { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: #E2F4E0; color: #1E5A2B; font-weight: 600; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.customer-bar:empty { display: none; }
+.form .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 760px) { .form .grid3 { grid-template-columns: 1fr; } .customers .section-head .btn { margin-left: 0; } }

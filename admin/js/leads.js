@@ -22,8 +22,8 @@ export const LEAD_STATUS = {
   won: 'Cliente',
   lost: 'No interesa',
 };
-export const STATUS_CHOICES = [['new', 'Nuevo'], ['called', 'Llamado'], ['callback', 'Volver a llamar'], ['with_sales', 'Pasado al comercial'], ['won', 'Cliente'], ['lost', 'No interesa']];
-export const choiceOf = (s) => ({ to_call: 'new', waiting: 'called' }[s] || s);
+export const STATUS_CHOICES = [['new', 'Nuevo'], ['callback', 'Volver a llamar'], ['with_sales', 'Pasado al comercial'], ['won', 'Cliente'], ['lost', 'No interesa']];
+export const choiceOf = (s) => ({ to_call: 'new', called: 'new', waiting: 'new' }[s] || s);
 const CLOSED = ['won', 'lost'];
 // Qué hace cada persona con los contactos; el puesto (job_title) lo escribe cada negocio.
 const ROLES = { llamadas: 'Llama a los contactos', comercial: 'Comercial: se le pasan para cerrar', otro: 'No lleva contactos' };
@@ -318,7 +318,6 @@ export function openLead(lead, ctx, onSaved) {
   const seller = h('select', { name: 'seller' },
     h('option', { value: '' }, 'Ninguno'),
     team.filter((m) => m.role === 'comercial').map((m) => option(m, lead.seller_id === m.id)));
-  const value = h('input', { type: 'number', name: 'value', min: 0, step: '0.01', inputmode: 'decimal', placeholder: '0,00', value: lead.deal_value ?? '' });
   const note = h('textarea', { name: 'note', rows: 3, placeholder: 'Qué habéis hablado, qué queda pendiente…' });
   const error = h('p', { class: 'error' });
   const save = h('button', { class: 'btn primary', type: 'submit' }, 'Guardar');
@@ -341,8 +340,7 @@ export function openLead(lead, ctx, onSaved) {
       field('Estado', status),
       field('Volver a llamar el', when, 'Ese día le llega un aviso a quien lo gestiona.'),
       field('Lo gestiona', caller, team.length ? 'Quien llama al contacto.' : 'Da de alta a tu equipo en la pestaña «Equipo».'),
-      field('Comercial', seller, 'Al elegirlo le llega un aviso con el contacto.'),
-      field('Importe (€)', value, 'Lo que supone si se cierra. Sale en las estadísticas.')),
+      field('Comercial', seller, 'Al elegirlo le llega un aviso con el contacto.')),
     field('Nueva nota', note),
     error,
     h('div', {}, save, ' ',
@@ -438,11 +436,11 @@ export function openLead(lead, ctx, onSaved) {
       return;
     }
     const followUp = when.value ? new Date(when.value).toISOString() : null;
-    const amount = value.value === '' ? null : Number(value.value);
+    const amount = lead.deal_value ?? null; // el importe ya no se edita aquí
     try {
       // «Nuevo» y «Llamado» conservan el estado interno que ya tenía el contacto (con llamada agendada, en espera…).
       let sendStatus = status.value;
-      if (sendStatus === 'new' && lead.status === 'to_call') sendStatus = lead.status;
+      if (sendStatus === 'new' && ['to_call', 'called', 'waiting'].includes(lead.status)) sendStatus = lead.status;
       if (sendStatus === 'called' && lead.status === 'waiting') sendStatus = 'waiting';
       await q(db.rpc('update_lead', {
         p_id: lead.id, p_status: sendStatus, p_follow_up_at: followUp,
@@ -594,7 +592,7 @@ function report(rows, ctx, period) {
       kpi('Clientes cerrados', fmtNum(won.length), `${pct(won.length, rows.length)} de los contactos`),
       kpi('No interesados', fmtNum(lost.length), `${pct(lost.length, rows.length)} de los contactos`),
       kpi('Tasa de cierre', pct(won.length, won.length + lost.length), 'De los que ya tienen respuesta'),
-      kpi('Importe cerrado', fmtEur(value), won.length ? `Media ${fmtEur(value / won.length)} por cliente` : 'Pon el importe al cerrar'),
+      kpi('Importe cerrado', fmtEur(value), won.length ? `Media ${fmtEur(value / won.length)} por cliente` : 'Sin clientes cerrados todavía'),
       kpi('Hasta la primera llamada', duration(firstCall), toClose != null ? `Hasta cerrar: ${duration(toClose)}` : 'De media')),
 
     section('Cómo están los contactos', null,

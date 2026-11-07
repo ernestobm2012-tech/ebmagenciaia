@@ -9,20 +9,22 @@ import { socialTab } from './social.js';
 import { printersView } from './printers.js';
 import { contactsTab } from './contacts.js';
 import { customersView } from './customers.js';
+import { teamView } from './team.js';
 import { h, q, table, kpi, fmtNum, monthStart } from './ui.js';
 
 export const clientNav = [
   { href: '#/', label: 'Resumen', icon: 'home', module: 'resumen' },
   { href: '#/contactos', label: 'Contactos', icon: 'users', module: 'actividad', key: 'act_leads' },
-  { href: '#/clientes', label: 'Clientes', icon: 'star', module: 'actividad', key: 'act_leads' },
+  { href: '#/clientes', label: 'Clientes', icon: 'star', module: 'clientes' },
   { href: '#/conversaciones', label: 'Conversaciones', icon: 'chat', module: 'actividad', key: 'act_conversaciones' },
   { href: '#/calendarios', label: 'Agenda', icon: 'cal', module: 'calendarios' },
-  { href: '#/estadisticas', label: 'Estadísticas', icon: 'chart', module: 'resumen', key: 'act_leads' },
+  { href: '#/estadisticas', label: 'Estadísticas', icon: 'chart', module: 'estadisticas', key: 'act_leads' },
   { href: '#/catalogo', label: 'Catálogo', icon: 'box', needs: 'presupuestos', module: 'catalogo' },
   { href: '#/presupuestos', label: 'Presupuestos', icon: 'doc', needs: 'presupuestos', module: 'catalogo' },
   { href: '#/avisos', label: 'Avisos', icon: 'bell', module: 'avisar' },
   { href: '#/redes', label: 'Redes sociales', icon: 'share', module: 'redes' },
   { href: '#/impresoras', label: 'Impresoras', icon: 'print', needs: 'impresoras', module: 'impresoras' },
+  { href: '#/usuarios', label: 'Usuarios', icon: 'shield', team: true },
 ];
 
 export const clientRoutes = [
@@ -38,6 +40,7 @@ export const clientRoutes = [
   [/^\/avisos$/, contactsPage],
   [/^\/redes$/, socialPage],
   [/^\/impresoras$/, printersPage],
+  [/^\/usuarios$/, teamView],
 ];
 
 // Un negocio con contactos ve la portada nueva; un partner con varios clientes (o sin contactos), la de siempre.

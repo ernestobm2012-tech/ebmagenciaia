@@ -471,6 +471,8 @@ const MODULES = [
     ['act_citas', 'Citas', 'Las citas que ha dado el agente.'],
     ['act_avisos', 'Avisos enviados', 'Los correos de aviso y a quién se mandaron.'],
   ]],
+  ['clientes', 'Clientes', 'La lista de personas que ya han comprado.', []],
+  ['estadisticas', 'Estadísticas', 'Las cifras de contactos y ventas (necesita también Contactos).', []],
   ['calendarios', 'Calendarios', 'Sus agendas, que puede crear y editar.', []],
   ['avisar', 'A quién avisar', 'Ver y cambiar las personas a las que avisa el agente.', []],
   ['redes', 'Redes sociales', 'Conectar Instagram para que conteste el agente.', []],
@@ -644,6 +646,7 @@ async function usersPage() {
           ...(me ? {} : { role: d.role }),
           client_id: isAdminRole ? null : d.client_id || null,
           modules: isAdminRole ? null : readModules(form),
+          team_admin: !isAdminRole && !!d.team_admin,
         }).eq('id', profile.id));
         close();
         toast('Usuario guardado.');
@@ -657,7 +660,10 @@ async function usersPage() {
         'Si lo cambias, entrará con el correo nuevo y la misma contraseña.'),
       field('Nombre', h('input', { type: 'text', name: 'full_name', maxlength: 120, value: profile.full_name || '' })),
       field('Rol', role), me ? h('small', { class: 'muted' }, 'No puedes cambiar tu propio rol.') : null,
-      help, businessField, modulesField,
+      help, businessField,
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'team_admin', checked: !!profile.team_admin }),
+        h('span', {}, h('b', {}, 'Responsable del negocio'), h('small', { class: 'muted' }, ' Ve un menú «Usuarios» donde da de alta a su equipo y elige qué ve cada persona (solo de lo que él ve).'))),
+      modulesField,
       h('div', { class: 'actions' },
         h('button', { class: 'btn primary', type: 'submit' }, 'Guardar'),
         h('button', { class: 'btn', type: 'button', onclick: () => close() }, 'Cancelar'),

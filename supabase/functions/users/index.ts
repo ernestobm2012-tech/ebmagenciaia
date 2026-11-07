@@ -6,6 +6,11 @@
 //   POST ?action=set_active {user_id, active}         -> activa o desactiva el acceso
 //   POST ?action=update {user_id, email?, full_name?}  -> cambia correo o nombre
 //   POST ?action=delete {user_id}                     -> borra el usuario (y su perfil)
+//   POST ?action=team_list                            -> usuarios del negocio (administrador de equipo)
+//   POST ?action=set_modules {user_id, modules}       -> qué puede ver ese usuario
+// El administrador de equipo (profiles.team_admin, p. ej. el dueño del negocio) puede usar list/create/link/
+// set_active/update/delete/set_modules SOLO sobre usuarios «client» de su propio negocio y solo darles
+// módulos que él mismo tiene.
 // Roles: client (ve su negocio), partner (ve su negocio y los que cuelgan de él), admin (todo).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -14,6 +19,9 @@ const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SE
 const PANEL_URL = Deno.env.get("PANEL_URL") ?? "https://ebmagenciaia.es/admin/";
 const FROM = Deno.env.get("NOTIFY_FROM") ?? "EBM Agencia IA <info@ebmagenciaia.es>";
 const ROLES = ["client", "partner", "admin"];
+const ALL_MODULES = ["resumen", "resumen_temas", "resumen_clientes", "actividad", "act_conversaciones", "act_mensajes", "act_leads",
+  "act_derivaciones", "act_citas", "act_avisos", "calendarios", "avisar", "redes", "impresoras", "impresoras_precios", "catalogo",
+  "clientes", "estadisticas"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -26,13 +34,37 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 
-async function currentAdmin(req: Request) {
+type Caller = { user: { id: string }; admin: boolean; clientId: string | null; modules: string[] | null };
+
+// Quien llama: administrador de EBM, o administrador de equipo de un negocio (limitado a ese negocio).
+async function currentCaller(req: Request): Promise<Caller | null> {
   const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!jwt) return null;
   const { data } = await db.auth.getUser(jwt);
   if (!data.user) return null;
-  const { data: p } = await db.from("profiles").select("role").eq("id", data.user.id).maybeSingle();
-  return p?.role === "admin" ? data.user : null;
+  const { data: p } = await db.from("profiles").select("role, client_id, modules, team_admin").eq("id", data.user.id).maybeSingle();
+  if (p?.role === "admin") return { user: data.user, admin: true, clientId: null, modules: null };
+  if (p?.team_admin && p.role === "client" && p.client_id) {
+    return { user: data.user, admin: false, clientId: p.client_id, modules: p.modules ?? null };
+  }
+  return null;
+}
+
+// Módulos que este usuario puede repartir: solo los que tiene él (todos si no tiene lista).
+function cleanModules(me: Caller, wanted: unknown): string[] | { error: string } {
+  if (!Array.isArray(wanted)) return { error: "Falta la lista de lo que puede ver." };
+  const list = [...new Set(wanted.map(String))];
+  if (list.some((m) => !ALL_MODULES.includes(m))) return { error: "Hay una opción que no existe." };
+  if (!me.admin && me.modules && list.some((m) => !me.modules!.includes(m))) return { error: "No puedes dar acceso a algo que tú no tienes." };
+  return list;
+}
+
+// ¿Puede esta persona tocar a ese usuario? El administrador, a cualquiera; el de equipo, solo a los «client» de su negocio.
+async function canTouch(me: Caller, userId: string) {
+  if (me.admin) return true;
+  if (userId === me.user.id) return false;
+  const { data: t } = await db.from("profiles").select("role, client_id, team_admin").eq("id", userId).maybeSingle();
+  return !!t && t.role === "client" && t.client_id === me.clientId && !t.team_admin;
 }
 
 // Nombre con el que se presenta el panel a esta persona: el de la marca de su negocio
@@ -72,14 +104,44 @@ async function findUser(id: string) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
   if (req.method !== "POST") return json({ error: "Método no permitido" }, 405);
-  const me = await currentAdmin(req);
+  const me = await currentCaller(req);
   if (!me) return json({ error: "Solo los administradores pueden gestionar usuarios." }, 403);
   const action = new URL(req.url).searchParams.get("action");
   // deno-lint-ignore no-explicit-any
   const body = await req.json().catch(() => ({})) as Record<string, any>;
 
   try {
+    if (action === "team_list") {
+      if (!me.clientId && !me.admin) return json({ error: "Sin permiso." }, 403);
+      const { data: ps, error: pe } = await db.from("profiles").select("id, email, full_name, modules, role, team_admin, created_at")
+        .eq("client_id", me.clientId).eq("role", "client").order("created_at");
+      if (pe) throw pe;
+      const { data, error } = await db.auth.admin.listUsers({ page: 1, perPage: 1000 });
+      if (error) throw error;
+      const byId = new Map(data.users.map((u) => [u.id, u]));
+      const users = (ps ?? []).map((p) => {
+        const u = byId.get(p.id);
+        return {
+          ...p,
+          last_sign_in_at: u?.last_sign_in_at ?? null,
+          confirmed: !!u?.email_confirmed_at || !!u?.last_sign_in_at,
+          disabled: !!u?.banned_until && new Date(u.banned_until) > new Date(),
+        };
+      });
+      return json({ users });
+    }
+
+    if (action === "set_modules") {
+      if (!UUID.test(String(body.user_id ?? "")) || !(await canTouch(me, body.user_id))) return json({ error: "No puedes cambiar a este usuario." }, 403);
+      const mods = cleanModules(me, body.modules);
+      if (!Array.isArray(mods)) return json({ error: mods.error }, 400);
+      const { error } = await db.from("profiles").update({ modules: mods }).eq("id", body.user_id);
+      if (error) throw error;
+      return json({ ok: true });
+    }
+
     if (action === "list") {
+      if (!me.admin) return json({ error: "Sin permiso." }, 403);
       const { data, error } = await db.auth.admin.listUsers({ page: 1, perPage: 1000 });
       if (error) throw error;
       const users: Record<string, unknown> = {};
@@ -95,12 +157,18 @@ Deno.serve(async (req) => {
 
     if (action === "create") {
       const email = String(body.email ?? "").trim().toLowerCase();
-      const role = String(body.role ?? "");
+      const role = me.admin ? String(body.role ?? "") : "client";
       const fullName = String(body.full_name ?? "").trim().slice(0, 120) || null;
       if (!EMAIL.test(email)) return json({ error: "El correo no es válido." }, 400);
       if (!ROLES.includes(role)) return json({ error: "Rol no válido." }, 400);
       let clientId: string | null = null;
-      if (role !== "admin") {
+      let newModules: string[] | null = null;
+      if (!me.admin) {
+        clientId = me.clientId;
+        const mods = cleanModules(me, body.modules);
+        if (!Array.isArray(mods)) return json({ error: mods.error }, 400);
+        newModules = mods;
+      } else if (role !== "admin") {
         if (!UUID.test(String(body.client_id ?? ""))) return json({ error: "Elige el negocio que va a ver esta persona." }, 400);
         const { data: c } = await db.from("clients").select("id").eq("id", body.client_id).maybeSingle();
         if (!c) return json({ error: "Ese negocio no existe." }, 400);
@@ -117,7 +185,9 @@ Deno.serve(async (req) => {
       }
       const id = data.user.id;
       // El alta crea el perfil como «client» sin negocio; aquí se le da el rol y el negocio elegidos.
-      const { error: pe } = await db.from("profiles").upsert({ id, email, full_name: fullName, role, client_id: clientId });
+      const { error: pe } = await db.from("profiles").upsert({
+        id, email, full_name: fullName, role, client_id: clientId, ...(newModules ? { modules: newModules } : {}),
+      });
       if (pe) throw pe;
 
       const link = data.properties.action_link;
@@ -126,6 +196,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "link") {
+      if (!UUID.test(String(body.user_id ?? "")) || !(await canTouch(me, body.user_id))) return json({ error: "No puedes cambiar a este usuario." }, 403);
       const user = UUID.test(String(body.user_id ?? "")) ? await findUser(body.user_id) : null;
       if (!user?.email) return json({ error: "Usuario no encontrado." }, 404);
       const confirmed = !!user.email_confirmed_at || !!user.last_sign_in_at;
@@ -141,7 +212,8 @@ Deno.serve(async (req) => {
 
     if (action === "set_active") {
       if (!UUID.test(String(body.user_id ?? ""))) return json({ error: "Usuario no válido." }, 400);
-      if (body.user_id === me.id) return json({ error: "No puedes desactivar tu propio acceso." }, 400);
+      if (!(await canTouch(me, body.user_id))) return json({ error: "No puedes cambiar a este usuario." }, 403);
+      if (body.user_id === me.user.id) return json({ error: "No puedes desactivar tu propio acceso." }, 400);
       const { error } = await db.auth.admin.updateUserById(body.user_id, { ban_duration: body.active ? "none" : "876000h" });
       if (error) throw error;
       return json({ ok: true });
@@ -149,6 +221,7 @@ Deno.serve(async (req) => {
 
     if (action === "update") {
       if (!UUID.test(String(body.user_id ?? ""))) return json({ error: "Usuario no válido." }, 400);
+      if (!(await canTouch(me, body.user_id))) return json({ error: "No puedes cambiar a este usuario." }, 403);
       const user = await findUser(body.user_id);
       if (!user) return json({ error: "Usuario no encontrado." }, 404);
       const email = body.email === undefined ? null : String(body.email).trim().toLowerCase();
@@ -173,7 +246,8 @@ Deno.serve(async (req) => {
 
     if (action === "delete") {
       if (!UUID.test(String(body.user_id ?? ""))) return json({ error: "Usuario no válido." }, 400);
-      if (body.user_id === me.id) return json({ error: "No puedes borrarte a ti mismo." }, 400);
+      if (!(await canTouch(me, body.user_id))) return json({ error: "No puedes cambiar a este usuario." }, 403);
+      if (body.user_id === me.user.id) return json({ error: "No puedes borrarte a ti mismo." }, 400);
       const { error } = await db.auth.admin.deleteUser(body.user_id);
       if (error) throw error;
       return json({ ok: true });

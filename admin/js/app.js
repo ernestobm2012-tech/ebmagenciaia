@@ -151,7 +151,7 @@ let outlet;
 // Menú de un usuario no admin: lo que tiene contratado su negocio y lo que tú le has dejado ver.
 function allowedClientNav() {
   const modules = session.profile?.modules;
-  return clientNav.filter((n) => (!n.needs || session.services?.includes(n.needs))
+  return clientNav.filter((n) => n.team ? !!session.profile?.team_admin : (!n.needs || session.services?.includes(n.needs))
     && (!modules || modules.includes(n.module)) && (!n.key || can(n.key)));
 }
 

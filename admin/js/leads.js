@@ -10,16 +10,20 @@ import { fichaTab, quotesView } from './catalog.js';
 import { callSheetTab } from './ficha.js';
 import { openCustomer } from './customers.js';
 
+// Lo que se enseña son solo cinco estados (decisión de Óscar, 07/11/2026). En la base siguen existiendo los demás
+// (to_call, callback, waiting) porque los usan el asistente y los avisos: aquí se ven como «Nuevo» o «Llamado».
 export const LEAD_STATUS = {
   new: 'Nuevo',
-  to_call: 'Pendiente de llamar',
+  to_call: 'Nuevo',
+  callback: 'Nuevo',
   called: 'Llamado',
-  waiting: 'Esperando respuesta',
-  callback: 'Volver a llamar',
+  waiting: 'Llamado',
   with_sales: 'Pasado al comercial',
-  won: 'Cerrado: cliente',
-  lost: 'Cerrado: no interesa',
+  won: 'Cliente',
+  lost: 'No interesa',
 };
+export const STATUS_CHOICES = [['new', 'Nuevo'], ['called', 'Llamado'], ['with_sales', 'Pasado al comercial'], ['won', 'Cliente'], ['lost', 'No interesa']];
+export const choiceOf = (s) => ({ to_call: 'new', callback: 'new', waiting: 'called' }[s] || s);
 const CLOSED = ['won', 'lost'];
 // Qué hace cada persona con los contactos; el puesto (job_title) lo escribe cada negocio.
 const ROLES = { llamadas: 'Llama a los contactos', comercial: 'Comercial: se le pasan para cerrar', otro: 'No lleva contactos' };
@@ -27,7 +31,7 @@ const JOB_SUGGESTIONS = ['Teleoperadora', 'Comercial', 'Instalador', 'Fontanero'
 const jobOf = (m) => m.job_title || { llamadas: 'Llama a los contactos', comercial: 'Comercial', otro: '—' }[m.role];
 const CHANNELS = { phone: 'Teléfono', web: 'Chat de la web', whatsapp: 'WhatsApp', instagram: 'Instagram' };
 
-const statusBadge = (s) => h('span', { class: `badge lead-${s}` }, LEAD_STATUS[s] || s);
+const statusBadge = (s) => h('span', { class: `badge lead-${choiceOf(s)}` }, LEAD_STATUS[s] || s);
 
 // Fin del día de hoy en hora local: lo que toca hoy incluye lo atrasado.
 function endOfToday() {
@@ -39,8 +43,14 @@ function endOfToday() {
 // Lo que sigue pendiente de llamar: nuevos, pendientes y «volver a llamar». Lo ya llamado,
 // en espera, pasado al comercial o cerrado sale de la lista aunque conserve una fecha vieja.
 const PENDING = ['new', 'to_call', 'callback'];
-export const isPendingToday = (r) => PENDING.includes(r.status)
-  && (r.status === 'new' || (r.follow_up_at && new Date(r.follow_up_at) <= endOfToday()));
+// Nuevo (o con llamada agendada): sin fecha, siempre; con fecha, cuando toca (hoy o atrasada). Llamado: solo si se le
+// puso una fecha de nueva llamada DESPUÉS de marcarlo (una fecha vieja de antes no cuenta).
+export const isPendingToday = (r) => {
+  const due = r.follow_up_at && new Date(r.follow_up_at) <= endOfToday();
+  if (PENDING.includes(r.status)) return r.follow_up_at ? !!due : r.status === 'new';
+  if (['called', 'waiting'].includes(r.status)) return !!due && Date.parse(r.follow_up_at) >= Date.parse(r.updated_at || 0) - 60_000;
+  return false;
+};
 
 // «Para llamar ahora»: acaba de entrar (menos de una hora), sigue pendiente y no está agendada
 // para más tarde (sin hora o con hora dentro de los próximos 30 min). Se pinta en verde pastel.
@@ -276,7 +286,7 @@ export function openLead(lead, ctx, onSaved) {
   const option = (m, selected) => h('option', { value: m.id, selected }, `${m.name}${m.job_title ? ` · ${m.job_title}` : ''}${m.active ? '' : ' (de baja)'}`);
 
   const status = h('select', { name: 'status' },
-    Object.entries(LEAD_STATUS).map(([v, l]) => h('option', { value: v, selected: lead.status === v }, l)));
+    STATUS_CHOICES.map(([v, l]) => h('option', { value: v, selected: choiceOf(lead.status) === v }, l)));
   const when = h('input', { type: 'datetime-local', name: 'follow_up_at', value: toLocalInput(lead.follow_up_at) });
   const caller = h('select', { name: 'caller' },
     h('option', { value: '' }, 'Nadie todavía'),
@@ -394,8 +404,12 @@ export function openLead(lead, ctx, onSaved) {
     const followUp = when.value ? new Date(when.value).toISOString() : null;
     const amount = value.value === '' ? null : Number(value.value);
     try {
+      // «Nuevo» y «Llamado» conservan el estado interno que ya tenía el contacto (con llamada agendada, en espera…).
+      let sendStatus = status.value;
+      if (sendStatus === 'new' && ['to_call', 'callback'].includes(lead.status)) sendStatus = lead.status;
+      if (sendStatus === 'called' && lead.status === 'waiting') sendStatus = 'waiting';
       await q(db.rpc('update_lead', {
-        p_id: lead.id, p_status: status.value, p_follow_up_at: followUp,
+        p_id: lead.id, p_status: sendStatus, p_follow_up_at: followUp,
         p_caller: caller.value || null, p_seller: seller.value || null, p_value: amount, p_note: note.value,
       }));
       // Si ya hay una visita con hora y se cambia de comercial, la visita pasa a la agenda del nuevo comercial.
@@ -412,8 +426,8 @@ export function openLead(lead, ctx, onSaved) {
           } catch (err) { toast(`La visita sigue en la agenda del comercial anterior: ${errorText(err)}`, 'error'); }
         }
       }
-      const becameClient = status.value === 'won' && lead.status !== 'won';
-      Object.assign(lead, { status: status.value, follow_up_at: followUp, caller_id: caller.value || null, seller_id: seller.value || null, deal_value: amount });
+      const becameClient = sendStatus === 'won' && lead.status !== 'won';
+      Object.assign(lead, { status: sendStatus, follow_up_at: followUp, caller_id: caller.value || null, seller_id: seller.value || null, deal_value: amount });
       toast('Guardado');
       if (becameClient && confirm('Lo has cerrado como cliente. ¿Lo añado a Clientes?')) {
         try { await toCustomers(lead); } catch (err) { toast(errorText(err), 'error'); }
@@ -486,7 +500,7 @@ function report(rows, ctx, period) {
   const late = open.filter((r) => r.follow_up_at && Date.parse(r.follow_up_at) < Date.now());
 
   // Estados en el orden del embudo.
-  const byStatus = Object.keys(LEAD_STATUS).map((s) => ({ s, n: rows.filter((r) => r.status === s).length }));
+  const byStatus = STATUS_CHOICES.map(([s]) => ({ s, n: rows.filter((r) => choiceOf(r.status) === s).length }));
   const maxStatus = Math.max(1, ...byStatus.map((x) => x.n));
 
   // Por persona del equipo (más «Sin asignar»).

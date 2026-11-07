@@ -55,8 +55,12 @@ export function errorText(err) {
   return err?.message || String(err);
 }
 
-export function modal(title, body, { wide = false } = {}) {
-  const close = () => overlay.remove();
+export function modal(title, body, { wide = false, onClose = null } = {}) {
+  const close = () => {
+    if (!overlay.isConnected) return;
+    overlay.remove();
+    if (onClose) onClose();
+  };
   const overlay = h('div', { class: 'overlay', onclick: (e) => e.target === overlay && close() },
     h('div', { class: `modal${wide ? ' wide' : ''}`, role: 'dialog', 'aria-modal': 'true' },
       h('header', {}, h('h2', {}, title),

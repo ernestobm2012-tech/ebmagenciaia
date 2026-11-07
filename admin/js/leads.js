@@ -34,6 +34,60 @@ function endOfToday() {
   return d;
 }
 
+// Lo que sigue pendiente de llamar: nuevos, pendientes y «volver a llamar». Lo ya llamado,
+// en espera, pasado al comercial o cerrado sale de la lista aunque conserve una fecha vieja.
+const PENDING = ['new', 'to_call', 'callback'];
+export const isPendingToday = (r) => PENDING.includes(r.status)
+  && (r.status === 'new' || (r.follow_up_at && new Date(r.follow_up_at) <= endOfToday()));
+
+const plain = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+const LET = 'A-Za-zÁÉÍÓÚÜÑáéíóúüñ';
+// Provincia de un contacto: la columna si está rellena y, si no, la que escribe el asistente
+// en el motivo («Getafe (Madrid) (28901) · casa:» o «Madrid (28942) · casa:»).
+export function leadProvince(r) {
+  if (r.province && r.province.trim()) return r.province.trim();
+  const t = (r.reason || '').replace(/^Llamar el [^:]*\d{2}:\d{2}:\s*/i, '').replace(/^Cita reservada[^:]*:\s*/i, '');
+  let m = t.match(new RegExp(`\\(([${LET}][^()]{1,30})\\)\\s*\\(\\d{5}\\)`));
+  if (m) return m[1].trim();
+  m = t.match(new RegExp(`([${LET}][${LET} .'-]{1,40}?)\\s*\\(\\d{5}\\)`));
+  if (m) return m[1].trim();
+  m = t.match(new RegExp(`^\\s*[^()·:]{2,30}\\(([${LET}][^()]{1,25})\\)`));
+  return m ? m[1].trim() : null;
+}
+function provinceOptions(rows) {
+  const map = new Map();
+  rows.forEach((r) => {
+    const p = leadProvince(r);
+    if (!p) return;
+    const k = plain(p);
+    const e = map.get(k) || { key: k, label: p.charAt(0).toUpperCase() + p.slice(1), n: 0 };
+    e.n += 1;
+    map.set(k, e);
+  });
+  return [...map.values()].sort((a, b) => b.n - a.n || a.label.localeCompare(b.label, 'es'));
+}
+export const provinceKey = (r) => { const p = leadProvince(r); return p ? plain(p) : ''; };
+export { provinceOptions };
+
+// «En proceso»: quien abre una ficha la marca para que el resto del equipo lo vea.
+const PRESENCE_MS = 180_000;
+export async function loadPresence() {
+  try {
+    const since = new Date(Date.now() - PRESENCE_MS).toISOString();
+    const rows = await q(db.from('lead_presence').select('lead_id, user_id, user_name, seen_at').gte('seen_at', since));
+    return new Map(rows.map((r) => [r.lead_id, r]));
+  } catch { return new Map(); }
+}
+export const attendedBy = (map, r) => {
+  const p = map && map.get(r.id);
+  return p && p.user_id !== session.user?.id ? p : null;
+};
+const shortName = (n) => (n || 'Alguien del equipo').split(/[\s@]/)[0].replace(/^./, (c) => c.toUpperCase());
+export const presenceTag = (p) => h('span', { class: 'presence', title: 'Otra persona tiene abierta esta ficha ahora mismo' }, `En proceso · ${shortName(p.user_name)}`);
+async function setPresence(id, on) {
+  try { await db.rpc('lead_presence_set', { p_id: id, p_on: on }); } catch { /* sin marca, no pasa nada */ }
+}
+
 // datetime-local trabaja en hora local sin zona.
 function toLocalInput(iso) {
   if (!iso) return '';
@@ -108,40 +162,94 @@ function mine(r, ctx) {
 
 function listView(ctx) {
   const filters = [
-    { id: 'today', label: 'Hoy', test: (r) => !CLOSED.includes(r.status) && (r.status === 'new' || (r.follow_up_at && new Date(r.follow_up_at) <= endOfToday())) },
+    { id: 'today', label: 'Hoy', test: isPendingToday },
     { id: 'open', label: 'Pendientes', test: (r) => !CLOSED.includes(r.status) },
     { id: 'sales', label: 'Con comercial', test: (r) => !CLOSED.includes(r.status) && (r.seller_id || r.status === 'with_sales') },
     { id: 'mine', label: 'Míos', test: (r) => !CLOSED.includes(r.status) && mine(r, ctx) },
     { id: 'all', label: 'Todos', test: () => true },
   ];
-  const wrap = h('div', {});
   let current = filters[0];
-  const bar = h('div', { class: 'lead-filters' });
+  let province = '';
+  let day = '';
   const who = (id) => ctx.memberName.get(id) || '—';
+
+  const bar = h('div', { class: 'lead-filters' });
+  const provinceSel = h('select', { 'aria-label': 'Provincia', onchange: () => { province = provinceSel.value; render(); } });
+  const dayInput = h('input', { type: 'date', 'aria-label': 'Día de la llamada', onchange: () => { day = dayInput.value; render(); } });
+  const clearDay = h('button', { class: 'btn link', type: 'button', onclick: () => { day = ''; dayInput.value = ''; render(); } }, 'Quitar día');
+  const quick = (label, offset) => h('button', {
+    class: 'btn soft', type: 'button',
+    onclick: () => { const d = new Date(); d.setDate(d.getDate() + offset); day = toLocalInput(d.toISOString()).slice(0, 10); dayInput.value = day; render(); },
+  }, label);
+  const controls = h('div', { class: 'lead-controls' },
+    h('label', { class: 'field inline' }, h('span', {}, 'Provincia'), provinceSel),
+    h('label', { class: 'field inline' }, h('span', {}, 'Día de la llamada'), dayInput),
+    quick('Hoy', 0), quick('Mañana', 1), clearDay);
+  const box = h('div', {});
+  const wrap = h('div', {}, bar, controls, box);
+  let provSig = '';
+
+  const dayTest = (r) => {
+    if (!day) return true;
+    if (!r.follow_up_at) return false;
+    return toLocalInput(r.follow_up_at).slice(0, 10) === day;
+  };
 
   function render() {
     bar.replaceChildren(...filters.map((f) => h('button', {
       type: 'button', class: `chip${f === current ? ' on' : ''}`,
       onclick: () => { current = f; render(); },
     }, f.id === 'all' ? f.label : `${f.label} · ${ctx.rows.filter(f.test).length}`)));
-    const list = sortLeads(ctx.rows.filter(current.test));
-    wrap.replaceChildren(bar,
+
+    // Las provincias salen de los contactos de la pestaña elegida.
+    const inTab = ctx.rows.filter(current.test);
+    const opts = provinceOptions(inTab);
+    const sig = `${current.id}|${opts.map((o) => `${o.key}:${o.n}`).join(',')}`;
+    if (sig !== provSig) {
+      provSig = sig;
+      provinceSel.replaceChildren(h('option', { value: '' }, `Todas (${inTab.length})`),
+        ...opts.map((o) => h('option', { value: o.key }, `${o.label} (${o.n})`)));
+      if (province && !opts.some((o) => o.key === province)) province = '';
+    }
+    provinceSel.value = province;
+    clearDay.style.display = day ? '' : 'none';
+
+    const list = sortLeads(inTab.filter((r) => (!province || provinceKey(r) === province) && dayTest(r)));
+    box.replaceChildren(
       ...(ctx.members.length ? [] : [h('p', { class: 'muted small' }, 'Para repartir los contactos, da de alta a tu equipo en la pestaña «Equipo».')]),
       table([
         { label: 'Entró', hideM: true, hideT: true, nowrap: true, cell: (r) => fmtDateTime(r.created_at) },
         ...ctx.clientCol,
-        { label: 'Persona', primary: true, cell: (r) => h('div', {}, h('b', {}, r.name || '—'), h('div', { class: 'muted small' }, r.contact || '')) },
+        { label: 'Persona', primary: true, cell: (r) => {
+          const p = attendedBy(ctx.presence, r);
+          return h('div', {}, h('b', {}, r.name || '—'), p ? [' ', presenceTag(p)] : null, h('div', { class: 'muted small' }, r.contact || ''));
+        } },
+        { label: 'Provincia', hideM: true, hideT: true, nowrap: true, cell: (r) => leadProvince(r) || '—' },
         { label: 'Motivo', cell: (r) => h('span', { class: 'clip', title: r.reason || '' }, r.reason || '—') },
         { label: 'Estado', nowrap: true, cell: (r) => statusBadge(r.status) },
         { label: 'Próxima llamada', nowrap: true, cell: nextCall },
         { label: 'Lo gestiona', hideM: true, hideT: true, cell: (r) => who(r.caller_id) },
         { label: 'Comercial', hideM: true, hideL: true, cell: (r) => who(r.seller_id) },
       ], list, {
-        empty: current.id === 'today' ? 'No hay nada pendiente para hoy.' : 'No hay contactos aquí.',
-        onRow: (r) => openLead(r, ctx, render),
+        empty: current.id === 'today' && !province && !day ? 'No hay nada pendiente para hoy.' : 'No hay contactos aquí.',
+        onRow: (r) => openLead(r, ctx, refresh),
       }));
   }
+
+  // Recarga los datos y repinta: así se reordena al cambiar una hora y se ve quién atiende qué.
+  async function refresh() {
+    try {
+      await ctx.reload();
+      ctx.presence = await loadPresence();
+    } catch { /* se queda lo que había */ }
+    render();
+  }
   render();
+  loadPresence().then((m) => { ctx.presence = m; render(); });
+  const timer = setInterval(() => {
+    if (!wrap.isConnected) { clearInterval(timer); return; }
+    refresh();
+  }, 8000);
   return wrap;
 }
 
@@ -211,7 +319,17 @@ export function openLead(lead, ctx, onSaved) {
         { id: 'quotes', label: 'Presupuestos', render: () => quotesView(lead.client_id, { leadId: lead.id, lead }) },
       ])
       : followUp);
-  const close = modal(lead.name || lead.contact || 'Contacto', body, { wide: true });
+  // Mientras la ficha está abierta, el resto del equipo ve el contacto «en proceso».
+  setPresence(lead.id, true);
+  const beat = setInterval(() => setPresence(lead.id, true), 60_000);
+  const close = modal(lead.name || lead.contact || 'Contacto', body, {
+    wide: true,
+    onClose: () => { clearInterval(beat); setPresence(lead.id, false); },
+  });
+  loadPresence().then((m) => {
+    const p = attendedBy(m, lead);
+    if (p) body.prepend(h('p', { class: 'presence-note' }, `${shortName(p.user_name)} tiene este contacto abierto ahora mismo.`));
+  });
 
   async function loadHistory() {
     try {

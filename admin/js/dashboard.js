@@ -3,7 +3,7 @@
 // Con «#/?ejemplo» se enseñan datos de muestra (solo en el navegador, no se guarda nada).
 import { db, session } from './app.js';
 import { h, q, icon, fmtNum, toast } from './ui.js';
-import { LEAD_STATUS, openLead } from './leads.js';
+import { LEAD_STATUS, openLead, isPendingToday, provinceOptions, provinceKey, leadProvince, loadPresence, attendedBy, presenceTag } from './leads.js';
 import { openConversation } from './activity.js';
 
 const CLOSED = ['won', 'lost'];
@@ -100,15 +100,17 @@ const firstName = () => {
 
 // ------------------------------------------------------------------ portada
 export async function homeView() {
-  const { rows, members } = await load();
+  let { rows, members } = await load();
   const memberName = new Map(members.map((m) => [m.id, m.name]));
-  const ctx = { members, memberName, openConversation, rows };
+  const ctx = { members, memberName, openConversation, rows, presence: new Map() };
+  let province = '';
 
   const now = new Date();
-  const endToday = new Date(now); endToday.setHours(23, 59, 59, 999);
-  const todays = rows.filter((r) => !CLOSED.includes(r.status)
-    && ((r.follow_up_at && new Date(r.follow_up_at) <= endToday) || r.status === 'new'))
+  // Solo lo que sigue pendiente de llamar (nuevo, pendiente o «volver a llamar» para hoy o atrasado),
+  // por hora. Lo que ya se ha llamado o cerrado sale de la lista.
+  const pendingList = () => rows.filter(isPendingToday)
     .sort((a, b) => (a.follow_up_at ? Date.parse(a.follow_up_at) : Infinity) - (b.follow_up_at ? Date.parse(b.follow_up_at) : Infinity));
+  let todays = pendingList();
 
   const last30 = rows.filter((r) => Date.parse(r.created_at) >= Date.now() - 30 * 86_400_000);
   const stages = funnel(last30);
@@ -116,13 +118,39 @@ export async function homeView() {
   const delta = prev30.length ? Math.round(((last30.length - prev30.length) / prev30.length) * 100) : null;
 
   const callList = h('div', { class: 'calls' });
+  const provBar = h('div', { class: 'lead-filters prov-chips' });
+  const countEl = h('span', { class: 'count' }, '');
   const redraw = () => {
-    callList.replaceChildren(...(todays.length ? todays.map((r, i) => callCard(r, i, ctx, redraw)) : [
+    todays = pendingList();
+    const opts = provinceOptions(todays);
+    if (province && !opts.some((o) => o.key === province)) province = '';
+    provBar.replaceChildren(...(opts.length > 1 ? [
+      h('button', { type: 'button', class: `chip${province ? '' : ' on'}`, onclick: () => { province = ''; redraw(); } }, `Todas · ${todays.length}`),
+      ...opts.map((o) => h('button', { type: 'button', class: `chip${province === o.key ? ' on' : ''}`, onclick: () => { province = o.key; redraw(); } }, `${o.label} · ${o.n}`)),
+    ] : []));
+    const shown = province ? todays.filter((r) => provinceKey(r) === province) : todays;
+    countEl.textContent = shown.length;
+    callList.replaceChildren(...(shown.length ? shown.map((r, i) => callCard(r, i, ctx, refresh)) : [
       h('div', { class: 'calls-empty' }, icon('check'), h('div', {}, h('b', {}, 'No hay nada pendiente para hoy'),
         h('div', { class: 'muted' }, 'Cuando entre un contacto o toque volver a llamar a alguien, aparecerá aquí.'))),
     ]));
   };
+  // Recarga y repinta: al cambiar el estado o la hora de un contacto, la lista se limpia y se reordena,
+  // y se ve qué fichas tiene abiertas otra persona.
+  async function refresh() {
+    try {
+      ({ rows, members } = await load());
+      ctx.rows = rows;
+      ctx.presence = await loadPresence();
+    } catch { /* se queda lo que había */ }
+    redraw();
+  }
   redraw();
+  loadPresence().then((m) => { ctx.presence = m; redraw(); });
+  const timer = setInterval(() => {
+    if (!callList.isConnected) { clearInterval(timer); return; }
+    refresh();
+  }, 8000);
 
   const kpis = [
     { icon: 'users', color: COLORS[0], label: 'Contactos nuevos', n: stages[0].n, hint: delta == null ? 'últimos 30 días' : `${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)} % que los 30 días anteriores`, good: delta == null || delta >= 0 },
@@ -141,7 +169,8 @@ export async function homeView() {
     h('p', { class: 'muted' }, `${dateText[0].toUpperCase()}${dateText.slice(1)} · ${callsToday ? `hoy hay ${callsToday} ${callsToday === 1 ? 'llamada' : 'llamadas'} para vuestro equipo` : 'hoy no hay llamadas agendadas'}`),
     h('div', { class: 'home-grid' },
       h('section', { class: 'home-main' },
-        h('div', { class: 'section-head' }, h('h2', {}, 'Hoy toca llamar'), h('span', { class: 'count' }, todays.length)),
+        h('div', { class: 'section-head' }, h('h2', {}, 'Hoy toca llamar'), countEl),
+        provBar,
         callList),
       h('section', { class: 'home-side' },
         h('div', { class: 'dkpis' }, kpis.map((k) => h('div', { class: 'dkpi' },
@@ -164,11 +193,12 @@ function callCard(r, i, ctx, redraw) {
   const time = f ? (late ? new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short' }).format(f) : hhmm(f)) : 'Nuevo';
   const phone = phoneOf(r);
   const open = () => openLead(r, ctx, redraw);
+  const attended = attendedBy(ctx.presence, r);
   return h('div', { class: `call${i === 0 ? ' first' : ''}`, onclick: open },
     h('div', { class: 'when' }, h('b', {}, time), h('small', {}, late ? 'atrasada' : f ? 'hoy' : 'sin llamar')),
     h('span', { class: 'avatar', style: `background:${COLORS[(r.name || '').length % COLORS.length]}` }, initials(r.name)),
-    h('div', { class: 'person' }, h('b', {}, r.name || 'Sin nombre'),
-      h('small', {}, [r.contact, cleanReason(r.reason)].filter(Boolean).join(' · '))),
+    h('div', { class: 'person' }, h('b', {}, r.name || 'Sin nombre'), attended ? [' ', presenceTag(attended)] : null,
+      h('small', {}, [leadProvince(r), r.contact, cleanReason(r.reason)].filter(Boolean).join(' · '))),
     phone ? h('a', { class: `btn ${i === 0 ? 'primary' : 'soft'} call-btn`, href: `tel:${phone}`, onclick: (e) => e.stopPropagation() },
       icon('phone'), i === 0 ? 'Llamar ahora' : 'Llamar') : null,
     h('span', { class: 'btn soft call-btn' }, 'Ver ficha'));

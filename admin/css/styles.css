@@ -796,3 +796,20 @@ html.theme-dzzero .badge.q-sent { background: #F3EADF; color: #6F4E27; }
 html.theme-dzzero .stage .bar > *, html.theme-dzzero .hb .tr > * { background-color: var(--blue); }
 html.theme-dzzero .avatar { background-color: var(--navy); }
 html.theme-dzzero .btn.primary { letter-spacing: .02em; }
+
+/* Contactos: filtros por provincia y día, y marca «en proceso» (07/11/2026) */
+.lead-controls { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: flex-end; margin: 0 0 14px; }
+.lead-controls .field.inline { margin: 0; min-width: 0; }
+.lead-controls .field.inline span { font-size: 12px; }
+.lead-controls select, .lead-controls input[type="date"] { min-height: 40px; }
+.lead-controls .btn { min-height: 40px; }
+.prov-chips { margin: 0 0 12px; }
+.presence { display: inline-block; margin-left: 4px; padding: 2px 9px; border-radius: 999px; background: #FFF1C9; color: #6B4B00; font-size: 12px; font-weight: 600; white-space: nowrap; vertical-align: middle; }
+.presence-note { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: #FFF1C9; color: #6B4B00; font-weight: 600; }
+@media (max-width: 760px) {
+  .lead-controls { gap: 8px; }
+  .lead-controls .field.inline { flex: 1 1 140px; }
+  .lead-controls .field.inline select, .lead-controls .field.inline input { width: 100%; }
+  .prov-chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .prov-chips .chip { flex: 0 0 auto; }
+}

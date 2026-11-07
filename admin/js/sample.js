@@ -76,9 +76,9 @@ function build(clientId, clientName, services, products) {
   today.forEach(([name, reason, hh, mm], i) => {
     const f = new Date(now); f.setHours(hh, mm, 0, 0);
     leads.unshift({
-      id: `t${i}`, client_id: clientId, conversation_id: null, name, contact: `6${String(20000000 + i * 1111111)}`, reason, status: 'callback',
-      created_at: iso(new Date(now.getTime() - 3_600_000 * (3 + i))), updated_at: iso(new Date(now.getTime() - 3_600_000 * (2 + i))),
-      caller_id: i % 2 ? 'm2' : 'm1', seller_id: null, first_contact_at: null, follow_up_at: iso(f), deal_value: null,
+      id: `t${i}`, client_id: clientId, conversation_id: `cvt${i}`, name, contact: `6${String(20000000 + i * 1111111)}`, reason, status: i === 0 ? 'new' : 'callback',
+      created_at: iso(new Date(now.getTime() - (i === 0 ? 720_000 : 3_600_000 * (3 + i)))), updated_at: iso(new Date(now.getTime() - 3_600_000 * (2 + i))),
+      caller_id: i % 2 ? 'm2' : 'm1', seller_id: null, first_contact_at: null, follow_up_at: i === 0 ? null : iso(f), deal_value: null,
       email: null, address: null, postal_code: reason.match(/\((\d{5})\)/)?.[1] || null, province: null, property_type: /negocio/.test(reason) ? 'negocio' : 'casa', water_notes: null, install_notes: null,
       clients: clientsJoin, conversations: { channel: 'whatsapp' },
     });
@@ -170,7 +170,7 @@ function build(clientId, clientName, services, products) {
   });
 
   return {
-    leads, team_members: members, lead_notes: [], lead_products: leadProducts, products: prods, quotes, quote_items: quoteItems,
+    leads, lead_presence: [], team_members: members, lead_notes: [], lead_products: leadProducts, products: prods, quotes, quote_items: quoteItems,
     conversations, messages, calendars, appointment_types: types, calendar_events: events,
     handoffs: [], notifications: [], appointments: [], notify_contacts: [
       { id: 'n1', client_id: clientId, name: 'Atención al cliente', email: 'atencionalcliente@ejemplo.es', department: 'general', active: true },
@@ -260,6 +260,17 @@ export async function makeSampleDb(real, { clientId, clientName, services }) {
       if (l) Object.assign(l, { email: args.p_email || null, address: args.p_address || null, postal_code: args.p_postal || null, province: args.p_province || null, property_type: args.p_property || null, water_notes: args.p_water || null, install_notes: args.p_install || null });
       return done();
     }
+    if (fn === 'update_lead_ficha') {
+      const l = tables.leads.find((x) => x.id === args.p_id);
+      if (l) {
+        const d = { ...args.p_data };
+        ['family_members', 'children_at_home'].forEach((k) => { if (k in d) d[k] = d[k] === '' ? null : Number(d[k]); });
+        Object.keys(d).forEach((k) => { if (d[k] === '') d[k] = null; });
+        Object.assign(l, d, { updated_at: stamp() });
+      }
+      return done();
+    }
+    if (fn === 'lead_presence_set') return done();
     if (fn === 'lead_team') return done([]);
     return real.rpc(fn, args);
   };

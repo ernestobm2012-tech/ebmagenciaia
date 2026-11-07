@@ -819,3 +819,14 @@ html.theme-dzzero .btn.primary { letter-spacing: .02em; }
 .call.hot { border-color: #B9E0B4; }
 tr.lead-hot:hover td { background: #D4EDD1; }
 .cards-m tr.lead-hot { background: #E2F4E0; }
+
+/* Ficha de llamada (07/11/2026) */
+.call-sheet .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.call-sheet .checks { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 6px 0; }
+.call-sheet .check { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; min-height: 36px; cursor: pointer; }
+.call-sheet .check input { width: 18px; height: 18px; accent-color: var(--accent, #1483DC); }
+.call-sheet input:disabled { background: #F3F1EF; color: #6b6b6b; }
+.call-sheet .row-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.lead-note.agent.clickable { cursor: pointer; }
+.lead-note.agent.clickable:hover { background: #EFEAE5; }
+@media (max-width: 760px) { .call-sheet .grid3 { grid-template-columns: 1fr; } }

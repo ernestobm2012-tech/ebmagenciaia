@@ -7,6 +7,7 @@
 import { db, session, can } from './app.js';
 import { h, q, table, modal, fmtDateTime, field, toast, errorText, kpi, fmtNum, fmtEur, tabs } from './ui.js';
 import { fichaTab, quotesView } from './catalog.js';
+import { callSheetTab } from './ficha.js';
 
 export const LEAD_STATUS = {
   new: 'Nuevo',
@@ -319,13 +320,14 @@ export function openLead(lead, ctx, onSaved) {
       lead.contact ? [h('b', {}, lead.contact), ' · '] : '',
       `Entró el ${fmtDateTime(lead.created_at)}`,
       lead.clients?.name ? ` · ${lead.clients.name}` : ''),
-    hasCatalog
-      ? tabs([
-        { id: 'follow', label: 'Seguimiento', render: async () => followUp },
+    tabs([
+      { id: 'follow', label: 'Seguimiento', render: async () => followUp },
+      { id: 'sheet', label: 'Ficha de llamada', render: async () => callSheetTab(lead, { onChanged: onSaved }) },
+      ...(hasCatalog ? [
         { id: 'ficha', label: 'Ficha y equipo', render: () => fichaTab(lead, { onChanged: onSaved }) },
         { id: 'quotes', label: 'Presupuestos', render: () => quotesView(lead.client_id, { leadId: lead.id, lead }) },
-      ])
-      : followUp);
+      ] : []),
+    ]));
   // Mientras la ficha está abierta, el resto del equipo ve el contacto «en proceso».
   setPresence(lead.id, true);
   const beat = setInterval(() => setPresence(lead.id, true), 60_000);
@@ -346,9 +348,14 @@ export function openLead(lead, ctx, onSaved) {
           n.status_to ? ` · ${LEAD_STATUS[n.status_from] || n.status_from} → ${LEAD_STATUS[n.status_to] || n.status_to}` : ''),
         n.body ? h('div', { class: 'bubble-text' }, n.body) : null));
       // Lo que recogió el asistente, siempre al final.
-      items.push(h('div', { class: 'lead-note agent' },
-        h('div', { class: 'lead-note-meta' }, fmtDateTime(lead.created_at), ' · Asistente'),
-        h('div', { class: 'bubble-text' }, lead.reason || 'Nuevo contacto.')));
+      const canOpenConv = lead.conversation_id && ctx.openConversation;
+      items.push(h('div', {
+        class: `lead-note agent${canOpenConv ? ' clickable' : ''}`,
+        onclick: canOpenConv ? () => ctx.openConversation({ id: lead.conversation_id, started_at: lead.created_at }) : null,
+        title: canOpenConv ? 'Ver la conversación completa' : null,
+      },
+      h('div', { class: 'lead-note-meta' }, fmtDateTime(lead.created_at), ' · Asistente', canOpenConv ? ' · ver conversación' : ''),
+      h('div', { class: 'bubble-text' }, lead.reason || 'Nuevo contacto.')));
       history.replaceChildren(...items);
     } catch (err) {
       history.replaceChildren(h('p', { class: 'error' }, errorText(err)));

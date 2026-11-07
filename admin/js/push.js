@@ -74,7 +74,7 @@ export function pushCard(db) {
       parts.push(h('h2', {}, 'Instala el panel en tu iPhone'),
         h('p', { class: 'muted' }, 'Para recibir avisos, primero añádelo a la pantalla de inicio: pulsa Compartir y luego «Añadir a pantalla de inicio». Ábrelo desde ese icono y vuelve aquí.'));
     } else if (!supported()) {
-      parts.push(h('h2', {}, 'Avisos en el móvil'),
+      parts.push(h('h2', {}, 'Avisos en este dispositivo'),
         h('p', { class: 'muted' }, 'Este navegador no admite avisos. Prueba con Chrome o Safari actualizados.'));
     } else if (Notification.permission === 'denied') {
       parts.push(h('h2', {}, 'Avisos bloqueados'),
@@ -86,8 +86,8 @@ export function pushCard(db) {
           h('button', { class: 'btn', type: 'button', onclick: busy(() => call(db, 'test')) }, 'Enviar una prueba'),
           h('button', { class: 'btn link', type: 'button', onclick: busy(() => disable(db)) }, 'Quitar los avisos')));
     } else {
-      parts.push(h('h2', {}, 'Recibe los avisos en tu móvil'),
-        h('p', { class: 'muted' }, 'Una notificación cada vez que entre un contacto, alguien pida hablar con una persona o algo falle.'),
+      parts.push(h('h2', {}, 'Recibe los avisos en tu móvil o en tu ordenador'),
+        h('p', { class: 'muted' }, 'Una notificación cada vez que entre un contacto, alguien pida hablar con una persona o algo falle. Vale en el móvil y en el ordenador (Chrome o Edge); actívalo en cada dispositivo.'),
         h('div', { class: 'actions' },
           h('button', { class: 'btn primary', type: 'button', onclick: busy(() => enable(db)) }, 'Activar avisos')));
     }

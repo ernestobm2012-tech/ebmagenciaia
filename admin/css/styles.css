@@ -780,3 +780,19 @@ svg.i { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-widt
 @media (min-width: 761px) and (max-width: 1100px) {
   .shell.client td .clip { display: block; max-width: 190px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
+
+/* Manual de marca de DZZERO (clients.theme.preset = "dzzero"): petróleo, marrón dorado y beige;
+   Cormorant Garamond en los títulos y Montserrat en el texto. Los colores llegan por variables (app.js). */
+html.theme-dzzero body { font-family: "Montserrat", -apple-system, "Segoe UI", Arial, sans-serif; font-size: 14.5px; }
+html.theme-dzzero button, html.theme-dzzero input, html.theme-dzzero select, html.theme-dzzero textarea { font-family: inherit; }
+html.theme-dzzero h1, html.theme-dzzero h2, html.theme-dzzero h3, html.theme-dzzero .greeting { font-family: "Cormorant Garamond", Georgia, serif; font-weight: 600; letter-spacing: 0; }
+html.theme-dzzero h1 { font-size: 36px; line-height: 1.1; }
+html.theme-dzzero h2 { font-size: 24px; }
+html.theme-dzzero .shell.client .main { background: #FAF6F5; }
+html.theme-dzzero .shell.client .sidebar { background: #fff; }
+html.theme-dzzero .shell.client .client-logo { box-shadow: 0 8px 18px -10px rgba(25, 46, 57, .55); border: 1px solid var(--line); }
+html.theme-dzzero .call.first { background: linear-gradient(90deg, #F5ECE2, #fff); box-shadow: 0 18px 36px -22px rgba(139, 98, 49, .55); }
+html.theme-dzzero .badge.q-sent { background: #F3EADF; color: #6F4E27; }
+html.theme-dzzero .stage .bar > *, html.theme-dzzero .hb .tr > * { background-color: var(--blue); }
+html.theme-dzzero .avatar { background-color: var(--navy); }
+html.theme-dzzero .btn.primary { letter-spacing: .02em; }

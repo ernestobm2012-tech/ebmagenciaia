@@ -54,9 +54,11 @@ async function start(s) {
       : await Promise.all([q(db.rpc('my_clients')), q(db.rpc('my_brand')), q(db.rpc('my_client_services'))]);
     // El logo del negocio (si lo tiene) sale arriba en el menú; sin él, solo el nombre.
     const clientLogo = isAdmin ? null : await q(db.rpc('my_client_logo')).catch(() => null);
+    // Colores y tipografía de la marca del negocio (manual de marca), si los tiene.
+    const theme = isAdmin ? null : await q(db.rpc('my_client_theme')).catch(() => null);
     if (recovering) return;
     session = { user: s.user, profile, clients, client: clients.find((c) => c.is_own) || null, brand: brands[0] || null,
-      services: [...new Set(services.flatMap((c) => c.services || []))], clientLogo };
+      services: [...new Set(services.flatMap((c) => c.services || []))], clientLogo, theme };
     // Modo de ejemplo (solo panel del cliente): datos inventados en memoria, no se guarda nada.
     db = (sampleOn() && !isAdmin && session.client)
       ? await makeSampleDb(realDb, { clientId: session.client.id, clientName: session.client.name, services: session.services })
@@ -68,17 +70,24 @@ async function start(s) {
   }
 }
 
-// Colores y título de la marca del partner; sin marca, los de EBM.
+// Colores y título de la marca del partner; sin marca, los de EBM. Si el negocio tiene
+// su propio manual de marca (clients.theme), el panel de su gente usa sus colores y letras.
 function applyBrand() {
-  const style = document.documentElement.style;
-  const color = session.brand?.color;
-  for (const name of ['--blue', '--blue-strong']) color ? style.setProperty(name, color) : style.removeProperty(name);
+  const root = document.documentElement;
+  const style = root.style;
+  const theme = session.theme && !session.brand ? session.theme : null;
+  const color = theme?.accent || session.brand?.color;
+  for (const name of ['--blue', '--blue-strong']) color ? style.setProperty(name, name === '--blue-strong' && theme?.accent_strong ? theme.accent_strong : color) : style.removeProperty(name);
   color ? style.setProperty('--blue-wash', `color-mix(in srgb, ${color} 12%, white)`) : style.removeProperty('--blue-wash');
+  const map = { '--cyan': 'accent_soft', '--ink': 'ink', '--ink-soft': 'ink_soft', '--line': 'line', '--surface': 'surface', '--navy': 'deep' };
+  for (const [name, key] of Object.entries(map)) theme?.[key] ? style.setProperty(name, theme[key]) : style.removeProperty(name);
+  for (const c of [...root.classList]) if (c.startsWith('theme-')) root.classList.remove(c);
+  if (theme?.preset) root.classList.add(`theme-${theme.preset}`);
   document.title = `${session.brand?.name || 'EBM'} · Panel de agentes`;
 }
 
 function renderLogin(message) {
-  session = { user: null, profile: null, client: null, clients: [], brand: null };
+  session = { user: null, profile: null, client: null, clients: [], brand: null, theme: null };
   applyBrand();
   const note = h('p', { class: message ? 'error' : 'muted' }, message || '');
   const form = h('form', { class: 'auth-card', onsubmit: submit }, logo(),

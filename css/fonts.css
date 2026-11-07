@@ -5,3 +5,11 @@
 @font-face { font-family: "Lato"; font-style: normal; font-weight: 900; font-display: swap; src: url("../assets/fonts/lato-latin-900-normal.woff2") format("woff2"); }
 @font-face { font-family: "Space Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("../assets/fonts/space-mono-latin-400-normal.woff2") format("woff2"); }
 @font-face { font-family: "Space Mono"; font-style: normal; font-weight: 700; font-display: swap; src: url("../assets/fonts/space-mono-latin-700-normal.woff2") format("woff2"); }
+/* Montserrat y Cormorant Garamond: tipografías del manual de marca de DZZERO (panel del cliente). */
+@font-face { font-family: "Montserrat"; font-style: normal; font-weight: 400; font-display: swap; src: url("../assets/fonts/montserrat-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Montserrat"; font-style: normal; font-weight: 500; font-display: swap; src: url("../assets/fonts/montserrat-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Montserrat"; font-style: normal; font-weight: 600; font-display: swap; src: url("../assets/fonts/montserrat-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Montserrat"; font-style: normal; font-weight: 700; font-display: swap; src: url("../assets/fonts/montserrat-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Cormorant Garamond"; font-style: normal; font-weight: 500; font-display: swap; src: url("../assets/fonts/cormorant-garamond-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Cormorant Garamond"; font-style: normal; font-weight: 600; font-display: swap; src: url("../assets/fonts/cormorant-garamond-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Cormorant Garamond"; font-style: normal; font-weight: 700; font-display: swap; src: url("../assets/fonts/cormorant-garamond-latin-700-normal.woff2") format("woff2"); }

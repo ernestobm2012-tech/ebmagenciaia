@@ -14,6 +14,12 @@
     img { height: 72px; width: auto; }
     h1 { font-size: 26px; font-weight: 900; margin: 20px 0 8px; text-wrap: balance; }
     p { margin: 0 0 12px; color: #5E6C7A; }
+    /* Negocios con manual de marca propio (ver BRANDS en el script): colores y letras suyos. */
+    body.brand { background: var(--bg); color: var(--ink); font-family: "Montserrat", -apple-system, "Segoe UI", Arial, sans-serif; font-size: 16px; }
+    body.brand h1 { font-family: "Cormorant Garamond", Georgia, serif; font-weight: 600; font-size: 38px; line-height: 1.1; }
+    body.brand p { color: var(--ink-soft); }
+    body.brand img { height: 150px; }
+    body.brand .by { margin-top: 36px; font-size: 12.5px; color: var(--ink-soft); }
   </style>
 </head>
 <body>
@@ -29,13 +35,34 @@
     const client = (params.get('cliente') || '').replace(/[^a-z0-9-]/g, '');
     const name = (params.get('nombre') || '').slice(0, 60);
     const welcome = (params.get('bienvenida') || '').slice(0, 300);
+    // Marca de cada negocio que tiene manual de marca: color del chat, logo y fondo. Añadir aquí los nuevos.
+    const BRANDS = {
+      dzzero: { color: '#8B6231', bg: '#FAF6F5', ink: '#192E39', soft: '#5C6B74', logo: 'assets/dzzero-logo-completo.png', avatar: 'assets/dzzero-logo.png', button: 'marrón' },
+    };
+    const brand = BRANDS[client];
+    if (brand) {
+      document.body.classList.add('brand');
+      document.body.style.setProperty('--bg', brand.bg);
+      document.body.style.setProperty('--ink', brand.ink);
+      document.body.style.setProperty('--ink-soft', brand.soft);
+      const logo = document.querySelector('main img');
+      logo.src = brand.logo;
+      logo.alt = name || 'Logo';
+      document.querySelector('link[rel=icon]').href = brand.avatar;
+      document.title = `${name || 'Asistente'} · Asistente virtual`;
+      const by = document.createElement('p');
+      by.className = 'by';
+      by.textContent = 'Con tecnología de EBM Agencia IA';
+      document.querySelector('main').append(by);
+    }
     if (client) {
       document.getElementById('title').textContent = name ? `Asistente de ${name}` : 'Demo de agente';
-      document.getElementById('text').textContent = 'Pulsa el botón azul de abajo a la derecha y pregúntale lo que quieras. Con «Nueva», arriba en el chat, empiezas otra conversación.';
+      document.getElementById('text').textContent = `Pulsa el botón ${brand ? brand.button : 'azul'} de abajo a la derecha y pregúntale lo que quieras. Con «Nueva», arriba en el chat, empiezas otra conversación.`;
       const script = document.createElement('script');
       script.src = 'js/chat.js?v=4';
       script.dataset.client = client;
       script.dataset.title = name || 'Asistente';
+      if (brand) { script.dataset.color = brand.color; script.dataset.avatar = new URL(brand.avatar, location.href).href; }
       if (welcome) script.dataset.welcome = welcome;
       document.body.append(script);
     }

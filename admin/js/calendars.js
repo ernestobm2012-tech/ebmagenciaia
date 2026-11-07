@@ -1,8 +1,10 @@
 // Calendarios de cada cliente: los que necesite (uno por persona, sala,
 // servicio…), su agenda y la conexión con Google u Outlook en los dos sentidos.
 // Lo usan el admin (pestaña del cliente) y el propio cliente (su menú).
-import { db } from './app.js';
+import { db, session } from './app.js';
 import { h, q, field, modal, toast, formData, errorText } from './ui.js';
+import { openLead } from './leads.js';
+import { openConversation } from './activity.js';
 
 const DAYS_SHOWN = 14;
 const COLORS = ['#1483DC', '#7C9A44', '#E07A1F', '#C24545', '#8E5CC9', '#17A2B8', '#5E6C7A'];
@@ -96,6 +98,13 @@ const monthFmt = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeri
 const shortFmt = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' });
 const HOUR_PX = 60;
 const VIEW_KEY = 'ebm-cal-view';
+const GROUP_KEY = 'ebm-cal-group';
+const GROUPS = [['llamadas', 'Teleoperadoras'], ['visitas', 'Visitas'], ['comercial', 'Comercial']];
+const GROUP_HELP = {
+  llamadas: 'Las llamadas de las teleoperadoras, cada 5 minutos; a la misma hora puede haber una por teleoperadora.',
+  visitas: 'Visitas pendientes de asignar: el día en que se van a hacer, antes de ponerles comercial y hora.',
+  comercial: 'La agenda de cada comercial: sus visitas ya con hora.',
+};
 const VIEWS = [['day', 'Día'], ['week', 'Semana'], ['month', 'Mes'], ['list', 'Lista']];
 const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 const toMinutes = (hhmm) => { const [hh, mm] = hhmm.split(':').map(Number); return hh * 60 + mm; };
@@ -141,6 +150,11 @@ export async function calendarsTab(clientId) {
   let members = [];
   const hidden = new Set();
   const hiddenTypes = new Set();
+  // Agendas agrupadas (teleoperadoras, visitas, comercial): el cliente solo las mira; los cambios se hacen desde la ficha.
+  let group = null;
+  let grouped = false;
+  let readonly = false;
+  let summary = null;
 
   async function load() {
     [calendars, types] = await Promise.all([
@@ -148,7 +162,7 @@ export async function calendarsTab(clientId) {
       q(db.from('appointment_types').select('*').eq('client_id', clientId).order('sort')).catch(() => []),
     ]);
     // Personas del equipo, para decir de quién es cada agenda (solo si se pueden ver).
-    members = await q(db.from('team_members').select('id, name, job_title, active').eq('client_id', clientId).order('name')).catch(() => []);
+    members = await q(db.from('team_members').select('*').eq('client_id', clientId).order('name')).catch(() => []);
     // La primera vez, los tipos de cita de ejemplo (luego cada negocio los cambia).
     if (!types.length && calendars.length) {
       try {
@@ -156,7 +170,42 @@ export async function calendarsTab(clientId) {
           ({ client_id: clientId, name, color, sort: i, is_default: !!def }))).select('*'));
       } catch { types = []; }
     }
+    grouped = calendars.some((c) => c.agenda_group);
+    readonly = grouped && session.profile?.role !== 'admin';
+    if (grouped && !GROUPS.some(([g]) => g === group && calendars.some((c) => c.agenda_group === g))) {
+      let saved = null;
+      try { saved = localStorage.getItem(GROUP_KEY); } catch { /* sin almacenamiento */ }
+      group = [saved, ...GROUPS.map(([g]) => g)].find((g) => g && calendars.some((c) => c.agenda_group === g)) || null;
+    }
+    applyGroup();
     await render();
+  }
+
+  // Solo se enseñan los calendarios del grupo elegido.
+  function applyGroup() {
+    if (!grouped) return;
+    hidden.clear();
+    calendars.filter((c) => c.agenda_group !== group).forEach((c) => hidden.add(c.id));
+  }
+
+  // Cuántas citas hay hoy, mañana, esta semana y la próxima en el grupo elegido.
+  async function loadSummary() {
+    const ids = calendars.filter((c) => c.agenda_group === group).map((c) => c.id);
+    if (!ids.length) return null;
+    const today = startOfDay(new Date());
+    const nextMon = addDays(mondayOf(today), 7);
+    const end = addDays(nextMon, 7);
+    const ev = await q(db.from('calendar_events').select('calendar_id, starts_at').in('calendar_id', ids)
+      .gte('starts_at', today.toISOString()).lt('starts_at', end.toISOString()).limit(5000)).catch(() => []);
+    const slots = [
+      ['Hoy', today, addDays(today, 1)], ['Mañana', addDays(today, 1), addDays(today, 2)],
+      ['Esta semana', today, nextMon], ['Próxima semana', nextMon, end],
+    ];
+    return slots.map(([label, a, b]) => {
+      const inside = ev.filter((e) => { const t = new Date(e.starts_at); return t >= a && t < b; });
+      const per = ids.length > 1 ? calendars.filter((c) => ids.includes(c.id)).map((c) => ({ name: c.name.replace(/^(Calendario|Agenda) de /, ''), n: inside.filter((e) => e.calendar_id === c.id).length })) : [];
+      return { label, n: inside.length, per };
+    });
   }
 
   async function render() {
@@ -167,14 +216,36 @@ export async function calendarsTab(clientId) {
         .lt('starts_at', to.toISOString()).gt('ends_at', from.toISOString()).order('starts_at').limit(2000))
       : [];
 
+    if (grouped) summary = await loadSummary();
     wrap.replaceChildren(
-      h('div', { class: 'toolbar' },
+      ...(readonly ? [] : [h('div', { class: 'toolbar' },
         h('button', { class: 'btn primary', type: 'button', onclick: () => editCalendar() }, 'Nuevo calendario'),
-        ...(calendars.length ? [h('button', { class: 'btn', type: 'button', onclick: () => editEvent() }, 'Nueva cita')] : [])),
-      calendars.length
-        ? h('div', { class: 'cal-list' }, calendars.map(calendarCard))
-        : h('p', { class: 'empty' }, 'Todavía no hay calendarios. Crea uno por cada persona, sala o servicio que tenga agenda propia.'),
+        ...(calendars.length ? [h('button', { class: 'btn', type: 'button', onclick: () => editEvent() }, 'Nueva cita')] : []))]),
+      ...(grouped ? [groupBar()] : []),
+      ...(readonly ? [] : [calendars.length
+        ? h('div', { class: 'cal-list' }, (grouped ? calendars.filter((c) => c.agenda_group === group) : calendars).map(calendarCard))
+        : h('p', { class: 'empty' }, 'Todavía no hay calendarios. Crea uno por cada persona, sala o servicio que tenga agenda propia.')]),
       ...(calendars.length ? [agenda(events, from, to)] : []));
+  }
+
+  // Pestañas de las tres agendas, personas que la forman y recuento de citas.
+  function groupBar() {
+    const present = GROUPS.filter(([g]) => calendars.some((c) => c.agenda_group === g));
+    const mine = calendars.filter((c) => c.agenda_group === group);
+    return h('div', { class: 'agenda-groups' },
+      h('div', { class: 'lead-views' }, present.map(([g, label]) => h('button', {
+        type: 'button', class: `seg${g === group ? ' on' : ''}`,
+        onclick: () => { group = g; try { localStorage.setItem(GROUP_KEY, g); } catch { /* da igual */ } applyGroup(); render(); },
+      }, label))),
+      h('p', { class: 'muted small' }, readonly
+        ? `${GROUP_HELP[group] || ''} Es solo para verla: las citas se cambian desde la ficha del contacto. Toca una cita para abrir su ficha.`
+        : GROUP_HELP[group] || ''),
+      mine.length > 1 ? h('div', { class: 'agenda-people' }, mine.map((c) => h('label', { class: 'check' },
+        h('input', { type: 'checkbox', checked: !hidden.has(c.id), onchange: (e) => { e.target.checked ? hidden.delete(c.id) : hidden.add(c.id); render(); } }),
+        h('i', { class: 'dot', style: `background:${c.color}` }), ` ${c.name.replace(/^(Calendario|Agenda) de /, '')}`))) : null,
+      summary ? h('div', { class: 'agenda-summary' }, summary.map((c) => h('div', { class: 'sum-card' },
+        h('small', {}, c.label), h('b', {}, c.n),
+        c.per.length ? h('span', { class: 'muted small' }, c.per.map((p) => `${p.name} ${p.n}`).join(' · ')) : null))) : null);
   }
 
   function calendarCard(cal) {
@@ -321,8 +392,8 @@ export async function calendarsTab(clientId) {
           h('button', { type: 'button', class: `seg${v === view ? ' on' : ''}`, onclick: () => setView(v) }, label)))),
       legend(untyped),
       hasHours && (view === 'day' || (view === 'week' && !narrow))
-        ? h('p', { class: 'muted small agenda-legend' }, h('span', { class: 'swatch-avail' }), 'Horario en el que se pueden dar citas. Toca un hueco para crear una cita a esa hora.')
-        : h('p', { class: 'muted small agenda-legend' }, view === 'month' ? 'Toca un día para verlo por horas.' : view === 'list' || (view === 'week' && narrow) ? '' : 'Toca un hueco para crear una cita a esa hora.'),
+        ? h('p', { class: 'muted small agenda-legend' }, h('span', { class: 'swatch-avail' }), (readonly ? 'Horario en el que se pueden dar citas.' : 'Horario en el que se pueden dar citas. Toca un hueco para crear una cita a esa hora.'))
+        : h('p', { class: 'muted small agenda-legend' }, view === 'month' ? 'Toca un día para verlo por horas.' : view === 'list' || (view === 'week' && narrow) ? '' : readonly ? '' : 'Toca un hueco para crear una cita a esa hora.'),
       body);
   }
 
@@ -538,7 +609,7 @@ export async function calendarsTab(clientId) {
       const items = events.filter((e) => new Date(e.starts_at) < next && new Date(e.ends_at) > d);
       days.push(h('div', { class: 'day' },
         h('div', { class: 'day-head' }, dayFmt.format(d),
-          h('button', { class: 'btn link small', type: 'button', onclick: () => editEvent(null, d) }, '+ cita')),
+          readonly ? null : h('button', { class: 'btn link small', type: 'button', onclick: () => editEvent(null, d) }, '+ cita')),
         items.length
           ? items.map((e) => eventRow(e, byCal[e.calendar_id], d))
           : h('div', { class: 'muted small day-empty' }, 'Libre')));
@@ -642,7 +713,20 @@ export async function calendarsTab(clientId) {
   }
 
   // ------------------------------------------------------------ citas
+  // En solo lectura, tocar una cita abre la ficha del contacto (ahí es donde se cambia todo).
+  async function openFromAgenda(ev) {
+    if (!ev) return;
+    try {
+      let lead = null;
+      if (ev.lead_id) lead = (await q(db.from('leads').select('*, conversations(channel)').eq('id', ev.lead_id).limit(1)))[0];
+      if (!lead && ev.conversation_id) lead = (await q(db.from('leads').select('*, conversations(channel)').eq('conversation_id', ev.conversation_id).order('created_at', { ascending: false }).limit(1)))[0];
+      if (!lead) { toast('Esta cita no está ligada a ningún contacto.'); return; }
+      openLead(lead, { members, memberName: new Map(members.map((m) => [m.id, m.name])), openConversation, rows: [], presence: new Map() }, load);
+    } catch (err) { toast(errorText(err), 'error'); }
+  }
+
   function editEvent(ev = null, day = null) {
+    if (readonly) { openFromAgenda(ev); return; }
     if (ev?.source === 'import') return showImported(ev);
     const note = h('p', { class: 'error' });
     const start = ev ? new Date(ev.starts_at)

@@ -322,7 +322,7 @@ export function openLead(lead, ctx, onSaved) {
       lead.clients?.name ? ` · ${lead.clients.name}` : ''),
     tabs([
       { id: 'follow', label: 'Seguimiento', render: async () => followUp },
-      { id: 'sheet', label: 'Ficha de llamada', render: async () => callSheetTab(lead, { onChanged: onSaved }) },
+      { id: 'sheet', label: 'Ficha de llamada', render: async () => callSheetTab(lead, { onChanged: onSaved, members: ctx.members }) },
       ...(hasCatalog ? [
         { id: 'ficha', label: 'Ficha y equipo', render: () => fichaTab(lead, { onChanged: onSaved }) },
         { id: 'quotes', label: 'Presupuestos', render: () => quotesView(lead.client_id, { leadId: lead.id, lead }) },
@@ -374,6 +374,20 @@ export function openLead(lead, ctx, onSaved) {
         p_id: lead.id, p_status: status.value, p_follow_up_at: followUp,
         p_caller: caller.value || null, p_seller: seller.value || null, p_value: amount, p_note: note.value,
       }));
+      // Si ya hay una visita con hora y se cambia de comercial, la visita pasa a la agenda del nuevo comercial.
+      if (lead.visit_at && seller.value && seller.value !== lead.visit_member_id) {
+        const v = new Date(lead.visit_at);
+        const pad2 = (n) => String(n).padStart(2, '0');
+        if (v.getHours() || v.getMinutes()) {
+          try {
+            await q(db.rpc('schedule_visit', {
+              p_lead: lead.id, p_date: `${v.getFullYear()}-${pad2(v.getMonth() + 1)}-${pad2(v.getDate())}`,
+              p_time: `${pad2(v.getHours())}:${pad2(v.getMinutes())}`, p_member: seller.value, p_minutes: 60,
+            }));
+            lead.visit_member_id = seller.value;
+          } catch (err) { toast(`La visita sigue en la agenda del comercial anterior: ${errorText(err)}`, 'error'); }
+        }
+      }
       Object.assign(lead, { status: status.value, follow_up_at: followUp, caller_id: caller.value || null, seller_id: seller.value || null, deal_value: amount });
       toast('Guardado');
       onSaved();

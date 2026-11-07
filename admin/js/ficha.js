@@ -15,17 +15,14 @@ function parts(iso) {
 }
 const dmy = (iso) => { if (!iso) return ''; const d = new Date(iso); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`; };
 
-export function callSheetTab(lead, { onChanged = () => {} } = {}) {
+export function callSheetTab(lead, { onChanged = () => {}, members = [] } = {}) {
   const call = parts(lead.follow_up_at);
-  const visit = parts(lead.visit_at);
   const text = (name, label, extra = {}) => field(label, h('input', { name, value: lead[name] ?? '', ...extra }));
   const num = (name, label) => field(label, h('input', { name, type: 'number', min: 0, max: 30, inputmode: 'numeric', value: lead[name] ?? '' }));
   const error = h('p', { class: 'error' });
   const save = h('button', { class: 'btn primary', type: 'submit' }, 'Guardar la ficha');
   const print = h('button', { class: 'btn soft', type: 'button', onclick: () => printSheet({ ...lead, ...read() }) }, 'Imprimir ficha');
 
-  const visitDate = h('input', { name: 'visit_date', type: 'date', value: visit.date });
-  const visitTime = h('input', { name: 'visit_time', type: 'time', step: 900, value: visit.time });
   const radio = (v, label) => h('label', { class: 'check' }, h('input', { type: 'radio', name: 'machine_interest', value: v, checked: lead.machine_interest === v }), ' ', label);
   const check = (v, label) => h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'drinks', value: v, checked: (lead.drinks || []).includes(v) }), ' ', label);
 
@@ -43,7 +40,6 @@ export function callSheetTab(lead, { onChanged = () => {} } = {}) {
     h('div', { class: 'grid2' }, text('province', 'Provincia'), text('nationality', 'Nacionalidad')),
     text('contact', 'Teléfono', { inputmode: 'tel' }),
     h('div', { class: 'grid3' }, num('family_members', 'Miembros de la familia'), num('children_at_home', 'Hijos en casa'), text('children_ages', 'Edades')),
-    h('div', { class: 'grid2' }, field('Día de la visita', visitDate), field('Hora de la visita', visitTime)),
     h('div', { class: 'grid2' },
       h('div', { class: 'field' }, h('span', {}, 'Interés en máquina'), h('div', { class: 'checks' }, MACHINE.map(([v, l]) => radio(v, l)))),
       h('div', { class: 'field' }, h('span', {}, 'Actualmente beben'), h('div', { class: 'checks' }, DRINKS.map(([v, l]) => check(v, l))))),
@@ -56,12 +52,11 @@ export function callSheetTab(lead, { onChanged = () => {} } = {}) {
   function read() {
     const f = new FormData(form);
     const v = (k) => String(f.get(k) ?? '').trim();
-    const when = v('visit_date') ? new Date(`${v('visit_date')}T${v('visit_time') || '09:00'}`).toISOString() : null;
     return {
       client_ref: v('client_ref'), name: v('name'), email: v('email'), address: v('address'), town: v('town'),
       postal_code: v('postal_code'), province: v('province'), nationality: v('nationality'), contact: v('contact'),
       family_members: v('family_members'), children_at_home: v('children_at_home'), children_ages: v('children_ages'),
-      visit_at: when, machine_interest: v('machine_interest') || null, drinks: f.getAll('drinks'),
+      machine_interest: v('machine_interest') || null, drinks: f.getAll('drinks'),
       observations: v('observations'), reconfirmation: v('reconfirmation'),
     };
   }
@@ -72,7 +67,7 @@ export function callSheetTab(lead, { onChanged = () => {} } = {}) {
     save.disabled = true;
     const data = read();
     try {
-      await q(db.rpc('update_lead_ficha', { p_id: lead.id, p_data: { ...data, visit_at: data.visit_at || '' } }));
+      await q(db.rpc('update_lead_ficha', { p_id: lead.id, p_data: data }));
       Object.assign(lead, {
         ...data,
         family_members: data.family_members === '' ? null : Number(data.family_members),
@@ -84,7 +79,92 @@ export function callSheetTab(lead, { onChanged = () => {} } = {}) {
     } catch (err) { error.textContent = errorText(err); }
     save.disabled = false;
   }
-  return form;
+  return h('div', {}, visitBox(lead, { members, onChanged }), form);
+}
+
+
+// Visita: se agenda desde la ficha. Solo el día (y, si se quiere, una hora aproximada) va a la «Agenda de visitas»;
+// al elegir comercial y hora pasa a la agenda de ese comercial. Se puede cambiar de comercial o de hora cuando haga falta.
+function visitBox(lead, { members, onChanged }) {
+  const coms = members.filter((m) => m.client_id === lead.client_id && m.role === 'comercial' && (m.active || m.id === lead.visit_member_id));
+  const cur = parts(lead.visit_at);
+  const hasTime = !!lead.visit_at && cur.time !== '00:00';
+  const name = (id) => coms.find((m) => m.id === id)?.name;
+  const date = h('input', { type: 'date', value: cur.date });
+  const time = h('input', { type: 'time', step: 300, value: hasTime ? cur.time : '' });
+  const who = h('select', {},
+    h('option', { value: '' }, 'Sin asignar todavía (solo el día)'),
+    coms.map((m) => h('option', { value: m.id, selected: lead.visit_member_id === m.id }, m.name)));
+  const state = h('p', { class: 'visit-state' });
+  const warn = h('p', { class: 'visit-warn' });
+  const error = h('p', { class: 'error' });
+  const save = h('button', { class: 'btn primary', type: 'button', onclick: () => doSave() }, 'Guardar visita');
+  const remove = h('button', { class: 'btn link danger', type: 'button', onclick: () => doSave(true) }, 'Quitar la visita');
+
+  function paint() {
+    const when = lead.visit_at
+      ? new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long', ...(hasTimeNow() ? { hour: '2-digit', minute: '2-digit' } : {}) }).format(new Date(lead.visit_at))
+      : null;
+    state.replaceChildren(...(when
+      ? [h('b', {}, `Visita: ${when}`), ` · ${name(lead.visit_member_id) ? `con ${name(lead.visit_member_id)}` : 'sin comercial asignado todavía'}`]
+      : ['Todavía no hay visita agendada.']));
+    remove.style.display = lead.visit_at ? '' : 'none';
+  }
+  const hasTimeNow = () => !!lead.visit_at && parts(lead.visit_at).time !== '00:00';
+
+  // Qué tiene ya ese comercial ese día, para no pisarle una visita.
+  async function check() {
+    warn.textContent = '';
+    if (!who.value || !date.value) return;
+    try {
+      const cals = await q(db.from('calendars').select('id').eq('client_id', lead.client_id).eq('agenda_group', 'comercial').eq('member_id', who.value));
+      if (!cals.length) { warn.textContent = 'Ese comercial todavía no tiene agenda: pídele a EBM que se la cree.'; return; }
+      const from = new Date(`${date.value}T00:00`); const to = new Date(from.getTime() + 86_400_000);
+      const ev = await q(db.from('calendar_events').select('title, starts_at, ends_at, lead_id').in('calendar_id', cals.map((c) => c.id))
+        .gte('starts_at', from.toISOString()).lt('starts_at', to.toISOString()).order('starts_at'));
+      const others = ev.filter((e) => e.lead_id !== lead.id);
+      if (!others.length) { warn.textContent = `${name(who.value)} no tiene nada más ese día.`; warn.className = 'visit-warn ok'; return; }
+      const hhmm = (iso) => { const d = new Date(iso); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+      warn.className = 'visit-warn';
+      warn.textContent = `Ese día ${name(who.value)} ya tiene: ${others.map((e) => `${hhmm(e.starts_at)}-${hhmm(e.ends_at)} ${e.title.replace(/^Visita · /, '')}`).join(' · ')}`;
+    } catch { /* sin aviso */ }
+  }
+  [who, date].forEach((el) => el.addEventListener('change', check));
+  check();
+
+  async function doSave(removeIt = false) {
+    error.textContent = '';
+    if (!removeIt && !date.value) { error.textContent = 'Elige el día de la visita.'; return; }
+    if (!removeIt && who.value && !time.value) { error.textContent = 'Para asignarla a un comercial hace falta la hora.'; return; }
+    save.disabled = true;
+    try {
+      await q(db.rpc('schedule_visit', {
+        p_lead: lead.id, p_date: removeIt ? null : date.value, p_time: removeIt || !time.value ? null : time.value,
+        p_member: removeIt || !who.value ? null : who.value, p_minutes: 60,
+      }));
+      if (removeIt) { Object.assign(lead, { visit_at: null, visit_member_id: null }); date.value = ''; time.value = ''; who.value = ''; }
+      else {
+        const at = new Date(`${date.value}T${time.value || '00:00'}`).toISOString();
+        Object.assign(lead, { visit_at: at, visit_member_id: who.value || null });
+        if (who.value) Object.assign(lead, { seller_id: who.value, status: ['won', 'lost'].includes(lead.status) ? lead.status : 'with_sales' });
+      }
+      paint(); check();
+      toast(removeIt ? 'Visita quitada' : who.value ? `Visita agendada con ${name(who.value)}` : 'Visita agendada para ese día');
+      onChanged();
+    } catch (err) { error.textContent = errorText(err); }
+    save.disabled = false;
+  }
+
+  paint();
+  return h('div', { class: 'visit-box' },
+    h('h3', {}, 'Visita'),
+    state,
+    h('div', { class: 'grid3' },
+      field('Día de la visita', date),
+      field('Hora (obligatoria si eliges comercial)', time),
+      field('Comercial', who)),
+    warn, error,
+    h('div', { class: 'row-actions' }, save, ' ', remove));
 }
 
 // Hoja para imprimir con la misma forma que la ficha en papel.

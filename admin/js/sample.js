@@ -157,16 +157,27 @@ function build(clientId, clientName, services, products) {
 
   // Agenda: dos agendas de llamadas y las llamadas de hoy y los próximos días.
   const calendars = [
-    { id: 'c1', client_id: clientId, name: 'Agenda de Laura', color: '#1483DC', active: true, member_id: 'm1', booking_enabled: true, booking_kind: 'llamada', booking_minutes: 30, created_at: iso(now) },
-    { id: 'c2', client_id: clientId, name: 'Agenda de Ángela', color: '#2FA36B', active: true, member_id: 'm2', booking_enabled: true, booking_kind: 'llamada', booking_minutes: 30, created_at: iso(now) },
+    { id: 'c1', client_id: clientId, name: 'Agenda de Laura', color: '#1483DC', active: true, member_id: 'm1', booking_enabled: true, booking_kind: 'llamada', booking_minutes: 30, booking_step_minutes: 5, agenda_group: 'llamadas', created_at: iso(now) },
+    { id: 'c2', client_id: clientId, name: 'Agenda de Ángela', color: '#2FA36B', active: true, member_id: 'm2', booking_enabled: true, booking_kind: 'llamada', booking_minutes: 30, booking_step_minutes: 5, agenda_group: 'llamadas', created_at: iso(now) },
+    { id: 'c3', client_id: clientId, name: 'Agenda de visitas', color: '#2FA36B', active: true, member_id: null, booking_enabled: false, booking_kind: 'cita', booking_minutes: 60, agenda_group: 'visitas', created_at: iso(now) },
+    { id: 'c4', client_id: clientId, name: 'Calendario de Óscar', color: '#1483DC', active: true, member_id: 'm3', booking_enabled: false, booking_kind: 'cita', booking_minutes: 60, agenda_group: 'comercial', created_at: iso(now) },
+    { id: 'c5', client_id: clientId, name: 'Calendario de Juan Antonio', color: '#8E5CC9', active: true, member_id: 'm4', booking_enabled: false, booking_kind: 'cita', booking_minutes: 60, agenda_group: 'comercial', created_at: iso(now) },
   ];
   const types = [['Cliente nuevo', '#1483DC', true], ['Segunda llamada', '#D9A400', false], ['Segunda visita', '#8E5CC9', false], ['Instalación', '#2FA36B', false], ['Seguimiento', '#E07A1F', false]]
     .map(([name, color, def], i) => ({ id: `ty${i}`, client_id: clientId, name, color, sort: i, is_default: def }));
   const events = [];
   leads.filter((l) => l.status === 'callback').slice(0, 14).forEach((l, i) => {
     const st = l.follow_up_at ? new Date(l.follow_up_at) : new Date(now.getTime() + (i + 1) * 3_600_000 * 5);
-    const en = new Date(st.getTime() + 30 * 60_000);
-    events.push({ id: `e${i}`, client_id: clientId, calendar_id: l.caller_id === 'm2' ? 'c2' : 'c1', title: `Llamar a ${l.name} · ${l.contact}`, starts_at: iso(st), ends_at: iso(en), all_day: false, type_id: 'ty0', source: 'agent' });
+    const en = new Date(st.getTime() + 5 * 60_000);
+    events.push({ id: `e${i}`, client_id: clientId, calendar_id: l.caller_id === 'm2' ? 'c2' : 'c1', title: `Llamar a ${l.name} · ${l.contact}`, starts_at: iso(st), ends_at: iso(en), all_day: false, type_id: 'ty0', source: 'agent', conversation_id: l.conversation_id });
+  });
+  // Visitas de muestra: unas sin comercial (solo el día) y otras ya con comercial y hora.
+  leads.filter((l) => l.conversation_id).slice(14, 20).forEach((l, i) => {
+    const day = new Date(now); day.setDate(day.getDate() + (i % 4)); day.setHours(0, 0, 0, 0);
+    const withCom = i % 3 !== 0;
+    const st = new Date(day.getTime() + (10 + i) * 3_600_000);
+    l.visit_at = iso(withCom ? st : day); l.visit_member_id = withCom ? (i % 2 ? 'm3' : 'm4') : null;
+    events.push({ id: `v${i}`, client_id: clientId, calendar_id: withCom ? (i % 2 ? 'c4' : 'c5') : 'c3', title: `Visita · ${l.name} · ${l.contact}`, starts_at: iso(withCom ? st : day), ends_at: iso(withCom ? new Date(st.getTime() + 3_600_000) : new Date(day.getTime() + 86_400_000)), all_day: !withCom, source: 'panel', lead_id: l.id });
   });
 
   return {
@@ -271,6 +282,18 @@ export async function makeSampleDb(real, { clientId, clientName, services }) {
       return done();
     }
     if (fn === 'lead_presence_set') return done();
+    if (fn === 'schedule_visit') {
+      const l = tables.leads.find((x) => x.id === args.p_lead);
+      if (!l) return done();
+      tables.calendar_events = tables.calendar_events.filter((e) => e.lead_id !== l.id);
+      if (!args.p_date) { Object.assign(l, { visit_at: null, visit_member_id: null }); return done({ removed: true }); }
+      const day = new Date(`${args.p_date}T${args.p_time || '00:00'}`);
+      const cal = args.p_member ? tables.calendars.find((c) => c.member_id === args.p_member && c.agenda_group === 'comercial') : tables.calendars.find((c) => c.agenda_group === 'visitas');
+      tables.calendar_events.push({ id: `v${Math.random()}`, client_id: clientId, calendar_id: cal?.id, title: `Visita · ${l.name} · ${l.contact}`, starts_at: day.toISOString(), ends_at: new Date(day.getTime() + (args.p_time ? 3_600_000 : 86_400_000)).toISOString(), all_day: !args.p_time, source: 'panel', lead_id: l.id });
+      Object.assign(l, { visit_at: day.toISOString(), visit_member_id: args.p_member || null });
+      if (args.p_member) Object.assign(l, { seller_id: args.p_member, status: ['won', 'lost'].includes(l.status) ? l.status : 'with_sales' });
+      return done({ ok: true });
+    }
     if (fn === 'lead_team') return done([]);
     return real.rpc(fn, args);
   };

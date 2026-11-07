@@ -456,7 +456,7 @@ export function openLead(lead, ctx, onSaved) {
           try {
             await q(db.rpc('schedule_visit', {
               p_lead: lead.id, p_date: `${v.getFullYear()}-${pad2(v.getMonth() + 1)}-${pad2(v.getDate())}`,
-              p_time: `${pad2(v.getHours())}:${pad2(v.getMinutes())}`, p_member: seller.value, p_minutes: 60,
+              p_time: `${pad2(v.getHours())}:${pad2(v.getMinutes())}`, p_member: seller.value, p_minutes: [10, 11, 12, 13, 15, 16].includes(v.getHours()) && v.getMinutes() === 0 ? 120 : 60,
             }));
             lead.visit_member_id = seller.value;
           } catch (err) { toast(`La visita sigue en la agenda del comercial anterior: ${errorText(err)}`, 'error'); }

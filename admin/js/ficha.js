@@ -85,13 +85,26 @@ export function callSheetTab(lead, { onChanged = () => {}, members = [] } = {}) 
 
 // Visita: se agenda desde la ficha. Solo el día (y, si se quiere, una hora aproximada) va a la «Agenda de visitas»;
 // al elegir comercial y hora pasa a la agenda de ese comercial. Se puede cambiar de comercial o de hora cuando haga falta.
+// Tramos de visita que usan los comerciales de DZZERO (hora de inicio → hora de fin).
+export const VISIT_RANGES = [['10:00', '12:00'], ['11:00', '13:00'], ['12:00', '14:00'], ['13:00', '15:00'], ['15:00', '17:00'], ['16:00', '18:00']];
+const h12 = (t) => { const n = +t.slice(0, 2); return n > 12 ? n - 12 : n; };
+const rangeLabel = (start) => { const r = VISIT_RANGES.find((x) => x[0] === start); return r ? `de ${h12(r[0])} a ${h12(r[1])}` : start; };
+export function visitTimeText(iso) {
+  const d = new Date(iso); const t = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return t === '00:00' ? '' : rangeLabel(t);
+}
+
 function visitBox(lead, { members, onChanged }) {
   const coms = members.filter((m) => m.client_id === lead.client_id && m.role === 'comercial' && (m.active || m.id === lead.visit_member_id));
   const cur = parts(lead.visit_at);
   const hasTime = !!lead.visit_at && cur.time !== '00:00';
   const name = (id) => coms.find((m) => m.id === id)?.name;
   const date = h('input', { type: 'date', value: cur.date });
-  const time = h('input', { type: 'time', step: 300, value: hasTime ? cur.time : '' });
+  const odd = hasTime && !VISIT_RANGES.some((r) => r[0] === cur.time);
+  const time = h('select', {},
+    h('option', { value: '' }, 'Sin tramo todavía'),
+    VISIT_RANGES.map((r) => h('option', { value: r[0], selected: hasTime && cur.time === r[0] }, rangeLabel(r[0]))),
+    odd ? h('option', { value: cur.time, selected: true }, `${cur.time} (hora suelta)`) : null);
   const who = h('select', {},
     h('option', { value: '' }, 'Sin asignar todavía (solo el día)'),
     coms.map((m) => h('option', { value: m.id, selected: lead.visit_member_id === m.id }, m.name)));
@@ -103,7 +116,7 @@ function visitBox(lead, { members, onChanged }) {
 
   function paint() {
     const when = lead.visit_at
-      ? new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long', ...(hasTimeNow() ? { hour: '2-digit', minute: '2-digit' } : {}) }).format(new Date(lead.visit_at))
+      ? new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long', }).format(new Date(lead.visit_at)) + (hasTimeNow() ? `, ${visitTimeText(lead.visit_at)}` : '')
       : null;
     state.replaceChildren(...(when
       ? [h('b', {}, `Visita: ${when}`), ` · ${name(lead.visit_member_id) ? `con ${name(lead.visit_member_id)}` : 'sin comercial asignado todavía'}`]
@@ -135,12 +148,12 @@ function visitBox(lead, { members, onChanged }) {
   async function doSave(removeIt = false) {
     error.textContent = '';
     if (!removeIt && !date.value) { error.textContent = 'Elige el día de la visita.'; return; }
-    if (!removeIt && who.value && !time.value) { error.textContent = 'Para asignarla a un comercial hace falta la hora.'; return; }
+    if (!removeIt && who.value && !time.value) { error.textContent = 'Para asignarla a un comercial elige el tramo de la visita.'; return; }
     save.disabled = true;
     try {
       await q(db.rpc('schedule_visit', {
         p_lead: lead.id, p_date: removeIt ? null : date.value, p_time: removeIt || !time.value ? null : time.value,
-        p_member: removeIt || !who.value ? null : who.value, p_minutes: 60,
+        p_member: removeIt || !who.value ? null : who.value, p_minutes: VISIT_RANGES.some((r) => r[0] === time.value) ? 120 : 60,
       }));
       if (removeIt) { Object.assign(lead, { visit_at: null, visit_member_id: null }); date.value = ''; time.value = ''; who.value = ''; }
       else {
@@ -161,7 +174,7 @@ function visitBox(lead, { members, onChanged }) {
     state,
     h('div', { class: 'grid3' },
       field('Día de la visita', date),
-      field('Hora (obligatoria si eliges comercial)', time),
+      field('Tramo (obligatorio si eliges comercial)', time),
       field('Comercial', who)),
     warn, error,
     h('div', { class: 'row-actions' }, save, ' ', remove));
@@ -196,7 +209,7 @@ ${box('Dirección', lead.address)}
 <div class="row">${box('Población', lead.town)}${box('C.P.', lead.postal_code, 's')}${box('Nacionalidad', lead.nationality)}</div>
 <div class="row">${box('Provincia', lead.province)}${box('Teléfono', lead.contact)}</div>
 <div class="row">${box('Miembros familia', lead.family_members)}${box('Nº hijos en casa', lead.children_at_home)}${box('Edades', lead.children_ages)}</div>
-<div class="row">${box('Día de visita', visit.date ? dmy(lead.visit_at) : '')}${box('Hora de visita', visit.time)}</div>
+<div class="row">${box('Día de visita', visit.date ? dmy(lead.visit_at) : '')}${box('Tramo de visita', visit.time ? visitTimeText(lead.visit_at) : '')}</div>
 <div class="row"><div class="f"><div class="sec">Interés en máquina</div>${MACHINE.map(([v, l]) => tick(lead.machine_interest === v, l)).join('')}</div>
 <div class="f"><div class="sec">Actualmente beben</div>${DRINKS.map(([v, l]) => tick((lead.drinks || []).includes(v), l)).join('')}</div></div>
 <div class="sec">Observaciones de la llamada / visita</div><div class="lines">${esc(lead.observations)}</div>

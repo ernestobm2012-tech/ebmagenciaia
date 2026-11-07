@@ -40,6 +40,12 @@ const PENDING = ['new', 'to_call', 'callback'];
 export const isPendingToday = (r) => PENDING.includes(r.status)
   && (r.status === 'new' || (r.follow_up_at && new Date(r.follow_up_at) <= endOfToday()));
 
+// «Para llamar ahora»: acaba de entrar (menos de una hora), sigue pendiente y no está agendada
+// para más tarde (sin hora o con hora dentro de los próximos 30 min). Se pinta en verde pastel.
+export const isHotNow = (r) => PENDING.includes(r.status)
+  && Date.now() - Date.parse(r.created_at) < 3_600_000
+  && (!r.follow_up_at || Date.parse(r.follow_up_at) <= Date.now() + 1_800_000);
+
 const plain = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 const LET = 'A-Za-zÁÉÍÓÚÜÑáéíóúüñ';
 // Provincia de un contacto: la columna si está rellena y, si no, la que escribe el asistente
@@ -233,6 +239,7 @@ function listView(ctx) {
       ], list, {
         empty: current.id === 'today' && !province && !day ? 'No hay nada pendiente para hoy.' : 'No hay contactos aquí.',
         onRow: (r) => openLead(r, ctx, refresh),
+        rowClass: (r) => (isHotNow(r) ? 'lead-hot' : ''),
       }));
   }
 

@@ -3,7 +3,7 @@
 // Con «#/?ejemplo» se enseñan datos de muestra (solo en el navegador, no se guarda nada).
 import { db, session } from './app.js';
 import { h, q, icon, fmtNum, toast } from './ui.js';
-import { LEAD_STATUS, openLead, isPendingToday, provinceOptions, provinceKey, leadProvince, loadPresence, attendedBy, presenceTag } from './leads.js';
+import { LEAD_STATUS, openLead, isPendingToday, isHotNow, provinceOptions, provinceKey, leadProvince, loadPresence, attendedBy, presenceTag } from './leads.js';
 import { openConversation } from './activity.js';
 
 const CLOSED = ['won', 'lost'];
@@ -194,7 +194,7 @@ function callCard(r, i, ctx, redraw) {
   const phone = phoneOf(r);
   const open = () => openLead(r, ctx, redraw);
   const attended = attendedBy(ctx.presence, r);
-  return h('div', { class: `call${i === 0 ? ' first' : ''}`, onclick: open },
+  return h('div', { class: `call${i === 0 ? ' first' : ''}${isHotNow(r) ? ' hot' : ''}`, onclick: open },
     h('div', { class: 'when' }, h('b', {}, time), h('small', {}, late ? 'atrasada' : f ? 'hoy' : 'sin llamar')),
     h('span', { class: 'avatar', style: `background:${COLORS[(r.name || '').length % COLORS.length]}` }, initials(r.name)),
     h('div', { class: 'person' }, h('b', {}, r.name || 'Sin nombre'), attended ? [' ', presenceTag(attended)] : null,

@@ -813,3 +813,9 @@ html.theme-dzzero .btn.primary { letter-spacing: .02em; }
   .prov-chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
   .prov-chips .chip { flex: 0 0 auto; }
 }
+
+/* Contacto que acaba de entrar y toca llamar ahora: fondo verde pastel */
+.call.hot, tr.lead-hot td { background: #E2F4E0; }
+.call.hot { border-color: #B9E0B4; }
+tr.lead-hot:hover td { background: #D4EDD1; }
+.cards-m tr.lead-hot { background: #E2F4E0; }

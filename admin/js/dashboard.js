@@ -3,7 +3,7 @@
 // Con «#/?ejemplo» se enseñan datos de muestra (solo en el navegador, no se guarda nada).
 import { db, session } from './app.js';
 import { h, q, icon, fmtNum, toast } from './ui.js';
-import { LEAD_STATUS, openLead, isPendingToday, isHotNow, provinceOptions, provinceKey, leadProvince, loadPresence, attendedBy, presenceTag } from './leads.js';
+import { LEAD_STATUS, openLead, isPendingToday, isHotNow, askOpen, provinceOptions, provinceKey, leadProvince, loadPresence, attendedBy, presenceTag } from './leads.js';
 import { openConversation } from './activity.js';
 
 const CLOSED = ['won', 'lost'];
@@ -45,8 +45,7 @@ function ago(iso) {
 // Lo que escribe el asistente en el motivo: «Llamar el jueves, 5 de noviembre, 09:30: Madrid (28936) · casa: …».
 const cleanReason = (r) => (r || '').replace(/^Llamar el [^:]*\d{2}:\d{2}:\s*/i, '').replace(/^Cita reservada[^:]*:\s*/i, '');
 function place(r) {
-  const m = (r.reason || '').match(/([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ .'-]{1,40}?)\s*\((\d{5})\)/);
-  return m ? m[1].trim() : null;
+  return leadProvince(r);
 }
 function kind(r) {
   const m = (r.reason || '').match(/·\s*(casa|negocio)\b/i);
@@ -192,7 +191,7 @@ function callCard(r, i, ctx, redraw) {
   const late = f && f < new Date() && !sameDay(f, new Date());
   const time = f ? (late ? new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short' }).format(f) : hhmm(f)) : 'Nuevo';
   const phone = phoneOf(r);
-  const open = () => openLead(r, ctx, redraw);
+  const open = () => askOpen(r, ctx, () => openLead(r, ctx, redraw));
   const attended = attendedBy(ctx.presence, r);
   return h('div', { class: `call${i === 0 ? ' first' : ''}${isHotNow(r) ? ' hot' : ''}`, onclick: open },
     h('div', { class: 'when' }, h('b', {}, time), h('small', {}, late ? 'atrasada' : f ? 'hoy' : 'sin llamar')),

@@ -60,23 +60,34 @@ export const isHotNow = (r) => PENDING.includes(r.status)
 
 const plain = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 const LET = 'A-Za-zÁÉÍÓÚÜÑáéíóúüñ';
-// Provincia de un contacto: la columna si está rellena y, si no, la que escribe el asistente
-// en el motivo («Getafe (Madrid) (28901) · casa:» o «Madrid (28942) · casa:»).
+// Provincia por el prefijo del código postal (los dos primeros números).
+const CP_PROVINCES = {
+  '01': 'Álava', '02': 'Albacete', '03': 'Alicante', '04': 'Almería', '05': 'Ávila', '06': 'Badajoz', '07': 'Baleares', '08': 'Barcelona',
+  '09': 'Burgos', '10': 'Cáceres', '11': 'Cádiz', '12': 'Castellón', '13': 'Ciudad Real', '14': 'Córdoba', '15': 'A Coruña', '16': 'Cuenca',
+  '17': 'Girona', '18': 'Granada', '19': 'Guadalajara', '20': 'Gipuzkoa', '21': 'Huelva', '22': 'Huesca', '23': 'Jaén', '24': 'León',
+  '25': 'Lleida', '26': 'La Rioja', '27': 'Lugo', '28': 'Madrid', '29': 'Málaga', '30': 'Murcia', '31': 'Navarra', '32': 'Ourense',
+  '33': 'Asturias', '34': 'Palencia', '35': 'Las Palmas', '36': 'Pontevedra', '37': 'Salamanca', '38': 'Santa Cruz de Tenerife', '39': 'Cantabria',
+  '40': 'Segovia', '41': 'Sevilla', '42': 'Soria', '43': 'Tarragona', '44': 'Teruel', '45': 'Toledo', '46': 'Valencia', '47': 'Valladolid',
+  '48': 'Bizkaia', '49': 'Zamora', '50': 'Zaragoza', '51': 'Ceuta', '52': 'Melilla',
+};
+const PROVINCE_NAMES = new Set(Object.values(CP_PROVINCES).map((n) => plain(n)));
+// Provincia de un contacto (nunca el pueblo): 1) la columna `province` si es una provincia; 2) el código postal (columna o el que escribe
+// el asistente en el motivo, «Getafe (28901) · casa:»), cuyos dos primeros números son la provincia; 3) la que el asistente pone entre
+// paréntesis («Getafe (Madrid) (28901)»). Si no hay nada fiable, «Sin provincia».
 export function leadProvince(r) {
-  if (r.province && r.province.trim()) return r.province.trim();
+  const col = (r.province || '').trim();
+  if (col && PROVINCE_NAMES.has(plain(col))) return CP_PROVINCES[Object.keys(CP_PROVINCES).find((k) => plain(CP_PROVINCES[k]) === plain(col))];
   const t = (r.reason || '').replace(/^Llamar el [^:]*\d{2}:\d{2}:\s*/i, '').replace(/^Cita reservada[^:]*:\s*/i, '');
-  let m = t.match(new RegExp(`\\(([${LET}][^()]{1,30})\\)\\s*\\(\\d{5}\\)`));
-  if (m) return m[1].trim();
-  m = t.match(new RegExp(`([${LET}][${LET} .'-]{1,40}?)\\s*\\(\\d{5}\\)`));
-  if (m) return m[1].trim();
-  m = t.match(new RegExp(`^\\s*[^()·:]{2,30}\\(([${LET}][^()]{1,25})\\)`));
-  return m ? m[1].trim() : null;
+  const cp = (String(r.postal_code || '').match(/\b\d{5}\b/) || t.match(/\b\d{5}\b/) || [])[0];
+  if (cp && CP_PROVINCES[cp.slice(0, 2)]) return CP_PROVINCES[cp.slice(0, 2)];
+  const m = t.match(new RegExp(`\\(([${LET}][^()]{1,30})\\)`));
+  if (m && PROVINCE_NAMES.has(plain(m[1]))) return CP_PROVINCES[Object.keys(CP_PROVINCES).find((k) => plain(CP_PROVINCES[k]) === plain(m[1]))];
+  return col || null;
 }
 function provinceOptions(rows) {
   const map = new Map();
   rows.forEach((r) => {
-    const p = leadProvince(r);
-    if (!p) return;
+    const p = leadProvince(r) || 'Sin provincia';
     const k = plain(p);
     const e = map.get(k) || { key: k, label: p.charAt(0).toUpperCase() + p.slice(1), n: 0 };
     e.n += 1;
@@ -84,7 +95,7 @@ function provinceOptions(rows) {
   });
   return [...map.values()].sort((a, b) => b.n - a.n || a.label.localeCompare(b.label, 'es'));
 }
-export const provinceKey = (r) => { const p = leadProvince(r); return p ? plain(p) : ''; };
+export const provinceKey = (r) => plain(leadProvince(r) || 'Sin provincia');
 export { provinceOptions };
 
 // «En proceso»: quien abre una ficha la marca para que el resto del equipo lo vea.
@@ -263,7 +274,7 @@ function listView(ctx) {
         { label: 'Comercial', hideM: true, hideL: true, cell: (r) => who(r.seller_id) },
       ], list, {
         empty: current.id === 'today' && !province && !day ? 'No hay nada pendiente para hoy.' : 'No hay contactos aquí.',
-        onRow: (r) => openLead(r, ctx, refresh),
+        onRow: (r) => askOpen(r, ctx, () => openLead(r, ctx, refresh)),
         rowClass: (r) => (isHotNow(r) ? 'lead-hot' : ''),
       }));
   }
@@ -283,6 +294,13 @@ function listView(ctx) {
     refresh();
   }, 8000);
   return wrap;
+}
+
+// Si otra persona tiene la ficha abierta, se avisa antes de abrirla (para pasar al siguiente contacto).
+export function askOpen(lead, ctx, open) {
+  const p = attendedBy(ctx.presence, lead);
+  if (p && !confirm(`${shortName(p.user_name)} está atendiendo este contacto ahora mismo. ¿Lo abres igualmente?`)) return;
+  open();
 }
 
 export function openLead(lead, ctx, onSaved) {

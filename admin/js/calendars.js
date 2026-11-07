@@ -261,7 +261,9 @@ export async function calendarsTab(clientId) {
         h('strong', {}, cal.name), cal.active ? null : h('span', { class: 'muted small' }, ' (apagado)')),
       cal.member_id ? h('div', { class: 'small muted' }, `De ${members.find((m) => m.id === cal.member_id)?.name || 'una persona del equipo'}`) : null,
       cal.booking_enabled ? h('div', { class: 'small cal-booking' }, cal.booking_kind === 'llamada'
-        ? `El asistente programa aquí llamadas del equipo (${cal.booking_minutes} min), repartidas con las demás agendas de llamadas`
+        ? (cal.agenda_group === 'llamadas' && cal.booking_step_minutes
+          ? `El asistente programa aquí las llamadas del equipo, cada ${cal.booking_step_minutes} minutos (hasta ${cal.booking_capacity || 1} a la misma hora)`
+          : `El asistente programa aquí llamadas del equipo (${cal.booking_minutes} min), repartidas con las demás agendas de llamadas`)
         : `El asistente reserva aquí citas de ${cal.booking_minutes} min`) : null,
       h('div', { class: `small ${cal.sync_error ? 'error' : 'muted'}` }, status),
       h('div', { class: 'cal-actions' },

@@ -444,3 +444,4 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 
 ### Tarjeta de avisos: móvil y ordenador (08/11/2026)
 - La tarjeta «Recibe los avisos…» del Resumen (`admin/js/push.js`) sale también en el ordenador y funciona igual: avisos push en Chrome y Edge de escritorio y «Instalar como app» (o el icono de instalar de la barra de direcciones). Cada dispositivo o navegador se activa por separado; en iPhone hay que instalar antes la app. Texto cambiado a «móvil o en tu ordenador». `?v=20261124`, caché `ebm-panel-v19`.
+- Texto de la tarjeta de agenda (08/11/2026): decía «llamadas (30 min)» aunque las llamadas van cada 5 min; ahora, en agendas de llamadas con `booking_step_minutes`, dice «cada 5 minutos (hasta N a la misma hora)». `?v=20261125`, caché `ebm-panel-v20`.

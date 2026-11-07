@@ -292,7 +292,7 @@ export async function makeSampleDb(real, { clientId, clientName, services }) {
       }
       return done();
     }
-    if (fn === 'lead_presence_set') return done();
+    if (fn === 'lead_presence_set' || fn === 'lead_presence_set2') return done();
     if (fn === 'lead_to_customer') {
       const l = tables.leads.find((x) => x.id === args.p_lead);
       if (!l) return done();

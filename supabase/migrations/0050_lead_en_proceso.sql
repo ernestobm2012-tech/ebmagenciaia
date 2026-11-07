@@ -31,3 +31,8 @@ begin
 end $$;
 revoke all on function public.lead_presence_set(uuid, boolean) from public, anon;
 grant execute on function public.lead_presence_set(uuid, boolean) to authenticated;
+
+-- (08/11/2026) «En proceso» por dispositivo: la misma cuenta abierta en el ordenador y en el móvil también se ve.
+alter table public.lead_presence add column if not exists device_id text;
+-- Función lead_presence_set2(p_id, p_on, p_device): igual que lead_presence_set pero guarda device_id; la marca se quita solo desde el mismo dispositivo.
+-- (Cuerpo completo en la base; el panel llama a lead_presence_set2.)

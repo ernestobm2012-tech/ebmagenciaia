@@ -10,20 +10,20 @@ import { fichaTab, quotesView } from './catalog.js';
 import { callSheetTab } from './ficha.js';
 import { openCustomer } from './customers.js';
 
-// Lo que se enseña son solo cinco estados (decisión de Óscar, 07/11/2026). En la base siguen existiendo los demás
-// (to_call, callback, waiting) porque los usan el asistente y los avisos: aquí se ven como «Nuevo» o «Llamado».
+// Estados que se enseñan (decisión de Óscar, 07/11/2026): Nuevo, Llamado, Volver a llamar (con fecha obligatoria),
+// Pasado al comercial, Cliente y No interesa. En la base siguen existiendo to_call y waiting: se ven como «Nuevo» y «Llamado».
 export const LEAD_STATUS = {
   new: 'Nuevo',
   to_call: 'Nuevo',
-  callback: 'Nuevo',
+  callback: 'Volver a llamar',
   called: 'Llamado',
   waiting: 'Llamado',
   with_sales: 'Pasado al comercial',
   won: 'Cliente',
   lost: 'No interesa',
 };
-export const STATUS_CHOICES = [['new', 'Nuevo'], ['called', 'Llamado'], ['with_sales', 'Pasado al comercial'], ['won', 'Cliente'], ['lost', 'No interesa']];
-export const choiceOf = (s) => ({ to_call: 'new', callback: 'new', waiting: 'called' }[s] || s);
+export const STATUS_CHOICES = [['new', 'Nuevo'], ['called', 'Llamado'], ['callback', 'Volver a llamar'], ['with_sales', 'Pasado al comercial'], ['won', 'Cliente'], ['lost', 'No interesa']];
+export const choiceOf = (s) => ({ to_call: 'new', waiting: 'called' }[s] || s);
 const CLOSED = ['won', 'lost'];
 // Qué hace cada persona con los contactos; el puesto (job_title) lo escribe cada negocio.
 const ROLES = { llamadas: 'Llama a los contactos', comercial: 'Comercial: se le pasan para cerrar', otro: 'No lleva contactos' };
@@ -89,21 +89,27 @@ export { provinceOptions };
 
 // «En proceso»: quien abre una ficha la marca para que el resto del equipo lo vea.
 const PRESENCE_MS = 180_000;
+// Cada navegador (ordenador, móvil…) tiene su identificador: así se ve «en proceso» aunque sea la misma cuenta en dos aparatos.
+const deviceId = (() => {
+  const make = () => (globalThis.crypto?.randomUUID ? crypto.randomUUID() : `d${Date.now()}${Math.random().toString(16).slice(2)}`);
+  try { let v = localStorage.getItem('ebm-device'); if (!v) { v = make(); localStorage.setItem('ebm-device', v); } return v; } catch { return make(); }
+})();
 export async function loadPresence() {
   try {
     const since = new Date(Date.now() - PRESENCE_MS).toISOString();
-    const rows = await q(db.from('lead_presence').select('lead_id, user_id, user_name, seen_at').gte('seen_at', since));
+    const rows = await q(db.from('lead_presence').select('lead_id, user_id, user_name, seen_at, device_id').gte('seen_at', since));
     return new Map(rows.map((r) => [r.lead_id, r]));
   } catch { return new Map(); }
 }
 export const attendedBy = (map, r) => {
   const p = map && map.get(r.id);
-  return p && p.user_id !== session.user?.id ? p : null;
+  if (!p) return null;
+  return (p.device_id ? p.device_id !== deviceId : p.user_id !== session.user?.id) ? p : null;
 };
 const shortName = (n) => (n || 'Alguien del equipo').split(/[\s@]/)[0].replace(/^./, (c) => c.toUpperCase());
 export const presenceTag = (p) => h('span', { class: 'presence', title: 'Otra persona tiene abierta esta ficha ahora mismo' }, `En proceso · ${shortName(p.user_name)}`);
 async function setPresence(id, on) {
-  try { await db.rpc('lead_presence_set', { p_id: id, p_on: on }); } catch { /* sin marca, no pasa nada */ }
+  try { await db.rpc('lead_presence_set2', { p_id: id, p_on: on, p_device: deviceId }); } catch { /* sin marca, no pasa nada */ }
 }
 
 // Pasar un contacto cerrado a Clientes (tabla customers) con la RPC lead_to_customer.
@@ -367,12 +373,18 @@ export function openLead(lead, ctx, onSaved) {
   const beat = setInterval(() => setPresence(lead.id, true), 60_000);
   const close = modal(lead.name || lead.contact || 'Contacto', body, {
     wide: true,
-    onClose: () => { clearInterval(beat); setPresence(lead.id, false); },
+    onClose: () => { clearInterval(beat); clearInterval(watch); setPresence(lead.id, false); },
   });
-  loadPresence().then((m) => {
-    const p = attendedBy(m, lead);
-    if (p) body.prepend(h('p', { class: 'presence-note' }, `${shortName(p.user_name)} tiene este contacto abierto ahora mismo.`));
-  });
+  const presenceNote = h('p', { class: 'presence-note' });
+  presenceNote.style.display = 'none';
+  body.prepend(presenceNote);
+  const checkPresence = async () => {
+    const p = attendedBy(await loadPresence(), lead);
+    presenceNote.style.display = p ? '' : 'none';
+    if (p) presenceNote.textContent = `${shortName(p.user_name)} tiene este contacto abierto ahora mismo.`;
+  };
+  checkPresence();
+  const watch = setInterval(checkPresence, 10_000);
 
   async function loadHistory() {
     try {
@@ -401,12 +413,18 @@ export function openLead(lead, ctx, onSaved) {
     e.preventDefault();
     error.textContent = '';
     save.disabled = true;
+    if (status.value === 'callback' && !when.value) {
+      error.textContent = 'Para volver a llamar tienes que poner la fecha y la hora de la nueva llamada.';
+      save.disabled = false;
+      when.focus();
+      return;
+    }
     const followUp = when.value ? new Date(when.value).toISOString() : null;
     const amount = value.value === '' ? null : Number(value.value);
     try {
       // «Nuevo» y «Llamado» conservan el estado interno que ya tenía el contacto (con llamada agendada, en espera…).
       let sendStatus = status.value;
-      if (sendStatus === 'new' && ['to_call', 'callback'].includes(lead.status)) sendStatus = lead.status;
+      if (sendStatus === 'new' && lead.status === 'to_call') sendStatus = lead.status;
       if (sendStatus === 'called' && lead.status === 'waiting') sendStatus = 'waiting';
       await q(db.rpc('update_lead', {
         p_id: lead.id, p_status: sendStatus, p_follow_up_at: followUp,

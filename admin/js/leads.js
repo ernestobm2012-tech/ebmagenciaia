@@ -31,7 +31,9 @@ const JOB_SUGGESTIONS = ['Teleoperadora', 'Comercial', 'Instalador', 'Fontanero'
 const jobOf = (m) => m.job_title || { llamadas: 'Llama a los contactos', comercial: 'Comercial', otro: '—' }[m.role];
 const CHANNELS = { phone: 'Teléfono', web: 'Chat de la web', whatsapp: 'WhatsApp', instagram: 'Instagram' };
 
-const statusBadge = (s) => h('span', { class: `badge lead-${choiceOf(s)}` }, LEAD_STATUS[s] || s);
+const statusBadge = (s, r) => (r && isAveria(r)
+  ? h('span', { class: `badge ${r.resolved_at ? 'averia-done' : 'averia-badge'}` }, r.resolved_at ? 'Avería atendida' : 'AVERÍA')
+  : h('span', { class: `badge lead-${choiceOf(s)}` }, LEAD_STATUS[s] || s));
 
 // Fin del día de hoy en hora local: lo que toca hoy incluye lo atrasado.
 function endOfToday() {
@@ -45,7 +47,11 @@ function endOfToday() {
 const PENDING = ['new', 'to_call', 'callback'];
 // Nuevo (o con llamada agendada): sin fecha, siempre; con fecha, cuando toca (hoy o atrasada). Llamado: solo si se le
 // puso una fecha de nueva llamada DESPUÉS de marcarlo (una fecha vieja de antes no cuenta).
+// Avería de un cliente actual (la deja el asistente): sale lo primero en el Resumen hasta que alguien la marca atendida.
+export const isAveria = (r) => r.kind === 'averia';
+export const isOpenAveria = (r) => isAveria(r) && !r.resolved_at;
 export const isPendingToday = (r) => {
+  if (isAveria(r)) return false; // las averías tienen su propio aviso, no entran en «Hoy toca llamar»
   const due = r.follow_up_at && new Date(r.follow_up_at) <= endOfToday();
   if (PENDING.includes(r.status)) return r.follow_up_at ? !!due : r.status === 'new';
   if (['called', 'waiting'].includes(r.status)) return !!due && Date.parse(r.follow_up_at) >= Date.parse(r.updated_at || 0) - 60_000;
@@ -105,6 +111,10 @@ const deviceId = (() => {
   const make = () => (globalThis.crypto?.randomUUID ? crypto.randomUUID() : `d${Date.now()}${Math.random().toString(16).slice(2)}`);
   try { let v = localStorage.getItem('ebm-device'); if (!v) { v = make(); localStorage.setItem('ebm-device', v); } return v; } catch { return make(); }
 })();
+export async function resolveAveria(id, on = true) {
+  const { error } = await db.rpc('lead_resolve_averia', { p_id: id, p_on: on });
+  if (error) throw error;
+}
 export async function loadPresence() {
   try {
     const since = new Date(Date.now() - PRESENCE_MS).toISOString();
@@ -204,7 +214,7 @@ function mine(r, ctx) {
 
 function listView(ctx) {
   const filters = [
-    { id: 'today', label: 'Hoy', test: isPendingToday },
+    { id: 'today', label: 'Hoy', test: (r) => isPendingToday(r) || isOpenAveria(r) },
     { id: 'open', label: 'Pendientes', test: (r) => !CLOSED.includes(r.status) },
     { id: 'sales', label: 'Con comercial', test: (r) => !CLOSED.includes(r.status) && (r.seller_id || r.status === 'with_sales') },
     { id: 'mine', label: 'Míos', test: (r) => !CLOSED.includes(r.status) && mine(r, ctx) },
@@ -268,14 +278,14 @@ function listView(ctx) {
         } },
         { label: 'Provincia', hideM: true, hideT: true, nowrap: true, cell: (r) => leadProvince(r) || '—' },
         { label: 'Motivo', cell: (r) => h('span', { class: 'clip', title: r.reason || '' }, r.reason || '—') },
-        { label: 'Estado', nowrap: true, cell: (r) => statusBadge(r.status) },
+        { label: 'Estado', nowrap: true, cell: (r) => statusBadge(r.status, r) },
         { label: 'Próxima llamada', nowrap: true, cell: nextCall },
         { label: 'Lo gestiona', hideM: true, hideT: true, cell: (r) => who(r.caller_id) },
         { label: 'Comercial', hideM: true, hideL: true, cell: (r) => who(r.seller_id) },
       ], list, {
         empty: current.id === 'today' && !province && !day ? 'No hay nada pendiente para hoy.' : 'No hay contactos aquí.',
         onRow: (r) => askOpen(r, ctx, () => openLead(r, ctx, refresh)),
-        rowClass: (r) => (isHotNow(r) ? 'lead-hot' : ''),
+        rowClass: (r) => (isOpenAveria(r) ? 'lead-averia' : isHotNow(r) ? 'lead-hot' : ''),
       }));
   }
 
@@ -383,6 +393,17 @@ export function openLead(lead, ctx, onSaved) {
   }
   body.prepend(customerBar);
   paintCustomerBar();
+  // Avería abierta: barra roja con el botón para marcarla atendida.
+  if (isOpenAveria(lead)) {
+    const bar = h('div', { class: 'averia-bar' }, h('b', {}, '⚠ Avería de un cliente actual'),
+      h('span', {}, ' · Sigue sin atender.'),
+      h('button', { class: 'btn primary', type: 'button', onclick: async (e) => {
+        e.target.disabled = true;
+        try { await resolveAveria(lead.id); lead.resolved_at = new Date().toISOString(); bar.remove(); toast('Avería marcada como atendida'); onSaved?.(); }
+        catch (err) { toast(errorText(err), 'error'); e.target.disabled = false; }
+      } }, 'Marcar atendida'));
+    body.prepend(bar);
+  }
 
   // Mientras la ficha está abierta, el resto del equipo ve el contacto «en proceso».
   setPresence(lead.id, true);

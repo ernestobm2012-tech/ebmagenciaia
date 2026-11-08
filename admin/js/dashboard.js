@@ -3,7 +3,7 @@
 // Con «#/?ejemplo» se enseñan datos de muestra (solo en el navegador, no se guarda nada).
 import { db, session } from './app.js';
 import { h, q, icon, fmtNum, toast } from './ui.js';
-import { LEAD_STATUS, openLead, isPendingToday, isHotNow, askOpen, provinceOptions, provinceKey, leadProvince, loadPresence, attendedBy, presenceTag } from './leads.js';
+import { LEAD_STATUS, openLead, isAveria, isOpenAveria, resolveAveria, isPendingToday, isHotNow, askOpen, provinceOptions, provinceKey, leadProvince, loadPresence, attendedBy, presenceTag } from './leads.js';
 import { openConversation } from './activity.js';
 
 const CLOSED = ['won', 'lost'];
@@ -85,7 +85,8 @@ async function load() {
     q(db.from('leads').select('*, conversations(channel)').eq('client_id', clientId).order('created_at', { ascending: false }).limit(2000)),
     q(db.from('team_members').select('*').eq('client_id', clientId).order('name')).catch(() => []),
   ]);
-  return { rows, members };
+  // Las averías de clientes actuales no cuentan como contactos comerciales: van aparte, en su aviso.
+  return { rows: rows.filter((r) => !isAveria(r)), averias: rows.filter(isAveria), members };
 }
 
 const greeting = () => {
@@ -99,9 +100,29 @@ const firstName = () => {
 
 // ------------------------------------------------------------------ portada
 export async function homeView() {
-  let { rows, members } = await load();
+  let { rows, averias, members } = await load();
   const memberName = new Map(members.map((m) => [m.id, m.name]));
   const ctx = { members, memberName, openConversation, rows, presence: new Map() };
+  // Avisos de avería: lo primero de la portada, rojo y parpadeando, hasta que alguien la marca atendida.
+  const averiaBox = h('div', { class: 'averias' });
+  const paintAverias = () => {
+    const open = averias.filter(isOpenAveria).sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+    averiaBox.replaceChildren(...open.map((r) => {
+      const phone = phoneOf(r);
+      return h('div', { class: 'averia-alert', role: 'alert' },
+        h('div', { class: 'ttl' }, h('span', { class: 'sirena' }, '⚠'), h('b', {}, 'AVERÍA'), h('span', {}, ` · ${ago(r.created_at)}`)),
+        h('div', { class: 'awho' }, h('b', {}, r.name || 'Sin nombre'), r.contact ? ` · ${r.contact}` : ''),
+        h('div', { class: 'awhat' }, cleanReason(r.reason) || 'Avería de un cliente actual'),
+        h('div', { class: 'acts' },
+          phone ? h('a', { class: 'btn', href: `tel:${phone}` }, icon('phone'), 'Llamar') : null,
+          h('button', { class: 'btn', type: 'button', onclick: () => openLead(r, ctx, refresh) }, 'Ver ficha'),
+          h('button', { class: 'btn', type: 'button', onclick: async (e) => {
+            e.target.disabled = true;
+            try { await resolveAveria(r.id); r.resolved_at = new Date().toISOString(); paintAverias(); } catch { e.target.disabled = false; }
+          } }, 'Marcar atendida')));
+    }));
+  };
+  paintAverias();
   let province = '';
 
   const now = new Date();
@@ -138,8 +159,9 @@ export async function homeView() {
   // y se ve qué fichas tiene abiertas otra persona.
   async function refresh() {
     try {
-      ({ rows, members } = await load());
+      ({ rows, averias, members } = await load());
       ctx.rows = rows;
+      paintAverias();
       ctx.presence = await loadPresence();
     } catch { /* se queda lo que había */ }
     redraw();
@@ -164,6 +186,7 @@ export async function homeView() {
   const callsToday = todays.filter((r) => r.follow_up_at && sameDay(new Date(r.follow_up_at), now)).length;
   const dateText = new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }).format(now);
   return h('div', { class: 'page home' },
+    averiaBox,
     h('h1', {}, `${greeting()}${firstName() ? `, ${firstName()}` : ''}`),
     h('p', { class: 'muted' }, `${dateText[0].toUpperCase()}${dateText.slice(1)} · ${callsToday ? `hoy hay ${callsToday} ${callsToday === 1 ? 'llamada' : 'llamadas'} para vuestro equipo` : 'hoy no hay llamadas agendadas'}`),
     h('div', { class: 'home-grid' },

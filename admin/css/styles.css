@@ -860,3 +860,24 @@ tr.lead-hot:hover td { background: #D4EDD1; }
 .customer-bar:empty { display: none; }
 .form .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 @media (max-width: 760px) { .form .grid3 { grid-template-columns: 1fr; } .customers .section-head .btn { margin-left: 0; } }
+
+/* ---- Avería de un cliente actual: rojo fuerte, parpadea y va lo primero ---- */
+.averias { display: grid; gap: 10px; margin-bottom: 14px; }
+.averias:empty { display: none; }
+.averia-alert { background: #D7191C; color: #fff; border-radius: 14px; padding: 14px 16px; border: 3px solid #7A0B0D; box-shadow: 0 4px 18px rgba(215,25,28,.45); }
+.averia-alert .ttl { display: flex; align-items: center; gap: 8px; font-size: 1.05rem; letter-spacing: .04em; }
+.averia-alert .sirena { font-size: 1.3rem; }
+.averia-alert .awho { font-size: 1.1rem; margin-top: 4px; }
+.averia-alert .awhat { margin-top: 2px; opacity: .95; }
+.averia-alert .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.averia-alert .acts .btn { background: #fff; color: #7A0B0D; border: 0; font-weight: 700; min-height: 44px; }
+.averia-bar { background: #FDE3E3; border: 2px solid #D7191C; color: #7A0B0D; border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.averia-bar .btn { margin-left: auto; }
+.badge.averia-badge { background: #D7191C; color: #fff; font-weight: 800; }
+.badge.averia-done { background: #E5E7EB; color: #4B5563; }
+tr.lead-averia td { background: #FDE3E3; }
+tr.lead-averia:hover td { background: #FBCFCF; }
+.cards-m tr.lead-averia { background: #FDE3E3; border-color: #D7191C; }
+@keyframes averia-blink { 0%, 100% { background: #D7191C; box-shadow: 0 4px 18px rgba(215,25,28,.45); } 50% { background: #FF6A00; box-shadow: 0 4px 26px rgba(255,106,0,.7); } }
+@media (prefers-reduced-motion: no-preference) { .averia-alert { animation: averia-blink 1.1s ease-in-out infinite; } }
+.averia-alert .acts .btn { text-decoration: none; } .averia-alert .awho { font-family: inherit; color: #fff; }

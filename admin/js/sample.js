@@ -50,6 +50,8 @@ function build(clientId, clientName, services, products) {
   const hours = [9, 10, 10, 11, 12, 13, 16, 17, 18, 19, 20, 21, 22];
   const clientsJoin = { name: clientName, services };
   const leads = [];
+  const averiaAt = new Date(Date.now() - 3 * 3_600_000).toISOString();
+  leads.push({ id: 'lead-averia', client_id: clientId, name: 'Antonio Ruiz', contact: '600123456', reason: 'Avería: la máquina pierde agua por debajo', kind: 'averia', status: 'new', resolved_at: null, created_at: averiaAt, updated_at: averiaAt, conversations: { channel: 'web' } });
   for (let i = 0; i < 142; i++) {
     const day = Math.floor(Math.pow(rnd(), 0.8) * 30);
     const d = new Date(now); d.setDate(d.getDate() - day); d.setHours(pick(hours), Math.floor(rnd() * 60), 0, 0);
@@ -290,6 +292,11 @@ export async function makeSampleDb(real, { clientId, clientName, services }) {
         Object.keys(d).forEach((k) => { if (d[k] === '') d[k] = null; });
         Object.assign(l, d, { updated_at: stamp() });
       }
+      return done();
+    }
+    if (fn === 'lead_resolve_averia') {
+      const l = tables.leads.find((x) => x.id === args.p_id);
+      if (l) l.resolved_at = args.p_on === false ? null : new Date().toISOString();
       return done();
     }
     if (fn === 'lead_presence_set' || fn === 'lead_presence_set2') return done();

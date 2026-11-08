@@ -48,12 +48,104 @@ const BASE_TOOLS: Anthropic.Tool[] = [
       "Avisa de que esta conversación necesita a una persona: lo pide el usuario, hay una queja, o la pregunta no se puede responder con los datos del negocio.",
     input_schema: {
       type: "object",
-      properties: { motivo: { type: "string", description: "Por qué hace falta una persona" } },
+      properties: {
+        motivo: { type: "string", description: "Por qué hace falta una persona" },
+        tipo: { type: "string", enum: ["averia", "otro"], description: "«averia» si es un cliente actual con una avería o incidencia en su equipo; si no, «otro»" },
+        nombre: { type: "string", description: "Nombre de la persona (obligatorio en una avería)" },
+        telefono: { type: "string", description: "Teléfono de 9 cifras (obligatorio en una avería)" },
+      },
       required: ["motivo"],
       additionalProperties: false,
     },
   },
 ];
+
+// ---- Zona (solo agentes con zone_priority): esta lógica vive aquí, no en el prompt ----
+const norm = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
+const PROVINCES: Record<string, string[]> = {
+  "alava": ["araba"], "albacete": [], "alicante": ["alacant"], "almeria": [], "asturias": [], "avila": [], "badajoz": [], "barcelona": [],
+  "burgos": [], "caceres": [], "cadiz": [], "cantabria": [], "castellon": ["castello"], "ciudad real": [], "cordoba": [], "cuenca": [],
+  "girona": ["gerona"], "granada": [], "guadalajara": [], "guipuzcoa": ["gipuzkoa"], "huelva": [], "huesca": [], "jaen": [], "la rioja": ["rioja"],
+  "las palmas": [], "leon": [], "lleida": ["lerida"], "lugo": [], "madrid": [], "malaga": [], "murcia": [], "navarra": [], "ourense": ["orense"],
+  "palencia": [], "pontevedra": [], "salamanca": [], "santa cruz de tenerife": ["tenerife"], "segovia": [], "sevilla": [], "soria": [],
+  "tarragona": [], "teruel": [], "toledo": [], "valencia": [], "valladolid": [], "vizcaya": ["bizkaia"], "zamora": [], "zaragoza": [],
+  "a coruna": ["la coruna", "coruna"], "baleares": ["illes balears", "mallorca"], "ceuta": [], "melilla": [],
+};
+function provinceOf(input: string): string | null {
+  const t = ` ${norm(input)} `;
+  let best: string | null = null;
+  for (const [name, aliases] of Object.entries(PROVINCES)) {
+    for (const n of [name, ...aliases]) {
+      if (t.includes(` ${n} `) && (!best || n.length > best.length)) best = name;
+    }
+  }
+  return best;
+}
+const ZONE_TOOLS: Anthropic.Tool[] = [
+  {
+    name: "indicar_provincia",
+    description:
+      "Llámala en cuanto sepas el pueblo o ciudad de la persona, con su PROVINCIA (sácala tú del pueblo). Te devuelve qué hacer a continuación: síguelo al pie de la letra. Sin esta llamada no puedes consultar la agenda ni reservar.",
+    input_schema: {
+      type: "object",
+      properties: { provincia: { type: "string", description: "Provincia del pueblo o ciudad" } },
+      required: ["provincia"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "confirmar_interes",
+    description:
+      "Llámala cuando hayas hecho las preguntas de comprobación de interés (solo si indicar_provincia te lo pidió). interes = «real» si quiere resolverlo de verdad; «curioso» si solo se informa o mira.",
+    input_schema: {
+      type: "object",
+      properties: {
+        interes: { type: "string", enum: ["real", "curioso"] },
+        resumen: { type: "string", description: "Lo que ha contado, en una frase" },
+      },
+      required: ["interes", "resumen"],
+      additionalProperties: false,
+    },
+  },
+];
+async function zoneTool(name: string, input: Record<string, string>, conversationId: string, priority: string[]) {
+  if (name === "indicar_provincia") {
+    const prov = provinceOf(input.provincia ?? "");
+    if (!prov) return "Error: no reconozco esa provincia. Saca la provincia del pueblo que te ha dicho y vuelve a llamar a esta herramienta (o pregúntasela).";
+    const prio = priority.map(norm).includes(prov);
+    await db.from("conversations").update({ zone: prio ? "priority" : "other", qualified: prio }).eq("id", conversationId);
+    if (prio) return `Provincia: ${prov}. Sigue ya con el agendado: pide JUNTOS nombre y teléfono (y el código postal si falta, una vez), luego consultar_agenda y ofrece dos horas. No comentes nada sobre zonas.`;
+    return `Provincia: ${prov}. Antes de agendar hay que comprobar que le interesa de verdad. Haz estas preguntas, UNA por mensaje, en este orden y saltando las que ya te haya contestado: (1) ¿es para casa o para un negocio?, (2) ¿cómo se apaña ahora con el agua?, (3) ¿quiere resolverlo ya o solo se está informando? No pidas todavía nombre, teléfono ni horas, aunque te los den. Con las respuestas llama a confirmar_interes. No comentes nada sobre zonas.`;
+  }
+  // confirmar_interes
+  if (input.interes === "real") {
+    await db.from("conversations").update({ qualified: true }).eq("id", conversationId);
+    return "Interés confirmado. Sigue con el agendado: pide JUNTOS nombre y teléfono (y el código postal si falta), luego consultar_agenda y ofrece dos horas.";
+  }
+  return "Interés bajo: NO ofrezcas la llamada ni insistas. Si ya tienes su nombre o teléfono, llama a guardar_contacto con motivo «Fuera de zona, interés bajo: …» y lo que contó. Despídete cálido, sin disculparte, diciendo que si más adelante quiere avanzar puede escribir aquí o llamar al 919 895 040.";
+}
+async function zoneGate(conversationId: string): Promise<string | null> {
+  const { data } = await db.from("conversations").select("zone, qualified").eq("id", conversationId).maybeSingle();
+  if (!data?.zone) return "Error: antes de consultar la agenda o reservar tienes que preguntar el pueblo o ciudad y llamar a indicar_provincia.";
+  if (data.zone === "other" && !data.qualified) return "Error: antes de consultar la agenda o reservar tienes que hacer las preguntas de comprobación de interés y llamar a confirmar_interes.";
+  return null;
+}
+
+// Limpieza del texto antes de enviarlo: sin negritas en markdown (el chat no las pinta) y sin las palabras que el cliente
+// ha vetado (se cambian por «vale»).
+const escRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function cleanReply(text: string, banned: string[] | null): string {
+  let t = text.replace(/\*\*(.+?)\*\*/gs, "$1").replace(/__(.+?)__/gs, "$1");
+  for (const w of banned ?? []) {
+    const re = new RegExp(`(^|[^\\p{L}])(${escRe(w)})(?![\\p{L}])`, "giu");
+    t = t.replace(re, (_m, pre: string, _w: string, off: number, str: string) => {
+      const before = str.slice(0, off + pre.length).replace(/[\s¡¿]+$/u, "");
+      const start = before === "" || /[.!?\n]$/.test(before);
+      return `${pre}${start ? "Vale" : "vale"}`;
+    });
+  }
+  return t.replace(/\b(vale)(\s*[,.!]*\s*)vale\b/gi, "$1");
+}
 
 type Contact = { id: string; name: string; department: string | null; notify_when: string | null };
 
@@ -161,7 +253,10 @@ type Calendar = {
   booking_enabled: boolean; booking_minutes: number; booking_notice_minutes: number;
   booking_hours: Record<string, string[]>;
   booking_kind?: string; member_id?: string | null; booking_type_id?: string | null;
+  booking_step_minutes?: number | null; agenda_group?: string | null; booking_capacity?: number | null;
 };
+// Duración de cada hueco: si el calendario tiene paso propio (llamadas cada 5 min) manda ese; si no, la duración de la cita.
+const slotLen = (c: Calendar) => c.booking_step_minutes ?? c.booking_minutes;
 const MAX_AGENDA_DAYS = 31;
 // Las agendas de «llamadas del equipo» se ven como una sola: el asistente no elige
 // persona; la llamada se pone a quien esté libre a esa hora y tenga menos ese día.
@@ -213,6 +308,20 @@ function madridMidnight(day: string) {
   return new Date(guess - (hh * 60 + mm) * 60_000);
 }
 
+// Horas seguidas a un mismo paso se resumen en tramos («09:30-12:00») para no gastar miles de palabras.
+function squash(times: string[], step: number) {
+  const mins = (t: string) => +t.slice(0, 2) * 60 + +t.slice(3);
+  const out: string[] = [];
+  let i = 0;
+  while (i < times.length) {
+    let j = i;
+    while (j + 1 < times.length && mins(times[j + 1]) - mins(times[j]) === step) j++;
+    out.push(j === i ? times[i] : `${times[i]}-${times[j]}`);
+    i = j + 1;
+  }
+  return out.join(", ") + (out.some((x) => x.includes("-")) ? ` (en cada tramo hay una hora libre cada ${step} min)` : "");
+}
+
 async function checkAgenda(input: Record<string, string>, clientId: string, calendars: Calendar[]) {
   const valid = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d ?? "");
   if (!valid(input.desde) || !valid(input.hasta)) throw new Error("Fechas en formato AAAA-MM-DD");
@@ -229,7 +338,7 @@ async function checkAgenda(input: Record<string, string>, clientId: string, cale
   const ids = [...chosen, ...(wantPool ? pool : [])].map((c) => c.id);
   const { data, error } = await db.from("calendar_events").select("calendar_id, starts_at, ends_at, all_day")
     .eq("client_id", clientId).in("calendar_id", ids)
-    .lt("starts_at", to.toISOString()).gt("ends_at", from.toISOString()).order("starts_at").limit(1000);
+    .lt("starts_at", to.toISOString()).gt("ends_at", from.toISOString()).order("starts_at").limit(3000);
   if (error) throw error;
 
   // Del grupo de llamadas no se enseñan las horas ocupadas de cada persona, solo los huecos.
@@ -237,11 +346,12 @@ async function checkAgenda(input: Record<string, string>, clientId: string, cale
   const text = chosen.length ? formatAgenda(own, input.desde, input.hasta, chosen.length > 1 ? chosen : null) : "";
   const poolText = wantPool ? (() => {
     const days: string[] = [];
+    const step = Math.min(...pool.map(slotLen));
     for (const iso of daysBetween(input.desde, input.hasta)) {
       const free = poolSlots(pool, iso, data ?? []);
-      if (free.length) days.push(`${iso}: ${free.join(", ")}`);
+      if (free.length) days.push(`${iso}: ${squash(free, step)}`);
     }
-    return `Huecos libres para programar una llamada («${POOL}», llamadas de ${Math.min(...pool.map((c) => c.booking_minutes))} min):\n` +
+    return `Huecos libres para programar una llamada («${POOL}», una hora libre cada ${step} min; al ofrecer horas, propón dos separadas al menos 15 minutos entre sí):\n` +
       (days.length ? days.join("\n") : "ninguno en estas fechas");
   })() : "";
   const slots = chosen.filter((c) => c.booking_enabled).map((c) => {
@@ -251,7 +361,7 @@ async function checkAgenda(input: Record<string, string>, clientId: string, cale
       const free = freeSlots(c, iso, busy);
       if (free.length) days.push(`${iso}: ${free.join(", ")}`);
     }
-    return `Huecos libres para reservar en "${c.name}" (citas de ${c.booking_minutes} min):\n` +
+    return `Huecos libres para reservar en "${c.name}" (citas de ${slotLen(c)} min):\n` +
       (days.length ? days.join("\n") : "ninguno en estas fechas");
   });
   return [text, ...slots, poolText].filter(Boolean).join("\n\n");
@@ -294,22 +404,26 @@ function madridAt(day: string, hhmm: string) {
 }
 
 // Horas de inicio libres de un día según el horario del calendario, sus citas y la antelación mínima.
+// Capacidad: cuántas citas caben a la vez (dos teleoperadoras en una sola agenda = 2). Un evento de todo el día (festivo) lo cierra.
 function freeSlots(cal: Calendar, day: string, busy: Busy[]) {
   const [y, m, d] = day.split("-").map(Number);
   const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay() || 7;
   const earliest = Date.now() + cal.booking_notice_minutes * 60_000;
+  const len = slotLen(cal);
+  const capacity = cal.booking_capacity ?? 1;
   const out: string[] = [];
   for (const range of cal.booking_hours?.[String(weekday)] ?? []) {
     const match = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/.exec(range.replace(/\s/g, ""));
     if (!match) continue;
     const open = +match[1] * 60 + +match[2];
     const close = +match[3] * 60 + +match[4];
-    for (let t = open; t + cal.booking_minutes <= close; t += cal.booking_minutes) {
+    for (let t = open; t + len <= close; t += len) {
       const hhmm = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
       const start = madridAt(day, hhmm);
-      const end = new Date(start.getTime() + cal.booking_minutes * 60_000);
+      const end = new Date(start.getTime() + len * 60_000);
       if (start.getTime() < earliest) continue;
-      if (busy.some((e) => new Date(e.starts_at) < end && new Date(e.ends_at) > start)) continue;
+      const overlap = busy.filter((e) => new Date(e.starts_at) < end && new Date(e.ends_at) > start);
+      if (overlap.some((e) => e.all_day) || overlap.length >= capacity) continue;
       out.push(hhmm);
     }
   }
@@ -359,7 +473,7 @@ async function bookAppointment(input: Record<string, string>, clientId: string, 
   const start = madridAt(input.fecha, hora);
   const already = (await bookingsOf(conversationId)).find((e) => new Date(e.starts_at).getTime() === start.getTime());
   if (already) return `Esa cita YA está reservada para el ${whenEs(new Date(already.starts_at))}. No la repitas: confírmasela a la persona una sola vez.`;
-  const end = new Date(start.getTime() + cal.booking_minutes * 60_000);
+  const end = new Date(start.getTime() + slotLen(cal) * 60_000);
   const dayStart = madridMidnight(input.fecha);
   const { data: busy, error } = await db.from("calendar_events").select("calendar_id, starts_at, ends_at, all_day")
     .eq("calendar_id", cal.id).lt("starts_at", new Date(dayStart.getTime() + 26 * 3_600_000).toISOString())
@@ -385,7 +499,7 @@ async function bookAppointment(input: Record<string, string>, clientId: string, 
     client_id: clientId, conversation_id: conversationId, name: input.nombre, contact: input.telefono,
     reason: `Cita reservada (${cal.name}) el ${when}: ${input.motivo}`,
   });
-  return `Cita reservada en "${cal.name}" el ${when} (${cal.booking_minutes} min). Confírmaselo a la persona.`;
+  return `Cita reservada en "${cal.name}" el ${when} (${slotLen(cal)} min). Confírmaselo a la persona.`;
 }
 
 // Lo que ya se ha reservado en esta conversación. El historial que ve el modelo solo trae texto,
@@ -406,6 +520,7 @@ async function dropOldBookings(conversationId: string, keepId: string) {
 
 // Llamada programada: se pone a una persona del grupo libre a esa hora (la que menos
 // tenga ese día) y el lead queda a su nombre, en «Volver a llamar» a esa hora.
+// Con una agenda común de teleoperadoras (sin persona), el lead queda sin asignar y lo coge quien llame.
 async function bookCall(input: Record<string, string>, clientId: string, conversationId: string, pool: Calendar[]) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.fecha ?? "") || !/^\d{1,2}:\d{2}$/.test(input.hora ?? "")) {
     throw new Error("Fecha AAAA-MM-DD y hora HH:MM");
@@ -416,7 +531,7 @@ async function bookCall(input: Record<string, string>, clientId: string, convers
   const dayStart = madridMidnight(input.fecha);
   const { data: busy, error } = await db.from("calendar_events").select("calendar_id, starts_at, ends_at, all_day")
     .in("calendar_id", pool.map((c) => c.id)).lt("starts_at", new Date(dayStart.getTime() + 26 * 3_600_000).toISOString())
-    .gt("ends_at", dayStart.toISOString()).limit(1000);
+    .gt("ends_at", dayStart.toISOString()).limit(2000);
   if (error) throw error;
   const load = (c: Calendar) => (busy ?? []).filter((e) => e.calendar_id === c.id).length;
   const free = pool.filter((c) => freeSlots(c, input.fecha, (busy ?? []).filter((e) => e.calendar_id === c.id)).includes(hora))
@@ -426,7 +541,7 @@ async function bookCall(input: Record<string, string>, clientId: string, convers
   const start = madridAt(input.fecha, hora);
   const description = `Teléfono: ${input.telefono}\nMotivo: ${input.motivo}\nLlamada programada por el asistente.`;
   for (const cal of free) {
-    const end = new Date(start.getTime() + cal.booking_minutes * 60_000);
+    const end = new Date(start.getTime() + slotLen(cal) * 60_000);
     const { data: id, error: e2 } = await db.rpc("book_appointment", {
       p_calendar: cal.id, p_start: start.toISOString(), p_end: end.toISOString(),
       p_title: `Llamar a ${input.nombre} · ${input.telefono}`.slice(0, 200), p_description: description, p_conversation: conversationId,
@@ -488,8 +603,16 @@ export function formatAgenda(events: Busy[], desde: string, hasta: string, named
 
 async function runTool(
   name: string, input: Record<string, string>, clientId: string, conversationId: string,
-  connections: Connection[], contacts: Contact[], calendars: Calendar[],
+  connections: Connection[], contacts: Contact[], calendars: Calendar[], zonePriority: string[] | null = null,
 ) {
+  // Agentes con lógica de zona (DZZERO): sin provincia (y, fuera de zona, sin interés confirmado) no se agenda.
+  if (zonePriority?.length) {
+    if (name === "indicar_provincia" || name === "confirmar_interes") return await zoneTool(name, input, conversationId, zonePriority);
+    if (name === "consultar_agenda" || name === "reservar_cita") {
+      const gate = await zoneGate(conversationId);
+      if (gate) return gate;
+    }
+  }
   if (name === "consultar_agenda" && calendars.length) return await checkAgenda(input, clientId, calendars);
   if (name === "reservar_cita" && calendars.some((c) => c.booking_enabled)) {
     return await bookAppointment(input, clientId, conversationId, calendars);
@@ -507,8 +630,24 @@ async function runTool(
     return "Contacto guardado. El equipo le escribirá.";
   }
   if (name === "pasar_a_humano") {
+    let reason = input.motivo;
+    if (input.tipo === "averia") {
+      // Una avería necesita nombre y teléfono ANTES de avisar, y se avisa una sola vez por conversación.
+      const phone = String(input.telefono ?? "").replace(/[^\d+]/g, "");
+      if (phone.replace(/\D/g, "").length < 9) return "Error: falta el teléfono (9 cifras). Pídeselo y vuelve a llamar a pasar_a_humano; no avises antes de tenerlo.";
+      const { data: already } = await db.from("leads").select("id").eq("conversation_id", conversationId).eq("kind", "averia").limit(1);
+      if (already?.length) return "El aviso de la avería ya está registrado. No lo repitas: despídete.";
+      const who = String(input.nombre ?? "").trim() || "Sin nombre";
+      reason = `Cliente actual · Avería: ${input.motivo} · Nombre: ${who} · Teléfono: ${phone}`;
+      // Queda también como contacto «Avería»: se ve el primero en el resumen del panel hasta que se marque atendida.
+      const { error: le } = await db.from("leads").insert({
+        client_id: clientId, conversation_id: conversationId, name: who, contact: phone,
+        reason: `Avería: ${input.motivo}`, kind: "averia", status: "new",
+      });
+      if (le) throw le;
+    }
     const { error } = await db.from("handoffs").insert({
-      client_id: clientId, conversation_id: conversationId, reason: input.motivo, notify_contact_id,
+      client_id: clientId, conversation_id: conversationId, reason, notify_contact_id,
     });
     if (error) throw error;
     await db.from("conversations").update({ handed_off: true }).eq("id", conversationId);
@@ -607,13 +746,16 @@ Deno.serve(async (req) => {
       db.from("api_connections").select("*").eq("client_id", client.id).eq("active", true).order("created_at"),
       db.from("notify_contacts").select("id, name, department, notify_when")
         .eq("client_id", client.id).eq("active", true).order("created_at"),
-      db.from("calendars").select("id, name, booking_enabled, booking_minutes, booking_hours, booking_notice_minutes, booking_kind, member_id, booking_type_id").eq("client_id", client.id).eq("active", true).order("created_at"),
+      db.from("calendars").select("id, name, booking_enabled, booking_minutes, booking_hours, booking_notice_minutes, booking_kind, member_id, booking_type_id, booking_step_minutes, agenda_group, booking_capacity").eq("client_id", client.id).eq("active", true).order("created_at"),
     ]);
     const connections = (conns ?? []) as Connection[];
     const contacts = (people ?? []) as Contact[];
-    const calendars = (cals ?? []) as Calendar[];
+    // Las agendas de visitas y de comerciales son internas del equipo: el asistente no las ve.
+    const calendars = ((cals ?? []) as Calendar[]).filter((c) => c.agenda_group !== "visitas" && c.agenda_group !== "comercial");
+    const zonePriority: string[] | null = Array.isArray(agent.zone_priority) && agent.zone_priority.length ? agent.zone_priority : null;
     const tools = [
       ...baseTools(contacts),
+      ...(zonePriority ? ZONE_TOOLS : []),
       ...(calendars.length ? [agendaTool(calendars)] : []),
       ...(calendars.some((c) => c.booking_enabled) ? [bookingTool(calendars.filter((c) => c.booking_enabled))] : []),
       ...connections.filter((c) => !["consultar_agenda", "reservar_cita"].includes(c.tool_name)).map(connectionTool),
@@ -684,7 +826,7 @@ Deno.serve(async (req) => {
       const results: Anthropic.ToolResultBlockParam[] = [];
       for (const use of toolUses) {
         try {
-          const content = await runTool(use.name, use.input as Record<string, string>, client.id, conversationId, connections, contacts, calendars);
+          const content = await runTool(use.name, use.input as Record<string, string>, client.id, conversationId, connections, contacts, calendars, zonePriority);
           results.push({ type: "tool_result", tool_use_id: use.id, content });
           if (!/^(error|no se ha|no se pudo|ese hueco)/i.test(String(content))) done.add(use.name);
         } catch (err) {
@@ -694,7 +836,7 @@ Deno.serve(async (req) => {
       messages.push({ role: "user", content: results });
     }
     if (!text) throw new Error("Respuesta vacía de la IA");
-    reply = text;
+    reply = cleanReply(text, agent.banned_phrases ?? null);
   } catch (err) {
     // Plan B: mensaje cortés, el mensaje queda como lead pendiente y se registra el error.
     failed = true;

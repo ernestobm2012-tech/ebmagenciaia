@@ -480,3 +480,11 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 - Avería: primero pregunta SOLO qué le pasa; cuando lo cuenta, llave de paso + desenchufar + nombre y teléfono juntos. Copia previa del prompt: `agent_prompt_backups` id 10.
 - Bienvenida: «Hola, {saludo_min}. Soy el asistente virtual de DZZERO. Dime, ¿en qué puedo ayudarte para pasarte con el departamento correspondiente?». `js/chat.js` (`?v=6`) cambia `{saludo}` / `{saludo_min}` por Buenos días (6-14 h), Buenas tardes (14-21) o Buenas noches, hora de España. El prompt ya no habla de «anuncio».
 - Menos preguntas: población y código postal se piden JUNTOS en un mensaje, luego nombre y teléfono juntos; nunca «¿me los das?» ni el CP en un mensaje aparte. Probado (visitor 0000…d106).
+
+### DZZERO por WhatsApp: el contacto se guarda aunque no agende (pedido del cliente, 08/11/2026; SIN montar)
+- Cuando llegue la transición (formulario de Instagram/Meta → WhatsApp), la persona ya habrá dado nombre, población, código postal y aceptado la privacidad, y al abrir el WhatsApp su número es conocido. Pedido de Óscar: aunque NO llegue a agendar la llamada, el contacto debe entrar igualmente en el panel (Contactos) con ese número de teléfono.
+- Diseño: la función que reciba el `leadgen` de Meta (o el primer mensaje de WhatsApp) crea el lead al momento con nombre, teléfono (el del WhatsApp, 9 cifras), CP/población y `status = 'new'`, sin esperar a `guardar_contacto` ni a `reservar_cita`; si luego agenda, se completa ese mismo lead (no se duplica; `bookCall` ya reutiliza el lead de la conversación). El asistente no vuelve a pedir nombre ni teléfono. Excepción de la regla actual del chat web, donde el lead solo nace con `guardar_contacto`/`reservar_cita`/avería.
+- Nada de esto se toca hasta que Ernesto diga que empieza la transición (ver plan de WhatsApp más arriba).
+
+### Laura chat: precio sin «Mira» (08/11/2026, tarde)
+- Respuesta fija al precio: «El precio lo estudia un asesor y te lo da en la llamada, porque depende de cada caso. Si quieres, te agendo una llamada para que una compañera te lo explique con todo detalle.» (sin «Vale»/«Mira» delante y sin pregunta detrás). Prohibido empezar un mensaje con «Mira». El ofrecimiento de llamada es siempre «Si quieres, te agendo una llamada…», ya no «¿Quieres que te llame una compañera?».

@@ -134,7 +134,8 @@
   function greet(text) {
     let hr = new Date().getHours();
     try { hr = Number(new Intl.DateTimeFormat('es-ES', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Europe/Madrid' }).format(new Date())); } catch (e) { /* hora del aparato */ }
-    return text.replace(/\{saludo\}/gi, hr >= 6 && hr < 14 ? 'Buenos días' : hr < 21 && hr >= 14 ? 'Buenas tardes' : 'Buenas noches');
+    const g = hr >= 6 && hr < 14 ? 'Buenos días' : hr < 21 && hr >= 14 ? 'Buenas tardes' : 'Buenas noches';
+    return text.replace(/\{saludo_min\}/gi, g.toLowerCase()).replace(/\{saludo\}/gi, g);
   }
 
   function render() {

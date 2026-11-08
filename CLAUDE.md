@@ -488,3 +488,7 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 
 ### Laura chat: precio sin «Mira» (08/11/2026, tarde)
 - Respuesta fija al precio: «El precio lo estudia un asesor y te lo da en la llamada, porque depende de cada caso. Si quieres, te agendo una llamada para que una compañera te lo explique con todo detalle.» (sin «Vale»/«Mira» delante y sin pregunta detrás). Prohibido empezar un mensaje con «Mira». El ofrecimiento de llamada es siempre «Si quieres, te agendo una llamada…», ya no «¿Quieres que te llame una compañera?».
+
+### DZZERO: las pruebas se quedan hasta el arranque (08/11/2026, decisión de Ernesto)
+- NO borrar las pruebas de DZZERO (ni las de Ernesto ni las de Óscar: conversaciones, contactos, citas, averías). Se quedan guardadas mientras duren las pruebas.
+- Cuando Óscar diga que empieza a funcionar de verdad («a partir de mañana»), Ernesto lo avisará y se deja el panel de DZZERO a cero: poner `agents.voice_since = now()` en la Laura ANTES de borrar (regla del 04/11), y luego borrar conversaciones (con mensajes), leads, citas de las agendas, `handoffs`, `lead_notes` y presencias de DZZERO. Conservar equipo, calendarios, festivos, agente, documentos y contrato. Revisar también que el aviso de avería y los avisos de contacto lleguen a info@dzzero.com al salir de demo.

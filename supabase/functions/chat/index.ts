@@ -205,6 +205,25 @@ function todayBlock() {
   return `Hoy es ${days[0]} y en España son las ${now}. Para saber qué fecha es "el sábado que viene" o qué día de la semana cae una fecha, no lo calcules: léelo en este calendario de los próximos días: ${days.join(", ")}.`;
 }
 
+// Teléfono que la persona ya ha escrito: las cifras se cuentan aquí (el modelo contaba mal y pedía confirmar uno correcto).
+function phoneHint(userTexts: string[]): string | null {
+  let found: string | null = null;
+  for (const t of userTexts) {
+    for (const m of t.matchAll(/\+?\d[\d\s.\-]{5,}\d/g)) {
+      const clean = (s: string) => { let d = s.replace(/\D/g, ""); if (d.length === 11 && d.startsWith("34")) d = d.slice(2); return d; };
+      const whole = clean(m[0]);
+      const parts = m[0].split(/\s+/).map(clean).filter((d) => d.length === 9);
+      if (whole.length === 9) found = whole;
+      else if (parts.length) found = parts[parts.length - 1];
+      else if (whole.length >= 6) found = whole;
+    }
+  }
+  if (!found) return null;
+  return found.length === 9
+    ? `TELÉFONO QUE LA PERSONA YA HA DADO: ${found}. Tiene exactamente 9 cifras: es VÁLIDO (lo ha comprobado el sistema). No le pidas que lo repita, no se lo hagas confirmar y no cuestiones sus cifras: úsalo tal cual.`
+    : `La persona ha escrito el número ${found}, que tiene ${found.length} cifras (un teléfono español tiene 9). Pídele solo una vez, con naturalidad, que lo repita.`;
+}
+
 // Cada conexión a un sistema del cliente se ofrece al agente como una herramienta.
 function connectionTool(c: Connection): Anthropic.Tool {
   return {
@@ -787,6 +806,34 @@ Deno.serve(async (req) => {
           madeBookings.map((e) => `${e.title} el ${whenEs(new Date(e.starts_at))}`).join("; ") +
           ". Está hecho y confirmado: NO lo vuelvas a reservar ni lo repitas, no te disculpes ni digas que «antes no estaba guardado». " +
           "Solo si la persona pide cambiar la hora, reserva la nueva.",
+      });
+    }
+    // Teléfono ya dado, validado en código.
+    const ph = phoneHint((history ?? []).filter((m) => m.role === "user").map((m) => String(m.content)));
+    if (ph) system.push({ type: "text", text: ph });
+    // Huecos reales de las llamadas del equipo, calculados aquí: el modelo inventaba horas ocupadas o libres.
+    const poolCals = calendars.filter(isPool);
+    if (poolCals.length) {
+      const nowD = new Date();
+      const { data: busyPool } = await db.from("calendar_events").select("calendar_id, starts_at, ends_at, all_day")
+        .in("calendar_id", poolCals.map((c) => c.id)).lt("starts_at", new Date(nowD.getTime() + 7 * 86_400_000).toISOString())
+        .gt("ends_at", nowD.toISOString()).limit(2000);
+      const step = Math.min(...poolCals.map(slotLen));
+      const isoF = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid" });
+      const wdF = new Intl.DateTimeFormat("es-ES", { weekday: "long", timeZone: "Europe/Madrid" });
+      const lines: string[] = [];
+      for (let i = 0; i < 7 && lines.length < 3; i++) {
+        const d = new Date(nowD.getTime() + i * 86_400_000);
+        const day = isoF.format(d);
+        const free = poolSlots(poolCals, day, busyPool ?? []);
+        if (free.length) lines.push(`${wdF.format(d)} ${day}: ${squash(free, step)}`);
+      }
+      system.push({
+        type: "text",
+        text: "HUECOS REALES PARA LLAMAR (los calcula el sistema ahora mismo; es la ÚNICA fuente de verdad, no hace falta consultar_agenda salvo que pidan otro día):\n" +
+          (lines.length ? lines.join("\n") : "ninguno en los próximos días") +
+          "\nSi la persona elige una hora que está dentro de esos tramos, esa hora SÍ está libre: reserva EXACTAMENTE esa hora con reservar_cita, sin proponer otra. " +
+          "Si pide una hora que no está, dile que esa ya está ocupada y ofrécele las dos más cercanas de la lista. Nunca digas «no tengo acceso a esa hora» ni ofrezcas horas que no estén en la lista.",
       });
     }
     let text = "";

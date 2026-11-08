@@ -130,9 +130,16 @@
     }
   }
 
+  // «{saludo}» en el mensaje de bienvenida se cambia por Buenos días, Buenas tardes o Buenas noches (hora de España).
+  function greet(text) {
+    let hr = new Date().getHours();
+    try { hr = Number(new Intl.DateTimeFormat('es-ES', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Europe/Madrid' }).format(new Date())); } catch (e) { /* hora del aparato */ }
+    return text.replace(/\{saludo\}/gi, hr >= 6 && hr < 14 ? 'Buenos días' : hr < 21 && hr >= 14 ? 'Buenas tardes' : 'Buenas noches');
+  }
+
   function render() {
     log.replaceChildren();
-    bubble('assistant', welcome);
+    bubble('assistant', greet(welcome));
     state.messages.forEach((m) => bubble(m.role, m.text));
     restart.hidden = !state.messages.length;
   }

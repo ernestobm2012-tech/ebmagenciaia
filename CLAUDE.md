@@ -475,3 +475,8 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 - Zona en código (agentes con `agents.zone_priority`): herramientas `indicar_provincia` y `confirmar_interes`; `conversations.zone/qualified`. `consultar_agenda` y `reservar_cita` devuelven error hasta tener provincia y, fuera de zona, interés confirmado. Probado: Almazán (Soria) → zona «other» y pregunta de cualificación antes de agendar.
 - Palabras vetadas: `agents.banned_phrases`; `cleanReply` las cambia por «vale» (y quita `**` markdown). Laura: perfecto, genial, estupendo, fantástico, excelente, tienes razón, muy bien, qué bien.
 - Pruebas de este día (visitors 0000…d101-d104) siguen en Actividad de DZZERO; DELETE pendiente de aprobación. Pequeño pulido pendiente: tras el aviso de avería ya registrado el modelo a veces dice «disculpa»; se puede suavizar el texto de la herramienta.
+
+### Laura chat: ajustes de la tarde del 08/11/2026 (pedidos por Ernesto)
+- Avería: primero pregunta SOLO qué le pasa; cuando lo cuenta, llave de paso + desenchufar + nombre y teléfono juntos. Copia previa del prompt: `agent_prompt_backups` id 10.
+- Bienvenida: «Hola, {saludo_min}. Soy el asistente virtual de DZZERO. Dime, ¿en qué puedo ayudarte para pasarte con el departamento correspondiente?». `js/chat.js` (`?v=6`) cambia `{saludo}` / `{saludo_min}` por Buenos días (6-14 h), Buenas tardes (14-21) o Buenas noches, hora de España. El prompt ya no habla de «anuncio».
+- Menos preguntas: población y código postal se piden JUNTOS en un mensaje, luego nombre y teléfono juntos; nunca «¿me los das?» ni el CP en un mensaje aparte. Probado (visitor 0000…d106).

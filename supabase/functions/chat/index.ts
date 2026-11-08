@@ -828,12 +828,17 @@ Deno.serve(async (req) => {
         const free = poolSlots(poolCals, day, busyPool ?? []);
         if (free.length) lines.push(`${wdF.format(d)} ${day}: ${squash(free, step)}`);
       }
+      const todayIso = isoF.format(nowD);
+      const firstDay = lines[0]?.split(" ")[1]?.replace(":", "") ?? "";
+      const notToday = !!lines.length && firstDay !== todayIso;
       system.push({
         type: "text",
         text: "HUECOS REALES PARA LLAMAR (los calcula el sistema ahora mismo; es la ÚNICA fuente de verdad, no hace falta consultar_agenda salvo que pidan otro día):\n" +
           (lines.length ? lines.join("\n") : "ninguno en los próximos días") +
-          "\nSi la persona elige una hora que está dentro de esos tramos, esa hora SÍ está libre: reserva EXACTAMENTE esa hora con reservar_cita, sin proponer otra. " +
-          "Si pide una hora que no está, dile que esa ya está ocupada y ofrécele las dos más cercanas de la lista. Nunca digas «no tengo acceso a esa hora» ni ofrezcas horas que no estén en la lista.",
+          "\nOFRECE SIEMPRE UNA SOLA HORA: la PRIMERA hora libre de la lista (la más temprana). " +
+          (notToday ? "Hoy no se puede llamar (fuera de horario, festivo o sin huecos): díselo claro («ahora mismo no te puedo llamar; el horario es …») y ofrécele la primera hora libre del primer día de la lista. " : "Hoy sí hay huecos: si hay uno ahora mismo o dentro de unos minutos, esa es la que ofreces. ") +
+          "Si la persona pide otra hora y está dentro de los tramos, reserva EXACTAMENTE esa. Si pide una que no está libre, dile que esa está ocupada y ofrécele la primera libre más cercana (una sola). " +
+          "Nunca digas «no tengo acceso a esa hora» ni ofrezcas horas que no estén en la lista.",
       });
     }
     let text = "";

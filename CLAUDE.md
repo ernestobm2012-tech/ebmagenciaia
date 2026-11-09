@@ -503,3 +503,7 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 - `calendars.booking_notice_minutes` de la agenda «Teleoperadoras» = 5 (antes 30): a las 10:00 puede ofrecer las 10:05.
 - Regla crítica de reserva en el prompt: nunca reservar en el mismo mensaje en que dan el teléfono; primero ofrecer día y hora concretos y esperar el sí (aunque digan «lo antes posible»). Probado: ofrece «el lunes a las 10:05, ¿te va bien?» sin reservar.
 - `banned_phrases` ahora incluye también «disculpa», «te entiendo» y «entiendo». Pendiente: el prompt sigue diciendo en algún sitio «qué te llamó la atención del anuncio» (sale en la primera respuesta si la persona no dice qué quiere).
+
+### Laura chat: naturalidad (09/11/2026, pedido de Ernesto tras su prueba de las 7:47)
+- Bienvenida: «Hola, {saludo_min}. Soy el asistente virtual de DZZERO. ¿Dime en qué puedo ayudarte para pasarte con el departamento correspondiente?» («Dime» dentro de la pregunta).
+- Si la persona solo saluda, Laura contesta corto («¡Buenos días! ¿Qué necesitas?») sin repetir su saludo palabra por palabra ni volver a presentarse. Nunca pregunta «¿de qué se trata?» ni «¿qué necesitas?» tras casa/negocio: ya sabe que DZZERO vende tratamiento de agua. Ante «necesito información» ofrece la llamada («Si quieres, te agendo una llamada…»); para un negocio, como mucho «¿Qué tipo de negocio es?» y la llamada. Sección «NATURALIDAD» al final del `system_prompt`. Probado (visitor 0000…d401).

@@ -113,9 +113,9 @@ async function zoneTool(name: string, input: Record<string, string>, conversatio
     const prov = provinceOf(input.provincia ?? "");
     if (!prov) return "Error: no reconozco esa provincia. Saca la provincia del pueblo que te ha dicho y vuelve a llamar a esta herramienta (o pregúntasela).";
     const prio = priority.map(norm).includes(prov);
-    await db.from("conversations").update({ zone: prio ? "priority" : "other", qualified: prio }).eq("id", conversationId);
-    if (prio) return `Provincia: ${prov}. Sigue ya con el agendado: pide JUNTOS nombre y teléfono (y el código postal si falta, una vez), luego consultar_agenda y ofrece dos horas. No comentes nada sobre zonas.`;
-    return `Provincia: ${prov}. Antes de agendar hay que comprobar que le interesa de verdad. Haz estas preguntas, UNA por mensaje, en este orden y saltando las que ya te haya contestado: (1) ¿es para casa o para un negocio?, (2) ¿cómo se apaña ahora con el agua?, (3) ¿quiere resolverlo ya o solo se está informando? No pidas todavía nombre, teléfono ni horas, aunque te los den. Con las respuestas llama a confirmar_interes. No comentes nada sobre zonas.`;
+    // 10/11/2026 (Ernesto): ya no se comprueba el interés fuera de zona; quien acepta la llamada se agenda sin más preguntas.
+    await db.from("conversations").update({ zone: prio ? "priority" : "other", qualified: true }).eq("id", conversationId);
+    return `Provincia: ${prov}. Sigue ya con el agendado: pide JUNTOS nombre y teléfono (y el código postal si falta, una vez); luego ofrece la primera hora libre. No hagas más preguntas de comprobación ni comentes nada sobre zonas.`;
   }
   // confirmar_interes
   if (input.interes === "real") {
@@ -137,14 +137,16 @@ const escRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function cleanReply(text: string, banned: string[] | null): string {
   let t = text.replace(/\*\*(.+?)\*\*/gs, "$1").replace(/__(.+?)__/gs, "$1");
   for (const w of banned ?? []) {
-    const re = new RegExp(`(^|[^\\p{L}])(${escRe(w)})(?![\\p{L}])`, "giu");
-    t = t.replace(re, (_m, pre: string, _w: string, off: number, str: string) => {
+    const re = new RegExp(`(^|[^\\p{L}])((?:(?:lo|te|la|me|se)\\s+)?)(${escRe(w)})(?![\\p{L}])`, "giu");
+    t = t.replace(re, (_m, pre: string, clitic: string, _w: string, off: number, str: string) => {
       const before = str.slice(0, off + pre.length).replace(/[\s¡¿]+$/u, "");
       const start = before === "" || /[.!?\n]$/.test(before);
+      if (clitic && !start) return pre; // «lo entiendo», «te entiendo»: se quita entero, no se deja «lo vale»
       return `${pre}${start ? "Vale" : "vale"}`;
     });
   }
-  return t.replace(/\b(vale)(\s*[,.!]*\s*)vale\b/gi, "$1");
+  t = t.replace(/\b(vale)(\s*[,.!]*\s*)vale\b/gi, "$1");
+  return t.replace(/\s+([,.!?])/g, "$1").replace(/,\s*([.!?])/g, "$1").replace(/[ \t]{2,}/g, " ");
 }
 
 type Contact = { id: string; name: string; department: string | null; notify_when: string | null };

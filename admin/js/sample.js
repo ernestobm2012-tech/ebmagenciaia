@@ -157,10 +157,9 @@ function build(clientId, clientName, services, products) {
     script.forEach(([role, content], n) => messages.push({ id: `m${i}-${n}`, conversation_id: l.conversation_id, role, content, created_at: iso(new Date(new Date(l.created_at).getTime() + n * 40_000)) }));
   });
 
-  // Agenda: dos agendas de llamadas y las llamadas de hoy y los próximos días.
+  // Agenda: una sola agenda de teleoperadoras y las llamadas de hoy y los próximos días.
   const calendars = [
-    { id: 'c1', client_id: clientId, name: 'Agenda de Laura', color: '#1483DC', active: true, member_id: 'm1', booking_enabled: true, booking_kind: 'llamada', booking_minutes: 30, booking_step_minutes: 5, agenda_group: 'llamadas', created_at: iso(now) },
-    { id: 'c2', client_id: clientId, name: 'Agenda de Ángela', color: '#2FA36B', active: true, member_id: 'm2', booking_enabled: true, booking_kind: 'llamada', booking_minutes: 30, booking_step_minutes: 5, agenda_group: 'llamadas', created_at: iso(now) },
+    { id: 'c1', client_id: clientId, name: 'Teleoperadoras', color: '#1483DC', active: true, member_id: null, booking_capacity: 2, booking_enabled: true, booking_kind: 'llamada', booking_minutes: 30, booking_step_minutes: 5, agenda_group: 'llamadas', created_at: iso(now) },
     { id: 'c3', client_id: clientId, name: 'Agenda de visitas', color: '#2FA36B', active: true, member_id: null, booking_enabled: false, booking_kind: 'cita', booking_minutes: 60, agenda_group: 'visitas', created_at: iso(now) },
     { id: 'c4', client_id: clientId, name: 'Calendario de Óscar', color: '#1483DC', active: true, member_id: 'm3', booking_enabled: false, booking_kind: 'cita', booking_minutes: 60, agenda_group: 'comercial', created_at: iso(now) },
     { id: 'c5', client_id: clientId, name: 'Calendario de Juan Antonio', color: '#8E5CC9', active: true, member_id: 'm4', booking_enabled: false, booking_kind: 'cita', booking_minutes: 60, agenda_group: 'comercial', created_at: iso(now) },
@@ -182,7 +181,7 @@ function build(clientId, clientName, services, products) {
   leads.filter((l) => l.status === 'callback').slice(0, 14).forEach((l, i) => {
     const st = l.follow_up_at ? new Date(l.follow_up_at) : new Date(now.getTime() + (i + 1) * 3_600_000 * 5);
     const en = new Date(st.getTime() + 5 * 60_000);
-    events.push({ id: `e${i}`, client_id: clientId, calendar_id: l.caller_id === 'm2' ? 'c2' : 'c1', title: `Llamar a ${l.name} · ${l.contact}`, starts_at: iso(st), ends_at: iso(en), all_day: false, type_id: 'ty0', source: 'agent', conversation_id: l.conversation_id });
+    events.push({ id: `e${i}`, client_id: clientId, calendar_id: 'c1', title: `Llamar a ${l.name} · ${l.contact}`, starts_at: iso(st), ends_at: iso(en), all_day: false, type_id: 'ty0', source: 'agent', conversation_id: l.conversation_id });
   });
   // Visitas de muestra: unas sin comercial (solo el día) y otras ya con comercial y hora.
   leads.filter((l) => l.conversation_id).slice(14, 20).forEach((l, i) => {

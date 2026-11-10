@@ -6,6 +6,7 @@ import { h, q, field, toast, errorText } from './ui.js';
 import { attachAddress } from './address.js';
 
 const DRINKS = [['embotellada', 'Agua embotellada'], ['grifo', 'Grifo'], ['filtrada', 'Filtrada'], ['aquaservice', 'Aquaservice']];
+const SOURCES = [['llamada', 'Llamada'], ['whatsapp', 'WhatsApp'], ['web', 'Web']];
 const MACHINE = [['con_instalacion', 'Con instalación'], ['sin_instalacion', 'Sin instalación']];
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -30,13 +31,17 @@ export function callSheetTab(lead, { onChanged = () => {}, members = [] } = {}) 
   const form = h('form', { class: 'form call-sheet', onsubmit: submit },
     h('div', { class: 'grid2' },
       text('client_ref', 'Nº de cliente'),
-      field('Lead asignado desde', h('input', { value: dmy(lead.created_at), disabled: true }))),
+      field('Lead asignado desde', h('select', { name: 'source' },
+        h('option', { value: '' }, 'Sin indicar'),
+        SOURCES.map(([v, l]) => h('option', { value: v, selected: lead.source === v }, l))),
+        `Entró el ${dmy(lead.created_at)}.`)),
     h('div', { class: 'grid2' },
       field('Día de la llamada', h('input', { value: call.date ? dmy(lead.follow_up_at) : '—', disabled: true }), 'Se cambia en «Seguimiento» (volver a llamar el).'),
       field('Hora de la llamada', h('input', { value: call.time || '—', disabled: true }))),
     text('name', 'Nombre y apellidos'),
     text('email', 'Correo', { type: 'email' }),
     text('address', 'Dirección'),
+    text('address_extra', 'Piso, puerta, escalera…', { placeholder: 'Ej.: 4.º A, puerta B, escalera 2' }),
     h('div', { class: 'grid2' }, text('town', 'Población'), text('postal_code', 'Código postal', { inputmode: 'numeric' })),
     h('div', { class: 'grid2' }, text('province', 'Provincia'), text('nationality', 'Nacionalidad')),
     text('contact', 'Teléfono', { inputmode: 'tel' }),
@@ -56,7 +61,7 @@ export function callSheetTab(lead, { onChanged = () => {}, members = [] } = {}) 
     const f = new FormData(form);
     const v = (k) => String(f.get(k) ?? '').trim();
     return {
-      client_ref: v('client_ref'), name: v('name'), email: v('email'), address: v('address'), town: v('town'),
+      client_ref: v('client_ref'), source: v('source'), address_extra: v('address_extra'), name: v('name'), email: v('email'), address: v('address'), town: v('town'),
       postal_code: v('postal_code'), province: v('province'), nationality: v('nationality'), contact: v('contact'),
       family_members: v('family_members'), children_at_home: v('children_at_home'), children_ages: v('children_ages'),
       machine_interest: v('machine_interest') || null, drinks: f.getAll('drinks'),
@@ -206,10 +211,10 @@ label { display: block; font-size: 9px; font-weight: 700; color: #666; text-tran
 .lines { white-space: pre-wrap; min-height: 230px; background: repeating-linear-gradient(#fff, #fff 24px, #bbb 24px, #bbb 25px); line-height: 25px; padding: 0 2px; }
 .lines.short { min-height: 75px; }
 </style></head><body>
-<header><h1>FICHA DE LLAMADA - LEAD ${esc(business)}</h1><div><small>Nº Cliente: ${esc(lead.client_ref || '______')}</small><small><b>Lead asignado desde: ${esc(dmy(lead.created_at) || '___/___/______')}</b></small></div></header>
+<header><h1>FICHA DE LLAMADA - LEAD ${esc(business)}</h1><div><small>Nº Cliente: ${esc(lead.client_ref || '______')}</small><small><b>Lead asignado desde: ${esc(({ llamada: 'Llamada', whatsapp: 'WhatsApp', web: 'Web' })[lead.source] || '________')} · ${esc(dmy(lead.created_at) || '___/___/______')}</b></small></div></header>
 <div class="row">${box('Hora llamada', call.time, 'm')}${box('Día llamada', call.date ? dmy(lead.follow_up_at) : '', 'm')}${box('Email', lead.email)}</div>
 ${box('Nombre y apellidos', lead.name)}
-${box('Dirección', lead.address)}
+${box('Dirección', [lead.address, lead.address_extra].filter(Boolean).join(', '))}
 <div class="row">${box('Población', lead.town)}${box('C.P.', lead.postal_code, 's')}${box('Nacionalidad', lead.nationality)}</div>
 <div class="row">${box('Provincia', lead.province)}${box('Teléfono', lead.contact)}</div>
 <div class="row">${box('Miembros familia', lead.family_members)}${box('Nº hijos en casa', lead.children_at_home)}${box('Edades', lead.children_ages)}</div>

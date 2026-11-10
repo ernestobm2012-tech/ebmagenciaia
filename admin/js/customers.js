@@ -63,6 +63,7 @@ export function openCustomer(c, { onSaved = () => {} } = {}) {
     text('name', 'Nombre y apellidos', { required: true }),
     h('div', { class: 'grid2' }, text('phone', 'Teléfono', { required: true, inputmode: 'tel' }), text('email', 'Correo', { type: 'email' })),
     text('address', 'Dirección'),
+    text('address_extra', 'Piso, puerta, escalera…', { placeholder: 'Ej.: 4.º A, puerta B, escalera 2' }),
     h('div', { class: 'grid3' }, text('town', 'Población'), text('postal_code', 'Código postal', { inputmode: 'numeric' }), text('province', 'Provincia')),
     field('Equipo instalado', h('textarea', { name: 'equipment', rows: 2, placeholder: 'Qué equipo tiene y cómo se instaló' }, v.equipment || '')),
     h('div', { class: 'grid2' }, date('installed_at', 'Fecha de instalación'), date('last_maintenance_at', 'Último mantenimiento')),
@@ -86,7 +87,7 @@ export function openCustomer(c, { onSaved = () => {} } = {}) {
       return;
     }
     const row = {
-      name: g('name'), phone: /^\d{9}$/.test(phone) ? phone : String(g('phone')).replace(/\s/g, ''), email: g('email'), address: g('address'),
+      name: g('name'), phone: /^\d{9}$/.test(phone) ? phone : String(g('phone')).replace(/\s/g, ''), email: g('email'), address: g('address'), address_extra: g('address_extra'),
       town: g('town'), postal_code: g('postal_code'), province: g('province'), equipment: g('equipment'),
       installed_at: g('installed_at'), last_maintenance_at: g('last_maintenance_at'), notes: g('notes'),
     };

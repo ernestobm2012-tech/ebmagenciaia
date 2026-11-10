@@ -7,22 +7,26 @@
 import { db, session, can } from './app.js';
 import { h, q, table, modal, fmtDateTime, field, toast, errorText, kpi, fmtNum, fmtEur, tabs } from './ui.js';
 import { fichaTab, quotesView } from './catalog.js';
-import { callSheetTab } from './ficha.js';
+import { callSheetTab, VISIT_RANGES, rangeLabel } from './ficha.js';
 import { openCustomer } from './customers.js';
 
-// Estados que se enseñan (decisión de Óscar, 07/11/2026): Nuevo, Llamado, Volver a llamar (con fecha obligatoria),
-// Pasado al comercial, Cliente y No interesa. En la base siguen existiendo to_call y waiting: se ven como «Nuevo» y «Llamado».
+// Estados que se enseñan (decisión de Óscar, 10/11/2026): Nuevo (el inicial), Volver a llamar (con fecha obligatoria),
+// Agendado (obliga a poner el día de la visita, que va a la agenda de visitas), Ilocalizable, Anulado y Cliente.
+// «Pasado al comercial» se pone solo cuando la visita pasa a la agenda de un comercial. En la base siguen existiendo
+// to_call, called y waiting (se ven como «Nuevo») y lost (se ve como «Anulado»).
 export const LEAD_STATUS = {
   new: 'Nuevo',
   to_call: 'Nuevo',
   callback: 'Volver a llamar',
-  called: 'Llamado',
-  waiting: 'Llamado',
+  called: 'Nuevo',
+  waiting: 'Nuevo',
+  scheduled: 'Agendado',
+  unreachable: 'Ilocalizable',
   with_sales: 'Pasado al comercial',
   won: 'Cliente',
-  lost: 'No interesa',
+  lost: 'Anulado',
 };
-export const STATUS_CHOICES = [['new', 'Nuevo'], ['callback', 'Volver a llamar'], ['with_sales', 'Pasado al comercial'], ['won', 'Cliente'], ['lost', 'No interesa']];
+export const STATUS_CHOICES = [['new', 'Nuevo'], ['callback', 'Volver a llamar'], ['scheduled', 'Agendado'], ['unreachable', 'Ilocalizable'], ['lost', 'Anulado'], ['won', 'Cliente']];
 export const choiceOf = (s) => ({ to_call: 'new', called: 'new', waiting: 'new' }[s] || s);
 const CLOSED = ['won', 'lost'];
 // Qué hace cada persona con los contactos; el puesto (job_title) lo escribe cada negocio.
@@ -44,7 +48,7 @@ function endOfToday() {
 
 // Lo que sigue pendiente de llamar: nuevos, pendientes y «volver a llamar». Lo ya llamado,
 // en espera, pasado al comercial o cerrado sale de la lista aunque conserve una fecha vieja.
-const PENDING = ['new', 'to_call', 'callback'];
+const PENDING = ['new', 'to_call', 'callback', 'unreachable'];
 // Nuevo (o con llamada agendada): sin fecha, siempre; con fecha, cuando toca (hoy o atrasada). Llamado: solo si se le
 // puso una fecha de nueva llamada DESPUÉS de marcarlo (una fecha vieja de antes no cuenta).
 // Avería de un cliente actual (la deja el asistente): sale lo primero en el Resumen hasta que alguien la marca atendida.
@@ -320,7 +324,21 @@ export function openLead(lead, ctx, onSaved) {
   const option = (m, selected) => h('option', { value: m.id, selected }, `${m.name}${m.job_title ? ` · ${m.job_title}` : ''}${m.active ? '' : ' (de baja)'}`);
 
   const status = h('select', { name: 'status' },
-    STATUS_CHOICES.map(([v, l]) => h('option', { value: v, selected: choiceOf(lead.status) === v }, l)));
+    STATUS_CHOICES.map(([v, l]) => h('option', { value: v, selected: choiceOf(lead.status) === v }, l)),
+    // «Pasado al comercial» no se elige: se pone solo al asignar el comercial; solo se enseña si el contacto ya está así.
+    lead.status === 'with_sales' ? h('option', { value: 'with_sales', selected: true }, 'Pasado al comercial') : null);
+  // Agendado: el día de la visita es obligatorio y va a la agenda de visitas (primer paso; el comercial va después).
+  const vp = lead.visit_at ? new Date(lead.visit_at) : null;
+  const p2 = (n) => String(n).padStart(2, '0');
+  const visitDate = h('input', { type: 'date', name: 'visit_date', value: vp ? `${vp.getFullYear()}-${p2(vp.getMonth() + 1)}-${p2(vp.getDate())}` : '' });
+  const vt = vp ? `${p2(vp.getHours())}:${p2(vp.getMinutes())}` : '';
+  const visitTime = h('select', { name: 'visit_time' },
+    h('option', { value: '' }, 'Sin tramo todavía'),
+    VISIT_RANGES.map((r) => h('option', { value: r[0], selected: vt === r[0] }, rangeLabel(r[0]))));
+  const visitFields = h('div', { class: 'grid2 visit-fields' },
+    field('Día de la visita', visitDate, 'Obligatorio. Va a la agenda de visitas.'),
+    field('Tramo de la visita', visitTime, 'Si ya lo sabes. Lo puedes dejar para cuando se reconfirme.'));
+  const syncVisit = () => { visitFields.style.display = status.value === 'scheduled' ? '' : 'none'; };
   const when = h('input', { type: 'datetime-local', name: 'follow_up_at', value: toLocalInput(lead.follow_up_at) });
   const caller = h('select', { name: 'caller' },
     h('option', { value: '' }, 'Nadie todavía'),
@@ -334,7 +352,9 @@ export function openLead(lead, ctx, onSaved) {
 
   // Atajos: «Volver a llamar» sin fecha propone mañana a la misma hora, y elegir
   // comercial en un contacto abierto lo marca como «Pasado al comercial».
+  syncVisit();
   status.addEventListener('change', () => {
+    syncVisit();
     if (status.value === 'callback' && !when.value) {
       const d = new Date(Date.now() + 86_400_000);
       d.setMinutes(0, 0, 0);
@@ -342,13 +362,18 @@ export function openLead(lead, ctx, onSaved) {
     }
   });
   seller.addEventListener('change', () => {
-    if (seller.value && !CLOSED.includes(status.value)) status.value = 'with_sales';
+    if (seller.value && !CLOSED.includes(status.value)) {
+      if (![...status.options].some((o) => o.value === 'with_sales')) status.appendChild(h('option', { value: 'with_sales' }, 'Pasado al comercial'));
+      status.value = 'with_sales';
+      syncVisit();
+    }
   });
 
   const form = h('form', { class: 'form', onsubmit: submit },
     h('div', { class: 'grid2' },
       field('Estado', status),
       field('Volver a llamar el', when, 'Ese día le llega un aviso a quien lo gestiona.'),
+      visitFields,
       field('Lo gestiona', caller, team.length ? 'Quien llama al contacto.' : 'Da de alta a tu equipo en la pestaña «Equipo».'),
       field('Comercial', seller, 'Al elegirlo le llega un aviso con el contacto.')),
     field('Nueva nota', note),
@@ -456,13 +481,30 @@ export function openLead(lead, ctx, onSaved) {
       when.focus();
       return;
     }
+    if (status.value === 'scheduled' && !visitDate.value) {
+      error.textContent = 'Para agendar tienes que poner el día de la visita.';
+      save.disabled = false;
+      visitDate.focus();
+      return;
+    }
     const followUp = when.value ? new Date(when.value).toISOString() : null;
     const amount = lead.deal_value ?? null; // el importe ya no se edita aquí
     try {
       // «Nuevo» y «Llamado» conservan el estado interno que ya tenía el contacto (con llamada agendada, en espera…).
       let sendStatus = status.value;
+      // Agendado: la visita va a la agenda de visitas. Si estaba agendado y pasa a otro estado sin comercial, se quita.
+      if (sendStatus === 'scheduled') {
+        await q(db.rpc('schedule_visit', {
+          p_lead: lead.id, p_date: visitDate.value, p_time: visitTime.value || null, p_member: null,
+          p_minutes: visitTime.value ? 120 : 60,
+        }));
+        lead.visit_at = new Date(`${visitDate.value}T${visitTime.value || '00:00'}`).toISOString();
+        lead.visit_member_id = null;
+      } else if (lead.status === 'scheduled' && lead.visit_at && !lead.visit_member_id && ['new', 'callback', 'unreachable', 'lost'].includes(sendStatus)) {
+        await q(db.rpc('schedule_visit', { p_lead: lead.id, p_date: null }));
+        lead.visit_at = null;
+      }
       if (sendStatus === 'new' && ['to_call', 'called', 'waiting'].includes(lead.status)) sendStatus = lead.status;
-      if (sendStatus === 'called' && lead.status === 'waiting') sendStatus = 'waiting';
       await q(db.rpc('update_lead', {
         p_id: lead.id, p_status: sendStatus, p_follow_up_at: followUp,
         p_caller: caller.value || null, p_seller: seller.value || null, p_value: amount, p_note: note.value,
@@ -555,7 +597,7 @@ function report(rows, ctx, period) {
   const late = open.filter((r) => r.follow_up_at && Date.parse(r.follow_up_at) < Date.now());
 
   // Estados en el orden del embudo.
-  const byStatus = STATUS_CHOICES.map(([s]) => ({ s, n: rows.filter((r) => choiceOf(r.status) === s).length }));
+  const byStatus = [...STATUS_CHOICES.slice(0, 3), ['with_sales', 'Pasado al comercial'], ...STATUS_CHOICES.slice(3)].map(([s]) => ({ s, n: rows.filter((r) => choiceOf(r.status) === s).length }));
   const maxStatus = Math.max(1, ...byStatus.map((x) => x.n));
 
   // Por persona del equipo (más «Sin asignar»).
@@ -611,7 +653,7 @@ function report(rows, ctx, period) {
       kpi('En curso', fmtNum(open.length), late.length ? `${fmtNum(late.length)} con la llamada atrasada` : 'Ninguno atrasado'),
       kpi('Pasados al comercial', fmtNum(passed.length), `${pct(passed.length, rows.length)} de los contactos`),
       kpi('Clientes cerrados', fmtNum(won.length), `${pct(won.length, rows.length)} de los contactos`),
-      kpi('No interesados', fmtNum(lost.length), `${pct(lost.length, rows.length)} de los contactos`),
+      kpi('Anulados', fmtNum(lost.length), `${pct(lost.length, rows.length)} de los contactos`),
       kpi('Tasa de cierre', pct(won.length, won.length + lost.length), 'De los que ya tienen respuesta'),
       kpi('Importe cerrado', fmtEur(value), won.length ? `Media ${fmtEur(value / won.length)} por cliente` : 'Sin clientes cerrados todavía'),
       kpi('Hasta la primera llamada', duration(firstCall), toClose != null ? `Hasta cerrar: ${duration(toClose)}` : 'De media')),
@@ -630,7 +672,7 @@ function report(rows, ctx, period) {
         { label: 'Recibidos', num: true, cell: (x) => fmtNum(x.total) },
         { label: 'En curso', num: true, cell: (x) => fmtNum(x.open) },
         { label: 'Cerrados', num: true, cell: (x) => fmtNum(x.won) },
-        { label: 'No interesa', num: true, cell: (x) => fmtNum(x.lost) },
+        { label: 'Anulado', num: true, cell: (x) => fmtNum(x.lost) },
         { label: 'Tasa de cierre', num: true, cell: (x) => pct(x.won, x.won + x.lost) },
         { label: 'Importe', num: true, cell: (x) => (x.value ? fmtEur(x.value) : '—') },
       ], sellers)),
@@ -642,7 +684,7 @@ function report(rows, ctx, period) {
         { label: 'Llamados', num: true, cell: (x) => fmtNum(x.contacted) },
         { label: 'Pasados al comercial', num: true, cell: (x) => fmtNum(x.passed) },
         { label: 'Cerrados', num: true, cell: (x) => fmtNum(x.won) },
-        { label: 'No interesa', num: true, cell: (x) => fmtNum(x.lost) },
+        { label: 'Anulado', num: true, cell: (x) => fmtNum(x.lost) },
         { label: 'Conversión', num: true, cell: (x) => pct(x.won, x.total) },
       ], callers)),
 

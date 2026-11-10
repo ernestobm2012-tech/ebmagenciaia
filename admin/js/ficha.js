@@ -91,7 +91,7 @@ export function callSheetTab(lead, { onChanged = () => {}, members = [] } = {}) 
 // Tramos de visita que usan los comerciales de DZZERO (hora de inicio → hora de fin).
 export const VISIT_RANGES = [['10:00', '12:00'], ['11:00', '13:00'], ['12:00', '14:00'], ['13:00', '15:00'], ['15:00', '17:00'], ['16:00', '18:00']];
 const h12 = (t) => { const n = +t.slice(0, 2); return n > 12 ? n - 12 : n; };
-const rangeLabel = (start) => { const r = VISIT_RANGES.find((x) => x[0] === start); return r ? `de ${h12(r[0])} a ${h12(r[1])}` : start; };
+export const rangeLabel = (start) => { const r = VISIT_RANGES.find((x) => x[0] === start); return r ? `de ${h12(r[0])} a ${h12(r[1])}` : start; };
 export function visitTimeText(iso) {
   const d = new Date(iso); const t = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   return t === '00:00' ? '' : rangeLabel(t);
@@ -163,6 +163,7 @@ function visitBox(lead, { members, onChanged }) {
         const at = new Date(`${date.value}T${time.value || '00:00'}`).toISOString();
         Object.assign(lead, { visit_at: at, visit_member_id: who.value || null });
         if (who.value) Object.assign(lead, { seller_id: who.value, status: ['won', 'lost'].includes(lead.status) ? lead.status : 'with_sales' });
+        else if (['new', 'to_call', 'called', 'waiting', 'callback', 'unreachable'].includes(lead.status)) lead.status = 'scheduled';
       }
       paint(); check();
       toast(removeIt ? 'Visita quitada' : who.value ? `Visita agendada con ${name(who.value)}` : 'Visita agendada para ese día');

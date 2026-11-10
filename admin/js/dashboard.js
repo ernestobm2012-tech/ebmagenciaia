@@ -58,7 +58,7 @@ const phoneOf = (r) => {
 const initials = (name) => (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || '?';
 
 // ------------------------------------------------------------------ clasificación de los contactos
-const isCalled = (r) => !!r.first_contact_at || ['called', 'waiting', 'with_sales', 'won', 'lost'].includes(r.status);
+const isCalled = (r) => !!r.first_contact_at || ['called', 'waiting', 'scheduled', 'unreachable', 'with_sales', 'won', 'lost'].includes(r.status);
 const isScheduled = (r) => isCalled(r) || !!r.follow_up_at;
 const isPassed = (r) => !!r.seller_id || !!r.passed_at || r.status === 'with_sales';
 
@@ -181,7 +181,7 @@ export async function homeView() {
   ];
 
   const events = rows.slice().sort((a, b) => Date.parse(b.updated_at || b.created_at) - Date.parse(a.updated_at || a.created_at)).slice(0, 7);
-  const EVENT = { won: ['Venta cerrada', COLORS[4]], with_sales: ['Pasado al comercial', COLORS[2]], called: ['Llamada hecha', COLORS[1]], waiting: ['Esperando respuesta', COLORS[3]], callback: ['Llamada agendada', COLORS[3]], lost: ['No interesa', '#8A97A5'], new: ['Nuevo contacto', COLORS[0]], to_call: ['Pendiente de llamar', COLORS[0]] };
+  const EVENT = { won: ['Venta cerrada', COLORS[4]], with_sales: ['Pasado al comercial', COLORS[2]], called: ['Llamada hecha', COLORS[1]], waiting: ['Esperando respuesta', COLORS[3]], callback: ['Llamada agendada', COLORS[3]], lost: ['Anulado', '#8A97A5'], scheduled: ['Visita agendada', COLORS[2]], unreachable: ['Ilocalizable', '#8A97A5'], new: ['Nuevo contacto', COLORS[0]], to_call: ['Pendiente de llamar', COLORS[0]] };
 
   const callsToday = todays.filter((r) => r.follow_up_at && sameDay(new Date(r.follow_up_at), now)).length;
   const dateText = new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }).format(now);

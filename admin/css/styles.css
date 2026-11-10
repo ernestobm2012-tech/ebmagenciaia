@@ -431,6 +431,8 @@ td .actions { flex-wrap: wrap; gap: 4px 14px; }
 .badge.lead-called { background: #EDF1F5; color: #4A5867; }
 .badge.lead-waiting { background: #EEE9FB; color: #5B3FB8; }
 .badge.lead-callback { background: #FBEAEA; color: var(--red); }
+.badge.lead-scheduled { background: #FDF3DF; color: var(--amber); }
+.badge.lead-unreachable { background: #EDF1F5; color: #4A5867; }
 .badge.lead-with_sales { background: #E3F4F8; color: #0F6E86; }
 .badge.lead-won { background: #E2F6EC; color: #16794A; }
 .badge.lead-lost { background: #EDF1F5; color: #4A5867; }

@@ -311,12 +311,13 @@ export async function makeSampleDb(real, { clientId, clientName, services }) {
       const l = tables.leads.find((x) => x.id === args.p_lead);
       if (!l) return done();
       tables.calendar_events = tables.calendar_events.filter((e) => e.lead_id !== l.id);
-      if (!args.p_date) { Object.assign(l, { visit_at: null, visit_member_id: null }); return done({ removed: true }); }
+      if (!args.p_date) { Object.assign(l, { visit_at: null, visit_member_id: null }); if (l.status === 'scheduled') l.status = 'new'; return done({ removed: true }); }
       const day = new Date(`${args.p_date}T${args.p_time || '00:00'}`);
       const cal = args.p_member ? tables.calendars.find((c) => c.member_id === args.p_member && c.agenda_group === 'comercial') : tables.calendars.find((c) => c.agenda_group === 'visitas');
       tables.calendar_events.push({ id: `v${Math.random()}`, client_id: clientId, calendar_id: cal?.id, title: `Visita · ${l.name} · ${l.contact}`, starts_at: day.toISOString(), ends_at: new Date(day.getTime() + (args.p_time ? (args.p_minutes || 60) * 60_000 : 86_400_000)).toISOString(), all_day: !args.p_time, source: 'panel', lead_id: l.id });
       Object.assign(l, { visit_at: day.toISOString(), visit_member_id: args.p_member || null });
       if (args.p_member) Object.assign(l, { seller_id: args.p_member, status: ['won', 'lost'].includes(l.status) ? l.status : 'with_sales' });
+      else if (['new', 'to_call', 'called', 'waiting', 'callback', 'unreachable', 'scheduled'].includes(l.status)) l.status = 'scheduled';
       return done({ ok: true });
     }
     if (fn === 'lead_team') return done([]);

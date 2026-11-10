@@ -463,18 +463,20 @@ function bookingTool(calendars: Calendar[]): Anthropic.Tool {
       "No digas nunca que la cita o la llamada está apuntada hasta que esta herramienta te devuelva que se ha reservado. " +
       "Si falla porque el hueco ya no está libre, vuelve a consultar la agenda y ofrece otro." +
       (pool.length ? ` Para programar una llamada del equipo (el cliente pide que le llamen a una hora), usa la agenda «${POOL}»: ` +
-        "no digas el nombre de quién llamará, solo que le llamará una compañera a esa hora." : ""),
+        "no digas el nombre de quién llamará. Usa franja_desde y franja_hasta (la franja que elige la persona: mañana, tarde o ahora mismo) y dile SOLO la franja, nunca la hora exacta." : ""),
     input_schema: {
       type: "object",
       properties: {
         ...(names.length > 1 || pool.length ? { calendario: { type: "string", enum: names, description: "Agenda donde reservar" } } : {}),
         fecha: { type: "string", description: "Día, formato AAAA-MM-DD" },
-        hora: { type: "string", description: "Hora de inicio, formato HH:MM (hora de España)" },
+        hora: { type: "string", description: "Hora de inicio, formato HH:MM (hora de España). Solo para citas normales; en las llamadas del equipo usa franja_desde y franja_hasta." },
+        franja_desde: { type: "string", description: "SOLO llamadas del equipo: inicio de la franja que ha elegido la persona, HH:MM. El sistema elige el hueco exacto dentro de la franja." },
+        franja_hasta: { type: "string", description: "SOLO llamadas del equipo: fin de la franja que ha elegido la persona, HH:MM (normalmente una hora después del inicio)." },
         nombre: { type: "string", description: "Nombre de la persona" },
         telefono: { type: "string", description: "Teléfono de la persona" },
         motivo: { type: "string", description: "Para qué es la cita, en una frase" },
       },
-      required: [...(names.length > 1 || pool.length ? ["calendario"] : []), "fecha", "hora", "nombre", "telefono", "motivo"],
+      required: [...(names.length > 1 || pool.length ? ["calendario"] : []), "fecha", "nombre", "telefono", "motivo"],
       additionalProperties: false,
     },
   };
@@ -544,29 +546,43 @@ async function dropOldBookings(conversationId: string, keepId: string) {
 // tenga ese día) y el lead queda a su nombre, en «Volver a llamar» a esa hora.
 // Con una agenda común de teleoperadoras (sin persona), el lead queda sin asignar y lo coge quien llame.
 async function bookCall(input: Record<string, string>, clientId: string, conversationId: string, pool: Calendar[]) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.fecha ?? "") || !/^\d{1,2}:\d{2}$/.test(input.hora ?? "")) {
-    throw new Error("Fecha AAAA-MM-DD y hora HH:MM");
-  }
-  const hora = input.hora.padStart(5, "0");
-  // No se reserva una hora de la que no se ha hablado: o se la ofreciste tú o la pidió la persona (el modelo reservaba al recibir nombre y teléfono).
-  const hm = hora.replace(/^0/, "");
-  const { data: said } = await db.from("messages").select("content").eq("conversation_id", conversationId).in("role", ["user", "assistant"]);
-  const hourRe = new RegExp(`(^|\\D)0?${hm.replace(":", "[:.h]")}(\\D|$)`);
-  const hourRe2 = hora.endsWith(":00") ? new RegExp(`las 0?${hm.split(":")[0]}(\\D|$)`, "i") : null;
-  if (!(said ?? []).some((m) => hourRe.test(String(m.content)) || (hourRe2 && hourRe2.test(String(m.content))))) {
-    throw new Error("Todavía no le has ofrecido esa hora ni la ha pedido la persona: ofrécele la primera hora libre diciendo día y hora, y reserva solo cuando conteste que sí.");
-  }
-  const already = (await bookingsOf(conversationId)).find((e) => new Date(e.starts_at).getTime() === madridAt(input.fecha, hora).getTime());
-  if (already) return `Esa llamada YA está programada para el ${whenEs(new Date(already.starts_at))}. No la repitas: confírmasela a la persona una sola vez.`;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.fecha ?? "")) throw new Error("Fecha AAAA-MM-DD");
+  const isT = (t?: string) => /^\d{1,2}:\d{2}$/.test(t ?? "");
+  const franja = isT(input.franja_desde) && isT(input.franja_hasta);
+  if (!franja && !isT(input.hora)) throw new Error("Indica la franja de la llamada: franja_desde y franja_hasta (HH:MM).");
   const dayStart = madridMidnight(input.fecha);
   const { data: busy, error } = await db.from("calendar_events").select("calendar_id, starts_at, ends_at, all_day")
     .in("calendar_id", pool.map((c) => c.id)).lt("starts_at", new Date(dayStart.getTime() + 26 * 3_600_000).toISOString())
     .gt("ends_at", dayStart.toISOString()).limit(2000);
   if (error) throw error;
+  const { data: said } = await db.from("messages").select("role, content").eq("conversation_id", conversationId).in("role", ["user", "assistant"]);
+  const mins = (t: string) => +t.split(":")[0] * 60 + +t.split(":")[1];
+  let hora: string;
+  if (franja) {
+    // La persona elige una franja (p. ej. 16:00-17:00); el sistema agenda en el primer hueco de 5 min libre dentro de ella.
+    if (!(said ?? []).some((m) => m.role === "assistant" && /a qué hora/i.test(String(m.content)))) {
+      throw new Error("Todavía no le has preguntado a qué hora le viene bien (por la mañana, por la tarde o ahora mismo). Pregúntaselo y reserva cuando conteste.");
+    }
+    const from = mins(input.franja_desde), to = mins(input.franja_hasta);
+    const cand = poolSlots(pool, input.fecha, busy ?? []).filter((t) => mins(t) >= from && mins(t) < to);
+    if (!cand.length) throw new Error("En esa franja no queda ningún hueco libre. Mira la lista de huecos reales y ofrece otra franja u otro día.");
+    hora = cand[0];
+  } else {
+    hora = input.hora.padStart(5, "0");
+    // Sin franja: no se reserva una hora de la que no se ha hablado (el modelo reservaba al recibir nombre y teléfono).
+    const hm = hora.replace(/^0/, "");
+    const hourRe = new RegExp(`(^|\\D)0?${hm.replace(":", "[:.h]")}(\\D|$)`);
+    const hourRe2 = hora.endsWith(":00") ? new RegExp(`las 0?${hm.split(":")[0]}(\\D|$)`, "i") : null;
+    if (!(said ?? []).some((m) => hourRe.test(String(m.content)) || (hourRe2 && hourRe2.test(String(m.content))))) {
+      throw new Error("Todavía no le has ofrecido esa hora ni la ha pedido la persona: ofrécele una franja y reserva solo cuando la elija.");
+    }
+  }
+  const already = (await bookingsOf(conversationId)).find((e) => new Date(e.starts_at).getTime() === madridAt(input.fecha, hora).getTime());
+  if (already) return `Esa llamada YA está programada para el ${whenEs(new Date(already.starts_at))}. No la repitas: confírmasela a la persona una sola vez.`;
   const load = (c: Calendar) => (busy ?? []).filter((e) => e.calendar_id === c.id).length;
   const free = pool.filter((c) => freeSlots(c, input.fecha, (busy ?? []).filter((e) => e.calendar_id === c.id)).includes(hora))
     .sort((a, b) => load(a) - load(b) || Math.random() - 0.5);
-  if (!free.length) throw new Error("A esa hora no hay nadie libre para llamar. Consulta la agenda y ofrece otra hora.");
+  if (!free.length) throw new Error("A esa hora no hay nadie libre para llamar. Consulta la agenda y ofrece otra franja.");
 
   const start = madridAt(input.fecha, hora);
   const description = `Teléfono: ${input.telefono}\nMotivo: ${input.motivo}\nLlamada programada por el asistente.`;
@@ -584,7 +600,7 @@ async function bookCall(input: Record<string, string>, clientId: string, convers
     }).format(start);
     await dropOldBookings(conversationId, id);
     // El lead de esta conversación (o uno nuevo) queda a nombre de quien llamará.
-    const reason = `Llamar el ${when}: ${input.motivo}`;
+    const reason = `Llamar el ${when}${franja ? ` (al cliente se le dijo entre las ${input.franja_desde} y las ${input.franja_hasta})` : ""}: ${input.motivo}`;
     const { data: existing } = await db.from("leads").select("id").eq("conversation_id", conversationId)
       .order("created_at", { ascending: false }).limit(1).maybeSingle();
     let leadId = existing?.id as string | undefined;
@@ -600,6 +616,10 @@ async function bookCall(input: Record<string, string>, clientId: string, convers
     }
     // Se asigna aparte para que salte el aviso a esa persona.
     if (cal.member_id) await db.from("leads").update({ caller_id: cal.member_id }).eq("id", leadId);
+    if (franja) {
+      const dayTxt = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", weekday: "long", day: "numeric", month: "long" }).format(start);
+      return `Llamada programada (${dayTxt}). Dile a la persona SOLO la franja: «te llamará una compañera entre las ${input.franja_desde.padStart(5, "0")} y las ${input.franja_hasta.padStart(5, "0")}» al ${input.telefono}. No le digas la hora exacta.`;
+    }
     return `Llamada programada para el ${when}. Dile a la persona que una compañera le llamará a esa hora al ${input.telefono}.`;
   }
   throw new Error("Esa hora se acaba de ocupar. Consulta la agenda y ofrece otra.");
@@ -844,12 +864,11 @@ Deno.serve(async (req) => {
       const notToday = !!lines.length && firstDay !== todayIso;
       system.push({
         type: "text",
-        text: "HUECOS REALES PARA LLAMAR (los calcula el sistema ahora mismo; es la ÚNICA fuente de verdad, no hace falta consultar_agenda salvo que pidan otro día):\n" +
+        text: "HUECOS REALES PARA LLAMAR (los calcula el sistema ahora mismo; es la ÚNICA fuente de verdad):\n" +
           (lines.length ? lines.join("\n") : "ninguno en los próximos días") +
-          "\nOFRECE SIEMPRE UNA SOLA HORA: la PRIMERA hora libre de la lista (la más temprana). " +
-          (notToday ? "Hoy no se puede llamar (fuera de horario, festivo o sin huecos): díselo claro («ahora mismo no te puedo llamar; el horario es …») y ofrécele la primera hora libre del primer día de la lista. " : "Hoy sí hay huecos: si hay uno ahora mismo o dentro de unos minutos, esa es la que ofreces. ") +
-          "Si la persona pide otra hora y está dentro de los tramos, reserva EXACTAMENTE esa. Si pide una que no está libre, dile que esa está ocupada y ofrécele la primera libre más cercana (una sola). " +
-          "Nunca digas «no tengo acceso a esa hora» ni ofrezcas horas que no estén en la lista.",
+          "\nCÓMO PROGRAMAR LA LLAMADA: el orden de la conversación no cambia (primero charla, casa/negocio, pueblo o ciudad y provincia, y nombre y teléfono juntos). SOLO cuando ya tengas pueblo, nombre y teléfono (y no antes) NO preguntes si quiere que le llamen ni le ofrezcas una hora concreta: pregunta, con tus palabras, «¿A qué hora te viene bien que te llamemos: por la mañana, por la tarde o ahora mismo?». En cuanto conteste, reserva con reservar_cita usando franja_desde y franja_hasta (el sistema elige el hueco exacto dentro de la franja). Franjas: «ahora mismo» → desde la primera hora libre de la lista hasta una hora después; «por la mañana» → 09:30 a 10:30; «por la tarde» → 16:00 a 18:00; una hora concreta («a las 4») → esa hora hasta una hora después; «entre las 4 y las 5» → tal cual. El día lo eliges tú: hoy si la franja aún no ha pasado y en la lista hay huecos dentro de ella; si no, el siguiente día de la lista. " +
+          (notToday ? "HOY NO SE PUEDE LLAMAR (fuera de horario, festivo o sin huecos): díselo claro («ahora mismo no te puedo llamar; el horario es …») y usa el primer día de la lista. " : "Hoy sí hay huecos. ") +
+          "Al confirmar, di SOLO la franja («Te llamará una compañera entre las 16:00 y las 17:00»), nunca la hora exacta ni «apuntado: … a las 16:05». Si el sistema dice que en esa franja no hay hueco, mira la lista y ofrece otra franja; no digas que algo está ocupado si en la lista hay horas libres dentro de esa franja. Nunca digas «no tengo acceso a esa hora».",
       });
     }
     let text = "";

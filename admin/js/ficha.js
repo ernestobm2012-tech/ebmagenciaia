@@ -28,6 +28,7 @@ export function callSheetTab(lead, { onChanged = () => {}, members = [], onVisit
   const radio = (v, label) => h('label', { class: 'check' }, h('input', { type: 'radio', name: 'machine_interest', value: v, checked: lead.machine_interest === v }), ' ', label);
   const check = (v, label) => h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'drinks', value: v, checked: (lead.drinks || []).includes(v) }), ' ', label);
 
+  let visit = null;
   const form = h('form', { class: 'form call-sheet', onsubmit: submit },
     h('div', { class: 'grid2' },
       text('client_ref', 'Nº de cliente'),
@@ -75,6 +76,8 @@ export function callSheetTab(lead, { onChanged = () => {}, members = [], onVisit
     save.disabled = true;
     const data = read();
     try {
+      // Un solo botón: si se ha tocado la visita, se guarda también aquí.
+      if (visit && visit.isDirty() && !(await visit.save())) { save.disabled = false; return; }
       await q(db.rpc('update_lead_ficha', { p_id: lead.id, p_data: data }));
       Object.assign(lead, {
         ...data,
@@ -82,12 +85,13 @@ export function callSheetTab(lead, { onChanged = () => {}, members = [], onVisit
         children_at_home: data.children_at_home === '' ? null : Number(data.children_at_home),
         name: data.name || null, contact: data.contact || null,
       });
-      toast('Ficha guardada');
+      toast(visit && visit.saved ? 'Ficha y visita guardadas' : 'Ficha guardada');
       onChanged();
     } catch (err) { error.textContent = errorText(err); }
     save.disabled = false;
   }
-  return h('div', {}, visitBox(lead, { members, onChanged, onVisit, getDraft, onDraft }), form);
+  visit = visitBox(lead, { members, onChanged, onVisit, getDraft, onDraft });
+  return h('div', {}, visit.el, form);
 }
 
 
@@ -163,7 +167,7 @@ function visitBox(lead, { members, onChanged, onVisit = () => {}, getDraft = nul
   function dirty() {
     const s = { date: lead.visit_at ? parts(lead.visit_at).date : '', time: savedVals().time, seller: savedVals().seller };
     const same = s.date === date.value && s.time === time.value && s.seller === who.value;
-    draftNote.textContent = same ? '' : 'Hay cambios sin guardar: pulsa «Guardar visita» (o «Guardar» en Seguimiento).';
+    draftNote.textContent = same ? '' : 'Hay cambios sin guardar: pulsa «Guardar la ficha» abajo, «Guardar visita» o «Guardar» en Seguimiento.';
   }
   const d0 = getDraft ? getDraft() : null;
   if (d0) { date.value = d0.date; setIf(time, d0.time); setIf(who, d0.seller); }
@@ -171,10 +175,15 @@ function visitBox(lead, { members, onChanged, onVisit = () => {}, getDraft = nul
   dirty();
   check();
 
+  const isDirty = () => {
+    const s = { date: lead.visit_at ? parts(lead.visit_at).date : '', time: savedVals().time, seller: savedVals().seller };
+    return !(s.date === date.value && s.time === time.value && s.seller === who.value);
+  };
   async function doSave(removeIt = false) {
     error.textContent = '';
-    if (!removeIt && !date.value) { error.textContent = 'Elige el día de la visita.'; return; }
-    if (!removeIt && who.value && !time.value) { error.textContent = 'Para asignarla a un comercial elige el tramo de la visita.'; return; }
+    api.saved = false;
+    if (!removeIt && !date.value) { error.textContent = 'Elige el día de la visita.'; return false; }
+    if (!removeIt && who.value && !time.value) { error.textContent = 'Para asignarla a un comercial elige el tramo de la visita.'; return false; }
     save.disabled = true;
     try {
       await q(db.rpc('schedule_visit', {
@@ -192,22 +201,28 @@ function visitBox(lead, { members, onChanged, onVisit = () => {}, getDraft = nul
         }
       }
       paint(); check(); dirty(); onVisit();
-      toast(removeIt ? 'Visita quitada' : who.value ? `Visita agendada con ${name(who.value)}` : 'Visita agendada para ese día');
+      api.saved = true;
+      if (!api.quiet) toast(removeIt ? 'Visita quitada' : who.value ? `Visita agendada con ${name(who.value)}` : 'Visita agendada para ese día');
       onChanged();
+      save.disabled = false;
+      return true;
     } catch (err) { error.textContent = errorText(err); }
     save.disabled = false;
+    return false;
   }
+  const api = { el: null, isDirty, saved: false, quiet: false, save: async () => { api.quiet = true; try { return await doSave(); } finally { api.quiet = false; } } };
 
   paint();
-  return h('div', { class: 'visit-box' },
+  api.el = h('div', { class: 'visit-box' },
     h('h3', {}, 'Visita'),
     state,
     h('div', { class: 'grid3' },
-      field('Día de la visita', date),
-      field('Tramo (obligatorio si eliges comercial)', time),
-      field('Comercial', who)),
+      field('Día de la visita', date, 'Con solo el día va a la agenda de visitas.'),
+      field('Tramo de la visita', time, 'Obligatorio si eliges comercial.'),
+      field('Comercial', who, 'Pasa a su agenda.')),
     warn, draftNote, error,
     h('div', { class: 'row-actions' }, save, ' ', remove));
+  return api;
 }
 
 // Hoja para imprimir con la misma forma que la ficha en papel.

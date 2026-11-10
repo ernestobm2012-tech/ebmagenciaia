@@ -848,7 +848,9 @@ tr.lead-hot:hover td { background: #D4EDD1; }
 .visit-state { margin: 0 0 10px; }
 .visit-warn { margin: 6px 0; color: #8A5A00; font-weight: 500; min-height: 0; }
 .visit-warn.ok { color: #2F7A3E; }
-.visit-box .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.visit-box .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.visit-box .grid3 select, .visit-box .grid3 input { width: 100%; min-width: 0; box-sizing: border-box; }
+.visit-box .grid3 .hint, .visit-box .grid3 small { display: block; margin-top: 4px; font-size: 12px; }
 .visit-box .row-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 @media (max-width: 760px) { .visit-box .grid3 { grid-template-columns: 1fr; } }
 

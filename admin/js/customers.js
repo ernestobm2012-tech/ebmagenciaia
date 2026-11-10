@@ -2,6 +2,7 @@
 // «Pasar a clientes» de la ficha de un contacto cerrado. Tabla `customers` (única por teléfono dentro del negocio).
 import { db, session } from './app.js';
 import { h, q, table, modal, field, toast, errorText, fmtDate } from './ui.js';
+import { attachAddress } from './address.js';
 
 const plain = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const normPhone = (t) => {
@@ -71,6 +72,7 @@ export function openCustomer(c, { onSaved = () => {} } = {}) {
     h('div', { class: 'row-actions' }, save,
       isNew ? null : h('button', { class: 'btn link danger', type: 'button', onclick: remove }, 'Quitar de clientes')));
 
+  attachAddress(form);
   const close = modal(isNew ? 'Nuevo cliente' : (v.name || 'Cliente'), form, { wide: true });
 
   async function submit(e) {

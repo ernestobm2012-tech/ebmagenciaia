@@ -3,6 +3,7 @@
 // observaciones y reconfirmación). Se guarda con la RPC update_lead_ficha y se puede imprimir en el mismo formato.
 import { db, session } from './app.js';
 import { h, q, field, toast, errorText } from './ui.js';
+import { attachAddress } from './address.js';
 
 const DRINKS = [['embotellada', 'Agua embotellada'], ['grifo', 'Grifo'], ['filtrada', 'Filtrada'], ['aquaservice', 'Aquaservice']];
 const MACHINE = [['con_instalacion', 'Con instalación'], ['sin_instalacion', 'Sin instalación']];
@@ -47,6 +48,8 @@ export function callSheetTab(lead, { onChanged = () => {}, members = [] } = {}) 
     field('Reconfirmación', h('textarea', { name: 'reconfirmation', rows: 3, placeholder: 'Cuándo se reconfirmó la visita y cómo respondió…' }, lead.reconfirmation || '')),
     error,
     h('div', { class: 'row-actions' }, save, ' ', print));
+
+  attachAddress(form);
 
   // Lee el formulario como el objeto que espera la base de datos.
   function read() {

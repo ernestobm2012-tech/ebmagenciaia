@@ -56,6 +56,8 @@ export const isAveria = (r) => r.kind === 'averia';
 export const isOpenAveria = (r) => isAveria(r) && !r.resolved_at;
 export const isPendingToday = (r) => {
   if (isAveria(r)) return false; // las averías tienen su propio aviso, no entran en «Hoy toca llamar»
+  // Ilocalizable: se queda en la lista de hoy pero al final; cuando se han llamado los demás, vuelve a tocar.
+  if (r.status === 'unreachable') return true;
   const due = r.follow_up_at && new Date(r.follow_up_at) <= endOfToday();
   if (PENDING.includes(r.status)) return r.follow_up_at ? !!due : r.status === 'new';
   if (['called', 'waiting'].includes(r.status)) return !!due && Date.parse(r.follow_up_at) >= Date.parse(r.updated_at || 0) - 60_000;
@@ -64,7 +66,7 @@ export const isPendingToday = (r) => {
 
 // «Para llamar ahora»: acaba de entrar (menos de una hora), sigue pendiente y no está agendada
 // para más tarde (sin hora o con hora dentro de los próximos 30 min). Se pinta en verde pastel.
-export const isHotNow = (r) => PENDING.includes(r.status)
+export const isHotNow = (r) => PENDING.includes(r.status) && r.status !== 'unreachable'
   && Date.now() - Date.parse(r.created_at) < 3_600_000
   && (!r.follow_up_at || Date.parse(r.follow_up_at) <= Date.now() + 1_800_000);
 
@@ -158,9 +160,19 @@ function nextCall(r) {
   return h('span', { class: late ? 'lead-late' : null }, fmtDateTime(r.follow_up_at), late ? ' · atrasada' : '');
 }
 
+// Orden de llamada: los ilocalizables siempre al final (el que lleva más tiempo marcado, antes); el resto, lo más urgente primero.
+export const callOrder = (a, b) => {
+  const ua = a.status === 'unreachable' ? 1 : 0;
+  const ub = b.status === 'unreachable' ? 1 : 0;
+  if (ua !== ub) return ua - ub;
+  if (ua) return Date.parse(a.updated_at || 0) - Date.parse(b.updated_at || 0);
+  return (a.follow_up_at ? Date.parse(a.follow_up_at) : Infinity) - (b.follow_up_at ? Date.parse(b.follow_up_at) : Infinity);
+};
+
 // Lo atrasado y lo más urgente arriba; sin fecha, por orden de llegada.
 function sortLeads(rows) {
   return [...rows].sort((a, b) => {
+    if (a.status === 'unreachable' || b.status === 'unreachable') return callOrder(a, b);
     const fa = a.follow_up_at ? Date.parse(a.follow_up_at) : Infinity;
     const fb = b.follow_up_at ? Date.parse(b.follow_up_at) : Infinity;
     if (fa !== fb) return fa - fb;

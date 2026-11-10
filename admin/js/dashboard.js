@@ -3,7 +3,7 @@
 // Con «#/?ejemplo» se enseñan datos de muestra (solo en el navegador, no se guarda nada).
 import { db, session } from './app.js';
 import { h, q, icon, fmtNum, toast } from './ui.js';
-import { LEAD_STATUS, openLead, isAveria, isOpenAveria, resolveAveria, isPendingToday, isHotNow, askOpen, provinceOptions, provinceKey, leadProvince, loadPresence, attendedBy, presenceTag } from './leads.js';
+import { LEAD_STATUS, openLead, isAveria, isOpenAveria, resolveAveria, isPendingToday, callOrder, isHotNow, askOpen, provinceOptions, provinceKey, leadProvince, loadPresence, attendedBy, presenceTag } from './leads.js';
 import { openConversation } from './activity.js';
 
 const CLOSED = ['won', 'lost'];
@@ -128,8 +128,7 @@ export async function homeView() {
   const now = new Date();
   // Solo lo que sigue pendiente de llamar (nuevo, pendiente o «volver a llamar» para hoy o atrasado),
   // por hora. Lo que ya se ha llamado o cerrado sale de la lista.
-  const pendingList = () => rows.filter(isPendingToday)
-    .sort((a, b) => (a.follow_up_at ? Date.parse(a.follow_up_at) : Infinity) - (b.follow_up_at ? Date.parse(b.follow_up_at) : Infinity));
+  const pendingList = () => rows.filter(isPendingToday).sort(callOrder);
   let todays = pendingList();
 
   const last30 = rows.filter((r) => Date.parse(r.created_at) >= Date.now() - 30 * 86_400_000);

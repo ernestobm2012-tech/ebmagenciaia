@@ -113,14 +113,15 @@ async function zoneTool(name: string, input: Record<string, string>, conversatio
     const prov = provinceOf(input.provincia ?? "");
     if (!prov) return "Error: no reconozco esa provincia. Saca la provincia del pueblo que te ha dicho y vuelve a llamar a esta herramienta (o pregúntasela).";
     const prio = priority.map(norm).includes(prov);
-    // 10/11/2026 (Ernesto): ya no se comprueba el interés fuera de zona; quien acepta la llamada se agenda sin más preguntas.
-    await db.from("conversations").update({ zone: prio ? "priority" : "other", qualified: true }).eq("id", conversationId);
-    return `Provincia: ${prov}. Sigue ya con el agendado: pide JUNTOS nombre y teléfono (y el código postal si falta, una vez); luego ofrece la primera hora libre. No hagas más preguntas de comprobación ni comentes nada sobre zonas.`;
+    await db.from("conversations").update({ zone: prio ? "priority" : "other", qualified: prio }).eq("id", conversationId);
+    if (prio) return `Provincia: ${prov}. Sigue ya con el agendado: pide JUNTOS nombre y teléfono (y el código postal si falta, una vez); luego ofrece la primera hora libre. No comentes nada sobre zonas.`;
+    // 10/11/2026 (Ernesto): fuera de zona solo DOS preguntas antes de agendar, y nunca una última de «¿seguro que te interesa?».
+    return `Provincia: ${prov}. Antes de agendar haz como mucho estas dos preguntas, UNA por mensaje, saltando las que ya te haya contestado: (1) ¿es para casa o para un negocio?, (2) ¿cómo se apaña ahora con el agua? Prohibido preguntar «¿seguro que te interesa?», «¿solo te estás informando?» o cualquier confirmación de interés: si la persona ya ha dicho que sí a la llamada o sigue interesada, NO se lo vuelvas a preguntar jamás. En cuanto tengas esas respuestas (o ya las hayas recibido), llama a confirmar_interes con interes «real» y sigue con nombre y teléfono juntos. Solo si dice con claridad que únicamente está mirando y no quiere llamada, usa «curioso». No comentes nada sobre zonas.`;
   }
   // confirmar_interes
   if (input.interes === "real") {
     await db.from("conversations").update({ qualified: true }).eq("id", conversationId);
-    return "Interés confirmado. Sigue con el agendado: pide JUNTOS nombre y teléfono (y el código postal si falta), luego consultar_agenda y ofrece dos horas.";
+    return "Interés confirmado. Sigue con el agendado: pide JUNTOS nombre y teléfono (y el código postal si falta), luego ofrece la primera hora libre.";
   }
   return "Interés bajo: NO ofrezcas la llamada ni insistas. Si ya tienes su nombre o teléfono, llama a guardar_contacto con motivo «Fuera de zona, interés bajo: …» y lo que contó. Despídete cálido, sin disculparte, diciendo que si más adelante quiere avanzar puede escribir aquí o llamar al 919 895 040.";
 }

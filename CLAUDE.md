@@ -549,3 +549,6 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 
 ### Agenda: llamadas de 5 min apiladas (10/11/2026)
 - En Día/Semana las llamadas de 5 min (altura real 5 px) se pisaban y no se leían. Ahora cada cita mide al menos 24 px y, dentro de su columna, se apila debajo de la anterior sin taparla (`laneBottom` en `timeGrid`, `calendars.js`); la hora sale en cada bloque, así que una puede quedar visualmente algo por debajo de su hora real. `?v=20261208`, caché `ebm-panel-v33`.
+
+### CHECK de estados de `leads` (10/11/2026)
+- Error visto por Ernesto al guardar «Agendado»: `new row for relation "leads" violates check constraint "leads_status_check"`. Contra lo que se anotó antes, `leads.status` SÍ tenía un CHECK (new, to_call, called, waiting, callback, with_sales, won, lost) y no admitía `scheduled` ni `unreachable`. Ampliado por SQL: ahora incluye también `scheduled` y `unreachable`. Esto explica también que «Agendado» e «Ilocalizable» no se guardaran antes en la base real (en el ejemplo y en mis pruebas simuladas no hay CHECK). Si se añade otro estado, ampliar este CHECK.

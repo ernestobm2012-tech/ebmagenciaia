@@ -5,7 +5,7 @@
 //   Equipo: personas que llaman y comerciales de cada negocio (no necesitan usuario del panel).
 // Los cambios de un lead pasan por la función update_lead de la base, que comprueba el acceso.
 import { db, session, can } from './app.js';
-import { h, q, table, modal, fmtDateTime, field, toast, errorText, kpi, fmtNum, fmtEur, tabs } from './ui.js';
+import { h, q, icon, table, modal, fmtDateTime, field, toast, errorText, kpi, fmtNum, fmtEur, tabs } from './ui.js';
 import { fichaTab, quotesView } from './catalog.js';
 import { callSheetTab, VISIT_RANGES, rangeLabel } from './ficha.js';
 import { openCustomer } from './customers.js';
@@ -459,6 +459,14 @@ export function openLead(lead, ctx, onSaved) {
         catch (err) { toast(errorText(err), 'error'); e.target.disabled = false; }
       } }, 'Marcar atendida'));
     body.prepend(bar);
+  }
+
+  // Llamar desde la ficha (en el móvil abre el teléfono; en el ordenador, la aplicación de llamadas que tenga).
+  const phoneNow = () => { const d = (lead.contact || '').replace(/[^\d+]/g, ''); return d.replace(/\D/g, '').length >= 9 ? d : null; };
+  if (phoneNow()) {
+    body.prepend(h('div', { class: 'call-bar' },
+      h('span', { class: 'cb-who' }, h('b', {}, lead.name || 'Sin nombre'), ` · ${lead.contact}`),
+      h('a', { class: 'btn primary call-btn', href: `tel:${phoneNow()}` }, icon('phone'), 'Llamar')));
   }
 
   // Mientras la ficha está abierta, el resto del equipo ve el contacto «en proceso».

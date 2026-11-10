@@ -894,3 +894,6 @@ tr.lead-averia:hover td { background: #FBCFCF; }
 .ac-item:hover, .ac-item:focus { background: var(--accent-soft, #f1f5f9); }
 .ac-item span { font-size: .85em; opacity: .7; }
 .ac-credit { display: block; padding: 6px 12px; font-size: .75em; opacity: .55; }
+
+.call-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; margin: 0 0 14px; border: 1px solid var(--line, #E7DED7); border-radius: 12px; background: var(--surface, #F8F4F1); }
+.call-bar .call-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; text-decoration: none; }

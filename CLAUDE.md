@@ -552,3 +552,6 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 
 ### CHECK de estados de `leads` (10/11/2026)
 - Error visto por Ernesto al guardar «Agendado»: `new row for relation "leads" violates check constraint "leads_status_check"`. Contra lo que se anotó antes, `leads.status` SÍ tenía un CHECK (new, to_call, called, waiting, callback, with_sales, won, lost) y no admitía `scheduled` ni `unreachable`. Ampliado por SQL: ahora incluye también `scheduled` y `unreachable`. Esto explica también que «Agendado» e «Ilocalizable» no se guardaran antes en la base real (en el ejemplo y en mis pruebas simuladas no hay CHECK). Si se añade otro estado, ampliar este CHECK.
+
+### Botón Llamar dentro de la ficha del contacto (10/11/2026)
+- Barra arriba de la ficha (`openLead` en `leads.js`, clase `.call-bar`) con nombre, teléfono y botón «Llamar» (`tel:`, como en el Resumen); solo sale si el teléfono tiene 9 cifras o más. En el ordenador abre la aplicación de llamadas que tenga el equipo (Teléfono de Windows/Enlace al móvil, Teams…). `?v=20261209`, caché `ebm-panel-v34`.

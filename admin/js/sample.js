@@ -317,7 +317,7 @@ export async function makeSampleDb(real, { clientId, clientName, services }) {
       tables.calendar_events.push({ id: `v${Math.random()}`, client_id: clientId, calendar_id: cal?.id, title: `Visita · ${l.name} · ${l.contact}`, starts_at: day.toISOString(), ends_at: new Date(day.getTime() + (args.p_time ? (args.p_minutes || 60) * 60_000 : 86_400_000)).toISOString(), all_day: !args.p_time, source: 'panel', lead_id: l.id });
       Object.assign(l, { visit_at: day.toISOString(), visit_member_id: args.p_member || null });
       if (args.p_member) Object.assign(l, { seller_id: args.p_member, status: ['won', 'lost'].includes(l.status) ? l.status : 'with_sales' });
-      else if (['new', 'to_call', 'called', 'waiting', 'callback', 'unreachable', 'scheduled'].includes(l.status)) l.status = 'scheduled';
+      else { l.seller_id = null; if (['new', 'to_call', 'called', 'waiting', 'callback', 'unreachable', 'scheduled', 'with_sales'].includes(l.status)) l.status = 'scheduled'; }
       return done({ ok: true });
     }
     if (fn === 'lead_team') return done([]);

@@ -17,7 +17,7 @@ function parts(iso) {
 }
 const dmy = (iso) => { if (!iso) return ''; const d = new Date(iso); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`; };
 
-export function callSheetTab(lead, { onChanged = () => {}, members = [] } = {}) {
+export function callSheetTab(lead, { onChanged = () => {}, members = [], onVisit = () => {} } = {}) {
   const call = parts(lead.follow_up_at);
   const text = (name, label, extra = {}) => field(label, h('input', { name, value: lead[name] ?? '', ...extra }));
   const num = (name, label) => field(label, h('input', { name, type: 'number', min: 0, max: 30, inputmode: 'numeric', value: lead[name] ?? '' }));
@@ -87,7 +87,7 @@ export function callSheetTab(lead, { onChanged = () => {}, members = [] } = {}) 
     } catch (err) { error.textContent = errorText(err); }
     save.disabled = false;
   }
-  return h('div', {}, visitBox(lead, { members, onChanged }), form);
+  return h('div', {}, visitBox(lead, { members, onChanged, onVisit }), form);
 }
 
 
@@ -102,7 +102,7 @@ export function visitTimeText(iso) {
   return t === '00:00' ? '' : rangeLabel(t);
 }
 
-function visitBox(lead, { members, onChanged }) {
+function visitBox(lead, { members, onChanged, onVisit = () => {} }) {
   const coms = members.filter((m) => m.client_id === lead.client_id && m.role === 'comercial' && (m.active || m.id === lead.visit_member_id));
   const cur = parts(lead.visit_at);
   const hasTime = !!lead.visit_at && cur.time !== '00:00';
@@ -163,14 +163,17 @@ function visitBox(lead, { members, onChanged }) {
         p_lead: lead.id, p_date: removeIt ? null : date.value, p_time: removeIt || !time.value ? null : time.value,
         p_member: removeIt || !who.value ? null : who.value, p_minutes: VISIT_RANGES.some((r) => r[0] === time.value) ? 120 : 60,
       }));
-      if (removeIt) { Object.assign(lead, { visit_at: null, visit_member_id: null }); date.value = ''; time.value = ''; who.value = ''; }
+      if (removeIt) { Object.assign(lead, { visit_at: null, visit_member_id: null }); if (lead.status === 'scheduled') lead.status = 'new'; date.value = ''; time.value = ''; who.value = ''; }
       else {
         const at = new Date(`${date.value}T${time.value || '00:00'}`).toISOString();
         Object.assign(lead, { visit_at: at, visit_member_id: who.value || null });
         if (who.value) Object.assign(lead, { seller_id: who.value, status: ['won', 'lost'].includes(lead.status) ? lead.status : 'with_sales' });
-        else if (['new', 'to_call', 'called', 'waiting', 'callback', 'unreachable'].includes(lead.status)) lead.status = 'scheduled';
+        else {
+          lead.seller_id = null;
+          if (['new', 'to_call', 'called', 'waiting', 'callback', 'unreachable', 'with_sales'].includes(lead.status)) lead.status = 'scheduled';
+        }
       }
-      paint(); check();
+      paint(); check(); onVisit();
       toast(removeIt ? 'Visita quitada' : who.value ? `Visita agendada con ${name(who.value)}` : 'Visita agendada para ese día');
       onChanged();
     } catch (err) { error.textContent = errorText(err); }

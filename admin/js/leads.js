@@ -348,9 +348,21 @@ export function openLead(lead, ctx, onSaved) {
     h('option', { value: '' }, 'Sin tramo todavía'),
     VISIT_RANGES.map((r) => h('option', { value: r[0], selected: vt === r[0] }, rangeLabel(r[0]))));
   const visitFields = h('div', { class: 'grid2 visit-fields' },
-    field('Día de la visita', visitDate, 'Obligatorio. Va a la agenda de visitas.'),
-    field('Tramo de la visita', visitTime, 'Si ya lo sabes. Lo puedes dejar para cuando se reconfirme.'));
-  const syncVisit = () => { visitFields.style.display = status.value === 'scheduled' ? '' : 'none'; };
+    field('Día de la visita', visitDate, 'Va a la agenda de visitas; con comercial, a la suya.'),
+    field('Tramo de la visita', visitTime, 'Siempre por tramos. Obligatorio si eliges comercial.'));
+  const syncVisit = () => {};
+  // Lo mismo que se ve en «Ficha de llamada › Visita»: si se cambia allí, aquí se actualiza al momento.
+  const toDateStr = (iso) => { const d = new Date(iso); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`; };
+  const toTimeStr = (iso) => { const d = new Date(iso); return `${p2(d.getHours())}:${p2(d.getMinutes())}`; };
+  const hasOpt = (sel, v) => [...sel.options].some((o) => o.value === v);
+  function syncFromLead() {
+    seller.value = lead.seller_id || '';
+    visitDate.value = lead.visit_at ? toDateStr(lead.visit_at) : '';
+    const t = lead.visit_at ? toTimeStr(lead.visit_at) : '';
+    visitTime.value = VISIT_RANGES.some((r) => r[0] === t) ? t : '';
+    if (lead.status === 'with_sales' && !hasOpt(status, 'with_sales')) status.appendChild(h('option', { value: 'with_sales' }, 'Pasado al comercial'));
+    status.value = choiceOf(lead.status);
+  }
   const when = h('input', { type: 'datetime-local', name: 'follow_up_at', value: toLocalInput(lead.follow_up_at) });
   const caller = h('select', { name: 'caller' },
     h('option', { value: '' }, 'Nadie todavía'),
@@ -377,7 +389,9 @@ export function openLead(lead, ctx, onSaved) {
     if (seller.value && !CLOSED.includes(status.value)) {
       if (![...status.options].some((o) => o.value === 'with_sales')) status.appendChild(h('option', { value: 'with_sales' }, 'Pasado al comercial'));
       status.value = 'with_sales';
-      syncVisit();
+    } else if (!seller.value && status.value === 'with_sales') {
+      // Sin comercial, la visita (si hay) vuelve a la agenda de visitas.
+      status.value = visitDate.value ? 'scheduled' : 'new';
     }
   });
 
@@ -385,9 +399,9 @@ export function openLead(lead, ctx, onSaved) {
     h('div', { class: 'grid2' },
       field('Estado', status),
       field('Volver a llamar el', when, 'Ese día le llega un aviso a quien lo gestiona.'),
-      visitFields,
       field('Lo gestiona', caller, team.length ? 'Quien llama al contacto.' : 'Da de alta a tu equipo en la pestaña «Equipo».'),
-      field('Comercial', seller, 'Al elegirlo le llega un aviso con el contacto.')),
+      field('Comercial', seller, 'Es el mismo que en «Ficha de llamada › Visita». Al elegirlo le llega un aviso.')),
+    visitFields,
     field('Nueva nota', note),
     error,
     h('div', {}, save, ' ',
@@ -409,7 +423,7 @@ export function openLead(lead, ctx, onSaved) {
       lead.clients?.name ? ` · ${lead.clients.name}` : ''),
     tabs([
       { id: 'follow', label: 'Seguimiento', render: async () => followUp },
-      { id: 'sheet', label: 'Ficha de llamada', render: async () => callSheetTab(lead, { onChanged: onSaved, members: ctx.members }) },
+      { id: 'sheet', label: 'Ficha de llamada', render: async () => callSheetTab(lead, { onChanged: onSaved, members: ctx.members, onVisit: syncFromLead }) },
       ...(hasCatalog ? [
         { id: 'ficha', label: 'Ficha y equipo', render: () => fichaTab(lead, { onChanged: onSaved }) },
         { id: 'quotes', label: 'Presupuestos', render: () => quotesView(lead.client_id, { leadId: lead.id, lead }) },
@@ -499,42 +513,48 @@ export function openLead(lead, ctx, onSaved) {
       visitDate.focus();
       return;
     }
+    if (visitTime.value && !visitDate.value) {
+      error.textContent = 'Has puesto un tramo: pon también el día de la visita.';
+      save.disabled = false;
+      visitDate.focus();
+      return;
+    }
+    if (seller.value && visitDate.value && !visitTime.value) {
+      error.textContent = 'Para pasar la visita a un comercial elige el tramo (de 10 a 12, de 11 a 1…).';
+      save.disabled = false;
+      visitTime.focus();
+      return;
+    }
     const followUp = when.value ? new Date(when.value).toISOString() : null;
     const amount = lead.deal_value ?? null; // el importe ya no se edita aquí
     try {
       // «Nuevo» y «Llamado» conservan el estado interno que ya tenía el contacto (con llamada agendada, en espera…).
       let sendStatus = status.value;
-      // Agendado: la visita va a la agenda de visitas. Si estaba agendado y pasa a otro estado sin comercial, se quita.
-      if (sendStatus === 'scheduled') {
+      // Visita: es la misma que la de «Ficha de llamada». Con comercial va a SU agenda (y se quita de la del anterior);
+      // sin comercial, a la agenda de visitas; sin día, se quita.
+      const vDate = visitDate.value;
+      const vTime = visitTime.value;
+      const sellerId = seller.value || null;
+      const visitChanged = vDate !== (lead.visit_at ? toDateStr(lead.visit_at) : '')
+        || vTime !== (lead.visit_at && toTimeStr(lead.visit_at) !== '00:00' ? toTimeStr(lead.visit_at) : '')
+        || (vDate && sellerId !== (lead.visit_member_id || null));
+      if (vDate && visitChanged) {
         await q(db.rpc('schedule_visit', {
-          p_lead: lead.id, p_date: visitDate.value, p_time: visitTime.value || null, p_member: null,
-          p_minutes: visitTime.value ? 120 : 60,
+          p_lead: lead.id, p_date: vDate, p_time: vTime || null, p_member: sellerId && vTime ? sellerId : null,
+          p_minutes: vTime ? 120 : 60,
         }));
-        lead.visit_at = new Date(`${visitDate.value}T${visitTime.value || '00:00'}`).toISOString();
-        lead.visit_member_id = null;
-      } else if (lead.status === 'scheduled' && lead.visit_at && !lead.visit_member_id && ['new', 'callback', 'unreachable', 'lost'].includes(sendStatus)) {
+        lead.visit_at = new Date(`${vDate}T${vTime || '00:00'}`).toISOString();
+        lead.visit_member_id = sellerId && vTime ? sellerId : null;
+      } else if (!vDate && lead.visit_at) {
         await q(db.rpc('schedule_visit', { p_lead: lead.id, p_date: null }));
         lead.visit_at = null;
+        lead.visit_member_id = null;
       }
       if (sendStatus === 'new' && ['to_call', 'called', 'waiting'].includes(lead.status)) sendStatus = lead.status;
       await q(db.rpc('update_lead', {
         p_id: lead.id, p_status: sendStatus, p_follow_up_at: followUp,
         p_caller: caller.value || null, p_seller: seller.value || null, p_value: amount, p_note: note.value,
       }));
-      // Si ya hay una visita con hora y se cambia de comercial, la visita pasa a la agenda del nuevo comercial.
-      if (lead.visit_at && seller.value && seller.value !== lead.visit_member_id) {
-        const v = new Date(lead.visit_at);
-        const pad2 = (n) => String(n).padStart(2, '0');
-        if (v.getHours() || v.getMinutes()) {
-          try {
-            await q(db.rpc('schedule_visit', {
-              p_lead: lead.id, p_date: `${v.getFullYear()}-${pad2(v.getMonth() + 1)}-${pad2(v.getDate())}`,
-              p_time: `${pad2(v.getHours())}:${pad2(v.getMinutes())}`, p_member: seller.value, p_minutes: [10, 11, 12, 13, 15, 16].includes(v.getHours()) && v.getMinutes() === 0 ? 120 : 60,
-            }));
-            lead.visit_member_id = seller.value;
-          } catch (err) { toast(`La visita sigue en la agenda del comercial anterior: ${errorText(err)}`, 'error'); }
-        }
-      }
       const becameClient = sendStatus === 'won' && lead.status !== 'won';
       Object.assign(lead, { status: sendStatus, follow_up_at: followUp, caller_id: caller.value || null, seller_id: seller.value || null, deal_value: amount });
       toast('Guardado');

@@ -423,7 +423,12 @@ export function openLead(lead, ctx, onSaved) {
       lead.clients?.name ? ` · ${lead.clients.name}` : ''),
     tabs([
       { id: 'follow', label: 'Seguimiento', render: async () => followUp },
-      { id: 'sheet', label: 'Ficha de llamada', render: async () => callSheetTab(lead, { onChanged: onSaved, members: ctx.members, onVisit: syncFromLead }) },
+      { id: 'sheet', label: 'Ficha de llamada', render: async () => callSheetTab(lead, { onChanged: onSaved, members: ctx.members, onVisit: syncFromLead,
+        getDraft: () => ({ date: visitDate.value, time: visitTime.value, seller: seller.value }),
+        onDraft: (d) => {
+          visitDate.value = d.date; visitTime.value = d.time;
+          if (seller.value !== d.seller && (d.seller === '' || hasOpt(seller, d.seller))) { seller.value = d.seller; seller.dispatchEvent(new Event('change')); }
+        } }) },
       ...(hasCatalog ? [
         { id: 'ficha', label: 'Ficha y equipo', render: () => fichaTab(lead, { onChanged: onSaved }) },
         { id: 'quotes', label: 'Presupuestos', render: () => quotesView(lead.client_id, { leadId: lead.id, lead }) },

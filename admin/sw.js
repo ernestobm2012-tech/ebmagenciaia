@@ -1,5 +1,5 @@
 // Service worker del panel: avisos push y funcionamiento básico sin conexión.
-const CACHE = 'ebm-panel-v30';
+const CACHE = 'ebm-panel-v31';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => {

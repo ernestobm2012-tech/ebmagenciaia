@@ -17,7 +17,7 @@ function parts(iso) {
 }
 const dmy = (iso) => { if (!iso) return ''; const d = new Date(iso); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`; };
 
-export function callSheetTab(lead, { onChanged = () => {}, members = [], onVisit = () => {} } = {}) {
+export function callSheetTab(lead, { onChanged = () => {}, members = [], onVisit = () => {}, getDraft = null, onDraft = () => {} } = {}) {
   const call = parts(lead.follow_up_at);
   const text = (name, label, extra = {}) => field(label, h('input', { name, value: lead[name] ?? '', ...extra }));
   const num = (name, label) => field(label, h('input', { name, type: 'number', min: 0, max: 30, inputmode: 'numeric', value: lead[name] ?? '' }));
@@ -87,7 +87,7 @@ export function callSheetTab(lead, { onChanged = () => {}, members = [], onVisit
     } catch (err) { error.textContent = errorText(err); }
     save.disabled = false;
   }
-  return h('div', {}, visitBox(lead, { members, onChanged, onVisit }), form);
+  return h('div', {}, visitBox(lead, { members, onChanged, onVisit, getDraft, onDraft }), form);
 }
 
 
@@ -102,8 +102,8 @@ export function visitTimeText(iso) {
   return t === '00:00' ? '' : rangeLabel(t);
 }
 
-function visitBox(lead, { members, onChanged, onVisit = () => {} }) {
-  const coms = members.filter((m) => m.client_id === lead.client_id && m.role === 'comercial' && (m.active || m.id === lead.visit_member_id));
+function visitBox(lead, { members, onChanged, onVisit = () => {}, getDraft = null, onDraft = () => {} }) {
+  const coms = members.filter((m) => m.client_id === lead.client_id && m.role === 'comercial' && (m.active || m.id === lead.visit_member_id || m.id === lead.seller_id));
   const cur = parts(lead.visit_at);
   const hasTime = !!lead.visit_at && cur.time !== '00:00';
   const name = (id) => coms.find((m) => m.id === id)?.name;
@@ -115,7 +115,7 @@ function visitBox(lead, { members, onChanged, onVisit = () => {} }) {
     odd ? h('option', { value: cur.time, selected: true }, `${cur.time} (hora suelta)`) : null);
   const who = h('select', {},
     h('option', { value: '' }, 'Sin asignar todavía (solo el día)'),
-    coms.map((m) => h('option', { value: m.id, selected: lead.visit_member_id === m.id }, m.name)));
+    coms.map((m) => h('option', { value: m.id, selected: (lead.visit_member_id || lead.seller_id) === m.id }, m.name)));
   const state = h('p', { class: 'visit-state' });
   const warn = h('p', { class: 'visit-warn' });
   const error = h('p', { class: 'error' });
@@ -151,6 +151,24 @@ function visitBox(lead, { members, onChanged, onVisit = () => {} }) {
     } catch { /* sin aviso */ }
   }
   [who, date].forEach((el) => el.addEventListener('change', check));
+
+  // Lo que se esté tocando en «Seguimiento» (aunque no se haya guardado) se ve aquí igual, y al revés.
+  const draftNote = h('p', { class: 'visit-warn' });
+  const savedVals = () => ({
+    date: cur.date && lead.visit_at ? parts(lead.visit_at).date : '',
+    time: lead.visit_at && parts(lead.visit_at).time !== '00:00' ? parts(lead.visit_at).time : '',
+    seller: lead.visit_member_id || lead.seller_id || '',
+  });
+  const setIf = (el, v) => { if ([...el.options ?? []].length ? [...el.options].some((o) => o.value === v) : true) el.value = v; };
+  function dirty() {
+    const s = { date: lead.visit_at ? parts(lead.visit_at).date : '', time: savedVals().time, seller: savedVals().seller };
+    const same = s.date === date.value && s.time === time.value && s.seller === who.value;
+    draftNote.textContent = same ? '' : 'Hay cambios sin guardar: pulsa «Guardar visita» (o «Guardar» en Seguimiento).';
+  }
+  const d0 = getDraft ? getDraft() : null;
+  if (d0) { date.value = d0.date; setIf(time, d0.time); setIf(who, d0.seller); }
+  [who, date, time].forEach((el) => el.addEventListener('change', () => { dirty(); onDraft({ date: date.value, time: time.value, seller: who.value }); }));
+  dirty();
   check();
 
   async function doSave(removeIt = false) {
@@ -173,7 +191,7 @@ function visitBox(lead, { members, onChanged, onVisit = () => {} }) {
           if (['new', 'to_call', 'called', 'waiting', 'callback', 'unreachable', 'with_sales'].includes(lead.status)) lead.status = 'scheduled';
         }
       }
-      paint(); check(); onVisit();
+      paint(); check(); dirty(); onVisit();
       toast(removeIt ? 'Visita quitada' : who.value ? `Visita agendada con ${name(who.value)}` : 'Visita agendada para ese día');
       onChanged();
     } catch (err) { error.textContent = errorText(err); }
@@ -188,7 +206,7 @@ function visitBox(lead, { members, onChanged, onVisit = () => {} }) {
       field('Día de la visita', date),
       field('Tramo (obligatorio si eliges comercial)', time),
       field('Comercial', who)),
-    warn, error,
+    warn, draftNote, error,
     h('div', { class: 'row-actions' }, save, ' ', remove));
 }
 

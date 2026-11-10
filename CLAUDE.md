@@ -546,3 +546,6 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 
 ### Ficha de llamada: un solo botón guarda ficha y visita (10/11/2026)
 - Ernesto vio que «no se guardaba todo» aunque salía «guardado»: la ficha tenía dos botones (Guardar visita y Guardar la ficha) y lo tocado en el otro bloque se perdía al cerrar. Las RPC (`schedule_visit`, `update_lead_ficha`) se probaron en la base real simulando a Óscar y guardan bien. Ahora «Guardar la ficha» guarda también la visita si se ha tocado (`visitBox` devuelve `{el, isDirty, save}` en `ficha.js`); «Guardar visita» sigue existiendo. Etiquetas con pista bajo cada campo del bloque Visita. `?v=20261207`, caché `ebm-panel-v32`.
+
+### Agenda: llamadas de 5 min apiladas (10/11/2026)
+- En Día/Semana las llamadas de 5 min (altura real 5 px) se pisaban y no se leían. Ahora cada cita mide al menos 24 px y, dentro de su columna, se apila debajo de la anterior sin taparla (`laneBottom` en `timeGrid`, `calendars.js`); la hora sale en cada bloque, así que una puede quedar visualmente algo por debajo de su hora real. `?v=20261208`, caché `ebm-panel-v33`.

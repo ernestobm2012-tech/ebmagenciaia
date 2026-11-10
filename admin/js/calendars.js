@@ -532,17 +532,22 @@ export async function calendarsTab(clientId) {
         const overlap = items.filter((o) => o.s < it.en && o.en > it.s);
         it.cols = Math.max(...overlap.map((o) => o.lane)) + 1;
       }
+      // Las citas muy cortas (llamadas de 5 min) se apilan una debajo de otra sin taparse.
+      const laneBottom = [];
       for (const it of items) {
         const startMin = (it.s - +d) / 60_000;
         const endMin = (it.en - +d) / 60_000;
-        const top = Math.max(0, ((startMin - first * 60) / 60) * HOUR_PX);
+        let top = Math.max(0, ((startMin - first * 60) / 60) * HOUR_PX);
         const bottom = Math.min(height, ((endMin - first * 60) / 60) * HOUR_PX);
         const cal = byCal[it.e.calendar_id];
         const short = bottom - top < 40;
         const roomy = bottom - top >= 72;
+        const hgt = Math.max(24, bottom - top - 2);
+        top = Math.max(top, (laneBottom[it.lane] ?? -1e9) + 2);
+        laneBottom[it.lane] = top + hgt;
         col.append(h('button', {
           type: 'button', class: `tg-event${short ? ' short' : ''}`,
-          style: `top:${top}px;height:${Math.max(18, bottom - top - 2)}px;left:calc(${(it.lane / it.cols) * 100}% + 2px);width:calc(${100 / it.cols}% - 4px);--c:${colorOf(it.e, cal)}`,
+          style: `top:${top}px;height:${hgt}px;left:calc(${(it.lane / it.cols) * 100}% + 2px);width:calc(${100 / it.cols}% - 4px);--c:${colorOf(it.e, cal)}`,
           title: `${timeFmt.format(new Date(it.e.starts_at))} – ${timeFmt.format(new Date(it.e.ends_at))} · ${it.e.title}${typeOf(it.e) ? ` · ${typeOf(it.e).name}` : ''}${cal ? ` · ${cal.name}` : ''}`,
           onclick: () => editEvent(it.e),
         },

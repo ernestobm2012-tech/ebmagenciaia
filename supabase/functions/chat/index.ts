@@ -548,6 +548,14 @@ async function bookCall(input: Record<string, string>, clientId: string, convers
     throw new Error("Fecha AAAA-MM-DD y hora HH:MM");
   }
   const hora = input.hora.padStart(5, "0");
+  // No se reserva una hora de la que no se ha hablado: o se la ofreciste tú o la pidió la persona (el modelo reservaba al recibir nombre y teléfono).
+  const hm = hora.replace(/^0/, "");
+  const { data: said } = await db.from("messages").select("content").eq("conversation_id", conversationId).in("role", ["user", "assistant"]);
+  const hourRe = new RegExp(`(^|\\D)0?${hm.replace(":", "[:.h]")}(\\D|$)`);
+  const hourRe2 = hora.endsWith(":00") ? new RegExp(`las 0?${hm.split(":")[0]}(\\D|$)`, "i") : null;
+  if (!(said ?? []).some((m) => hourRe.test(String(m.content)) || (hourRe2 && hourRe2.test(String(m.content))))) {
+    throw new Error("Todavía no le has ofrecido esa hora ni la ha pedido la persona: ofrécele la primera hora libre diciendo día y hora, y reserva solo cuando conteste que sí.");
+  }
   const already = (await bookingsOf(conversationId)).find((e) => new Date(e.starts_at).getTime() === madridAt(input.fecha, hora).getTime());
   if (already) return `Esa llamada YA está programada para el ${whenEs(new Date(already.starts_at))}. No la repitas: confírmasela a la persona una sola vez.`;
   const dayStart = madridMidnight(input.fecha);

@@ -77,6 +77,7 @@ Deno.serve(async (req) => {
   let demoNote = "";
   let from = FROM;
   let replyTo: string | undefined;
+  let pushText: { title: string; body: string } | null = null;
 
   if (kind === "contact") {
     const { data: admins } = await db.from("profiles").select("email").eq("role", "admin");
@@ -118,6 +119,7 @@ Deno.serve(async (req) => {
     const chat = transcript([...(msgs ?? [])].reverse(), agentName);
     if (kind === "lead") {
       subject = `${agentName}: ${row.name ?? "alguien"} quiere hablar contigo`;
+      pushText = { title: subject, body: [row.contact, row.reason].filter(Boolean).join(" · ").slice(0, 180) };
       const phone = phoneOf(row.contact);
       const mail = String(row.contact ?? "").match(/[^\s<>@]+@[^\s<>@]+\.[a-z]{2,}/i)?.[0];
       if (mail) replyTo = mail;
@@ -134,6 +136,7 @@ Deno.serve(async (req) => {
       ], footer, (buttons ? `<p style="margin:18px 0 0">${buttons}</p>` : "") + chat);
     } else {
       subject = `Una conversación necesita a una persona (${channel})`;
+      pushText = { title: `${agentName}: una conversación necesita a una persona`, body: String(row.reason ?? "").slice(0, 180) };
       html = layout(`Atención: conversación para revisar en ${client?.name ?? ""}`, [
         ["Motivo", row.reason], ["Canal", channel], ["Demo: en real iría a", demoNote],
       ], footer, chat);
@@ -151,6 +154,21 @@ Deno.serve(async (req) => {
     });
     status = res.ok ? "sent" : "failed";
     detail = res.ok ? "" : `Resend respondió ${res.status}: ${(await res.text()).slice(0, 300)}`;
+  }
+
+  // Negocios con web propia (p. ej. Mi Pequeño Rincón): aviso al móvil desde SU
+  // panel. Si falla, el correo ya ha salido igual.
+  if (row.client_id && pushText) {
+    const { data: integ } = await db.from("client_integrations").select("webhook_url, token")
+      .eq("client_id", row.client_id).maybeSingle();
+    if (integ?.webhook_url) {
+      await fetch(integ.webhook_url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-integration-token": integ.token },
+        body: JSON.stringify({ action: "push", ...pushText, conversation_id: row.conversation_id ?? null }),
+        signal: AbortSignal.timeout(8000),
+      }).catch(() => {});
+    }
   }
 
   if (row.client_id) {

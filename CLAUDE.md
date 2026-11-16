@@ -555,3 +555,8 @@ Función `instagram` (migración 0019: `social_accounts`, `social_tokens`, `soci
 
 ### Botón Llamar dentro de la ficha del contacto (10/11/2026)
 - Barra arriba de la ficha (`openLead` en `leads.js`, clase `.call-bar`) con nombre, teléfono y botón «Llamar» (`tel:`, como en el Resumen); solo sale si el teléfono tiene 9 cifras o más. En el ordenador abre la aplicación de llamadas que tenga el equipo (Teléfono de Windows/Enlace al móvil, Teams…). `?v=20261209`, caché `ebm-panel-v34`.
+
+### Avisos de contacto con la marca del negocio y botón de WhatsApp (16/11/2026, `notify` v12)
+- Ernesto creyó que los avisos de Claudia le llegaban «al correo de EBM»: iban bien a mipqrincon@gmail.com, pero firmados «EBM Agencia IA». Ahora los avisos de contacto y de paso a persona salen con el NOMBRE DEL NEGOCIO como remitente (misma dirección info@ebmagenciaia.es, verificada en Resend), y el asunto es «<agente>: <nombre> quiere hablar contigo».
+- El correo lleva botones «Responder por WhatsApp» (`wa.me/34…` con un saludo ya escrito; no sale para fijos), «Llamar» (`tel:`) y «Responder por correo» (si el contacto es un correo, también va como `reply_to`), y la conversación entera (hasta 30 mensajes) debajo.
+- Aviso: una conversación en la que la persona se va sin dejar datos (p. ej. 6ac828b3…, 15/11, decoración de Spiderman para el 20/12) NO genera aviso: no hay lead.
